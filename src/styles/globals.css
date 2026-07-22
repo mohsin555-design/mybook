@@ -56,3 +56,53 @@
     background: var(--app-surface);
   }
 }
+
+@layer components {
+  .univer-mobile {
+    touch-action: pan-x pan-y;
+    overscroll-behavior: contain;
+  }
+
+  .univer-mobile button,
+  .univer-mobile [role="button"] {
+    min-height: 36px;
+  }
+
+  @media (max-width: 640px) {
+    .univer-mobile button,
+    .univer-mobile [role="button"] {
+      min-height: 44px;
+    }
+  }
+
+  .tiptap {
+    color: var(--foreground);
+    font-size: 1rem;
+    line-height: 1.8;
+    scroll-padding-block: 6rem;
+    overflow-wrap: anywhere;
+  }
+
+  .tiptap > * + * {
+    margin-top: 1rem;
+  }
+
+  .tiptap h1 { font-size: 2rem; line-height: 1.25; font-weight: 700; }
+  .tiptap h2 { font-size: 1.5rem; line-height: 1.35; font-weight: 650; }
+  .tiptap h3 { font-size: 1.25rem; line-height: 1.4; font-weight: 650; }
+  .tiptap ul:not([data-type="taskList"]) { list-style: disc; padding-left: 1.5rem; }
+  .tiptap ol { list-style: decimal; padding-left: 1.5rem; }
+  .tiptap blockquote { border-left: 3px solid var(--app-border); padding-left: 1rem; color: var(--muted); }
+  .tiptap hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--app-border); }
+  .tiptap a { color: var(--accent); text-decoration: underline; }
+  .tiptap ul[data-type="taskList"] { list-style: none; padding: 0; }
+  .tiptap ul[data-type="taskList"] li { display: flex; gap: 0.5rem; align-items: flex-start; }
+  .tiptap ul[data-type="taskList"] li > label { padding-top: 0.2rem; }
+  .tiptap ul[data-type="taskList"] li > div { flex: 1; }
+  .tiptap .tableWrapper { overflow-x: auto; }
+  .tiptap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .tiptap th,
+  .tiptap td { min-width: 6rem; border: 1px solid var(--app-border); padding: 0.5rem; vertical-align: top; }
+  .tiptap th { background: var(--app-subtle); font-weight: 600; }
+  .tiptap .selectedCell { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+}

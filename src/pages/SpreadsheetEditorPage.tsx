@@ -1,8 +1,8 @@
 import { useParams } from 'react-router-dom'
 
-import { EditorWorkspace } from '../components/document-editor/EditorWorkspace'
+import { UniverSpreadsheetEditor } from '../components/spreadsheet-editor/UniverSpreadsheetEditor'
 
 export function SpreadsheetEditorPage() {
   const { spreadsheetId } = useParams()
-  return spreadsheetId ? <EditorWorkspace fileId={spreadsheetId} type="spreadsheet" /> : null
+  return spreadsheetId ? <UniverSpreadsheetEditor fileId={spreadsheetId} /> : null
 }

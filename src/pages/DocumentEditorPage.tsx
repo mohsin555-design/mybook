@@ -1,8 +1,8 @@
 import { useParams } from 'react-router-dom'
 
-import { EditorWorkspace } from '../components/document-editor/EditorWorkspace'
+import { TiptapDocumentEditor } from '../components/document-editor/TiptapDocumentEditor'
 
 export function DocumentEditorPage() {
   const { documentId } = useParams()
-  return documentId ? <EditorWorkspace fileId={documentId} type="document" /> : null
+  return documentId ? <TiptapDocumentEditor fileId={documentId} /> : null
 }

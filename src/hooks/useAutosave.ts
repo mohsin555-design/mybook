@@ -8,6 +8,7 @@ const SAVE_DELAY = 500
 export function useAutosave(file: MyBookFile | undefined) {
   const recoveryKey = file ? `mybook-recovery:${file.id}` : ''
   const [content, setContent] = useState('')
+  const [isHydrated, setIsHydrated] = useState(false)
   const [status, setStatus] = useState<EditorSaveStatus>(navigator.onLine ? 'pending' : 'offline')
   const lastSaved = useRef(file?.content ?? '')
   const contentRef = useRef(content)
@@ -16,6 +17,7 @@ export function useAutosave(file: MyBookFile | undefined) {
   useEffect(() => { fileRef.current = file }, [file])
   useEffect(() => {
     if (!file) return
+    setIsHydrated(false)
     const draft = localStorage.getItem(`mybook-recovery:${file.id}`)
     let next = file.content
     if (draft) {
@@ -28,6 +30,7 @@ export function useAutosave(file: MyBookFile | undefined) {
     }
     setContent(next); contentRef.current = next; lastSaved.current = file.content
     if (next !== file.content) setStatus('editing')
+    setIsHydrated(true)
   }, [file])
 
   const save = useCallback(async () => {
@@ -66,5 +69,5 @@ export function useAutosave(file: MyBookFile | undefined) {
     if (file) localStorage.setItem(recoveryKey, JSON.stringify({ content: value, updatedAt: new Date().toISOString() }))
   }
 
-  return { content, status, setContent: changeContent, save }
+  return { content, isHydrated, status, setContent: changeContent, save }
 }

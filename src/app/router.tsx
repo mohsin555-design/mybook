@@ -10,7 +10,6 @@ import { LoginPage } from '../pages/LoginPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { SearchPage } from '../pages/SearchPage'
-import { SpreadsheetEditorPage } from '../pages/SpreadsheetEditorPage'
 import { TrashPage } from '../pages/TrashPage'
 import { RedirectAuthenticated, RequireAuth } from './AuthGuards'
 
@@ -34,7 +33,10 @@ export const router = createBrowserRouter([
           { path: '/document/:documentId', element: <DocumentEditorPage /> },
           {
             path: '/spreadsheet/:spreadsheetId',
-            element: <SpreadsheetEditorPage />,
+            lazy: async () => {
+              const { SpreadsheetEditorPage } = await import('../pages/SpreadsheetEditorPage')
+              return { Component: SpreadsheetEditorPage }
+            },
           },
           { path: '/settings', element: <SettingsPage /> },
           { path: '/design-system', element: <DesignSystemPage /> },

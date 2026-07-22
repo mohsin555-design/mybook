@@ -1,0 +1,132 @@
+import {
+  ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
+  BackspaceIcon,
+  BoldIcon,
+  ChatBubbleBottomCenterTextIcon,
+  EllipsisHorizontalIcon,
+  ItalicIcon,
+  LinkIcon,
+  ListBulletIcon,
+  MinusIcon,
+  NumberedListIcon,
+  QueueListIcon,
+  StrikethroughIcon,
+  TableCellsIcon,
+  UnderlineIcon,
+} from '@heroicons/react/24/outline'
+import type { Editor } from '@tiptap/react'
+import { useEffect, useState } from 'react'
+
+import { MobileBottomSheet } from '../common/MobileBottomSheet'
+
+interface ToolButtonProps {
+  label: string
+  icon: typeof BoldIcon
+  active?: boolean
+  disabled?: boolean
+  onPress: () => void
+}
+
+function ToolButton({ label, icon: Icon, active, disabled, onPress }: ToolButtonProps) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onPress}
+      className={`flex size-11 min-h-11 min-w-11 items-center justify-center rounded-[10px] disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-[var(--app-subtle)]'}`}
+    >
+      <Icon aria-hidden="true" className="size-5" />
+    </button>
+  )
+}
+
+export function DocumentToolbar({ editor }: { editor: Editor }) {
+  const [, setVersion] = useState(0)
+
+  useEffect(() => {
+    const update = () => setVersion((version) => version + 1)
+    editor.on('transaction', update)
+    editor.on('selectionUpdate', update)
+    return () => {
+      editor.off('transaction', update)
+      editor.off('selectionUpdate', update)
+    }
+  }, [editor])
+
+  const setLink = () => {
+    const current = editor.getAttributes('link').href as string | undefined
+    const url = window.prompt('Link URL', current ?? 'https://')
+    if (url === null) return
+    if (!url.trim()) editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    else editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
+  }
+
+  const heading = editor.isActive('heading', { level: 1 })
+    ? '1'
+    : editor.isActive('heading', { level: 2 })
+      ? '2'
+      : editor.isActive('heading', { level: 3 })
+        ? '3'
+        : '0'
+
+  const moreActions = [
+    { label: 'Blockquote', icon: ChatBubbleBottomCenterTextIcon, active: editor.isActive('blockquote'), disabled: false, run: () => editor.chain().focus().toggleBlockquote().run() },
+    { label: 'Link', icon: LinkIcon, active: editor.isActive('link'), disabled: false, run: setLink },
+    { label: 'Table', icon: TableCellsIcon, active: editor.isActive('table'), disabled: !editor.can().chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+    { label: 'Horizontal rule', icon: MinusIcon, active: false, disabled: !editor.can().chain().focus().setHorizontalRule().run(), run: () => editor.chain().focus().setHorizontalRule().run() },
+    { label: 'Strikethrough', icon: StrikethroughIcon, active: editor.isActive('strike'), disabled: !editor.can().chain().focus().toggleStrike().run(), run: () => editor.chain().focus().toggleStrike().run() },
+    { label: 'Clear formatting', icon: BackspaceIcon, active: false, disabled: !editor.can().chain().focus().unsetAllMarks().clearNodes().run(), run: () => editor.chain().focus().unsetAllMarks().clearNodes().run() },
+  ]
+
+  return (
+    <div role="toolbar" aria-label="Document formatting" className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--app-border)] bg-[var(--app-surface)] pb-[env(safe-area-inset-bottom)]">
+      <div className="scrollbar mx-auto flex h-14 max-w-4xl items-center gap-1 overflow-x-auto overscroll-x-contain px-2 [scrollbar-width:thin]">
+        <ToolButton label="Bold" icon={BoldIcon} active={editor.isActive('bold')} disabled={!editor.can().chain().focus().toggleBold().run()} onPress={() => editor.chain().focus().toggleBold().run()} />
+        <ToolButton label="Italic" icon={ItalicIcon} active={editor.isActive('italic')} disabled={!editor.can().chain().focus().toggleItalic().run()} onPress={() => editor.chain().focus().toggleItalic().run()} />
+        <ToolButton label="Underline" icon={UnderlineIcon} active={editor.isActive('underline')} disabled={!editor.can().chain().focus().toggleUnderline().run()} onPress={() => editor.chain().focus().toggleUnderline().run()} />
+        <label className="sr-only" htmlFor="heading-level">Heading level</label>
+        <select
+          id="heading-level"
+          title="Heading level"
+          aria-label="Heading level"
+          value={heading}
+          onChange={(event) => {
+            const level = Number(event.target.value)
+            if (level === 0) editor.chain().focus().setParagraph().run()
+            else editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 }).run()
+          }}
+          className={`h-11 min-w-16 rounded-[10px] border-0 px-2 text-sm font-semibold ${heading !== '0' ? 'bg-accent text-accent-foreground' : 'bg-transparent text-muted'}`}
+        >
+          <option value="0">Text</option>
+          <option value="1">H1</option>
+          <option value="2">H2</option>
+          <option value="3">H3</option>
+        </select>
+        <ToolButton label="Bulleted list" icon={ListBulletIcon} active={editor.isActive('bulletList')} disabled={!editor.can().chain().focus().toggleBulletList().run()} onPress={() => editor.chain().focus().toggleBulletList().run()} />
+        <ToolButton label="Numbered list" icon={NumberedListIcon} active={editor.isActive('orderedList')} disabled={!editor.can().chain().focus().toggleOrderedList().run()} onPress={() => editor.chain().focus().toggleOrderedList().run()} />
+        <ToolButton label="Checklist" icon={QueueListIcon} active={editor.isActive('taskList')} disabled={!editor.can().chain().focus().toggleTaskList().run()} onPress={() => editor.chain().focus().toggleTaskList().run()} />
+        <ToolButton label="Undo" icon={ArrowUturnLeftIcon} disabled={!editor.can().chain().focus().undo().run()} onPress={() => editor.chain().focus().undo().run()} />
+        <ToolButton label="Redo" icon={ArrowUturnRightIcon} disabled={!editor.can().chain().focus().redo().run()} onPress={() => editor.chain().focus().redo().run()} />
+        <MobileBottomSheet
+          trigger={<EllipsisHorizontalIcon aria-hidden="true" className="size-6" />}
+          triggerLabel="More formatting options"
+          triggerClassName="flex size-11 min-h-11 min-w-11 items-center justify-center rounded-[10px] text-muted hover:bg-[var(--app-subtle)]"
+          title="More formatting"
+        >
+          <div className="grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]" role="group" aria-label="Additional formatting options">
+            {moreActions.map((action) => (
+              <button key={action.label} type="button" title={action.label} aria-label={action.label} aria-pressed={action.active} disabled={action.disabled} onClick={action.run} className={`flex min-h-12 items-center gap-3 rounded-[10px] px-3 text-left text-base font-medium disabled:opacity-40 ${action.active ? 'bg-accent text-accent-foreground' : 'hover:bg-[var(--app-subtle)]'}`}>
+                <action.icon aria-hidden="true" className="size-5 shrink-0" />
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </MobileBottomSheet>
+      </div>
+    </div>
+  )
+}

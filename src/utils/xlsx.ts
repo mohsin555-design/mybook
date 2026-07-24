@@ -1,4 +1,4 @@
-import ExcelJS, { type CellValue, type Fill, type Font } from 'exceljs'
+import type { CellValue, Fill, Font } from 'exceljs'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 export const MAX_XLSX_SIZE = 20 * 1024 * 1024
@@ -98,6 +98,7 @@ function excelStyleToUniver(font: Partial<Font>, fill: Fill | undefined, numFmt:
 
 export async function exportWorkbookToXlsx(snapshot: UniverWorkbookSnapshot): Promise<XlsxResult<Blob>> {
   try {
+    const { default: ExcelJS } = await import('exceljs')
     const workbook = new ExcelJS.Workbook()
     const ids = snapshot.sheetOrder?.length ? snapshot.sheetOrder : Object.keys(snapshot.sheets ?? {})
     for (const id of ids) {
@@ -153,6 +154,7 @@ export async function importXlsxToWorkbook(file: XlsxFileLike, workbookId: strin
   try {
     const input = new Uint8Array(await file.arrayBuffer())
     if (input[0] !== 0x50 || input[1] !== 0x4b) return { success: false, warnings: [], error: 'The file is not a valid XLSX archive.' }
+    const { default: ExcelJS } = await import('exceljs')
     const workbook = new ExcelJS.Workbook()
     await workbook.xlsx.load(input as unknown as Buffer)
     const warnings = new Set<string>()

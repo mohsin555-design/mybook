@@ -4,11 +4,12 @@ import type { ReactNode } from 'react'
 interface FolderCardProps {
   name: string
   itemCount: number
+  driveStatus?: ReactNode
   onOpen?: () => void
   action?: ReactNode
 }
 
-export function FolderCard({ name, itemCount, onOpen, action }: FolderCardProps) {
+export function FolderCard({ name, itemCount, driveStatus, onOpen, action }: FolderCardProps) {
   return (
     <article className="app-surface flex min-h-24 items-center gap-2 rounded-xl p-3 transition-colors hover:bg-[var(--app-subtle)]">
       <button type="button" onClick={onOpen} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left">
@@ -16,6 +17,7 @@ export function FolderCard({ name, itemCount, onOpen, action }: FolderCardProps)
         <span className="min-w-0">
           <span className="block truncate text-base font-medium leading-6">{name}</span>
           <span className="block text-sm leading-5 text-muted">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+          {driveStatus ? <span className="block text-sm leading-5 text-muted">{driveStatus}</span> : null}
         </span>
       </button>
       {action}

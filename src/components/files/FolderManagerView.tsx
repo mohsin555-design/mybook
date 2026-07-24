@@ -102,6 +102,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
                 key={folder.id}
                 name={folder.name}
                 itemCount={itemCount(folder.id)}
+                driveStatus={folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
                 onOpen={() => navigate(`/folders/${folder.id}`)}
                 action={
                   <FolderActionsMenu

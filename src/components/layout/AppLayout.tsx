@@ -7,12 +7,16 @@ import {
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { useAppStore } from '../../stores/useAppStore'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { navigationItems } from '../../utils/navigation'
 import { IconButton } from '../common/IconButton'
 import { MobileBottomNavigation } from './MobileBottomNavigation'
 
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
+  const { email, isAuthenticated } = useAuthStore()
+  useDriveBootstrap()
   const { pathname } = useLocation()
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
 
@@ -24,7 +28,10 @@ export function AppLayout() {
             <BookOpenIcon aria-hidden="true" className="size-7 text-accent" />
             <span className="text-lg">MyBook</span>
           </NavLink>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <span className={`hidden max-w-[16rem] rounded-full px-3 py-1 text-xs font-medium sm:inline-flex ${isAuthenticated ? 'bg-success/10 text-success' : 'bg-default text-muted'}`}>
+              {isAuthenticated ? `Signed in${email ? ` as ${email}` : ''}` : 'Not signed in'}
+            </span>
             <IconButton
               label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
               variant="ghost"

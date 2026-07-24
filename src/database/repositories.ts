@@ -1,5 +1,6 @@
 import { db } from './db'
 import type { AppSetting, FileType, MyBookFile, MyBookFolder, SyncQueueItem } from '../types/files'
+import { createDriveFileInFolder, ensureMyBookDriveFolder, ensureVisibleFolderInParent, trashDriveFile, updateDriveFile } from '../services/googleDrive'
 
 export interface RepositoryResult<T = void> {
   success: boolean
@@ -26,6 +27,20 @@ export const fileRepository = {
     try {
       const now = new Date().toISOString()
       const file: MyBookFile = { id: crypto.randomUUID(), driveFileId: null, name: type === 'document' ? 'Untitled document' : 'Untitled spreadsheet', type, folderId, content: '', mimeType: type === 'document' ? 'application/x-mybook-document' : 'application/x-mybook-spreadsheet', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'pending', isDeleted: false }
+      const parentFolder = folderId ? await db.folders.get(folderId) : null
+      const driveBootstrap = await ensureMyBookDriveFolder()
+      const driveParentId = parentFolder?.driveFolderId ?? (driveBootstrap.success ? driveBootstrap.folderId : null)
+      if (driveParentId) {
+        try {
+          const created = await createDriveFileInFolder(file.name, file.content, file.mimeType, driveParentId)
+          file.driveFileId = created.id
+          file.syncStatus = 'backed-up'
+          file.lastSyncedAt = now
+        } catch (error) {
+          console.warn('Could not create the file in Google Drive yet.', error)
+          file.syncStatus = navigator.onLine ? 'pending' : 'offline'
+        }
+      }
       await db.files.add(file)
       return { success: true, data: file }
     } catch (error) { return failure(error, 'Could not create file.') }
@@ -44,11 +59,29 @@ export const fileRepository = {
         if (!(await uniqueFileName(name, changes.folderId ?? file.folderId, id))) return { success: false, error: 'A file with this name already exists here.' }
         changes = { ...changes, name }
       }
+      if (existing.driveFileId && (changes.name !== undefined || changes.content !== undefined || changes.folderId !== undefined)) {
+        try {
+          await updateDriveFile(existing.driveFileId, {
+            name: changes.name,
+            content: changes.content,
+            parentId: changes.folderId,
+            mimeType: existing.mimeType,
+          })
+        } catch (error) {
+          console.warn('Could not update the file in Google Drive yet.', error)
+        }
+      }
       await db.files.update(id, { ...changes, updatedAt: new Date().toISOString() })
       return { success: true }
     } catch (error) { return failure(error, 'Could not update file.') }
   },
-  async delete(id: string) { return this.update(id, { isDeleted: true }) },
+  async delete(id: string) {
+    const file = await db.files.get(id)
+    if (file?.driveFileId) {
+      try { await trashDriveFile(file.driveFileId) } catch (error) { console.warn('Could not trash the file in Google Drive yet.', error) }
+    }
+    return this.update(id, { isDeleted: true })
+  },
   async restore(id: string) { return this.update(id, { isDeleted: false }) },
   async permanentlyDelete(id: string): Promise<RepositoryResult> { try { await db.files.delete(id); return { success: true } } catch (error) { return failure(error, 'Could not permanently delete file.') } },
   async list(includeDeleted = false): Promise<MyBookFile[]> { try { return await db.files.filter((file) => includeDeleted || !file.isDeleted).toArray() } catch (error) { console.error('Could not list files.', error); return [] } },
@@ -59,7 +92,8 @@ export const fileRepository = {
       if (!source) return { success: false, error: 'File could not be found.' }
       const now = new Date().toISOString()
       const copy = { ...source, id: crypto.randomUUID(), driveFileId: null, name: `${source.name} copy`, createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'pending' as const, isDeleted: false }
-      await db.files.add(copy); return { success: true, data: copy }
+      await db.files.add(copy)
+      return { success: true, data: copy }
     } catch (error) { return failure(error, 'Could not duplicate file.') }
   },
 }
@@ -78,8 +112,22 @@ export const folderRepository = {
         ancestorId = (await db.folders.get(ancestorId))?.parentId ?? null
       }
       if (depth > 3) return { success: false, error: 'Folders can be nested up to three levels.' }
-      const now = new Date().toISOString(); const folder: MyBookFolder = { id: crypto.randomUUID(), driveFolderId: null, name: normalized, parentId, createdAt: now, updatedAt: now, isDeleted: false }
-      await db.folders.add(folder); return { success: true, data: folder }
+      const now = new Date().toISOString()
+      const folder: MyBookFolder = { id: crypto.randomUUID(), driveFolderId: null, name: normalized, parentId, createdAt: now, updatedAt: now, isDeleted: false }
+      const driveBootstrap = await ensureMyBookDriveFolder()
+      const driveParentId = parentId
+        ? (await db.folders.get(parentId))?.driveFolderId ?? (driveBootstrap.success ? driveBootstrap.folderId : null)
+        : (driveBootstrap.success ? driveBootstrap.folderId : null)
+      if (driveParentId) {
+        try {
+          const driveFolder = await ensureVisibleFolderInParent(normalized, driveParentId)
+          folder.driveFolderId = driveFolder.id
+        } catch (error) {
+          console.warn('Could not create the folder in Google Drive yet.', error)
+        }
+      }
+      await db.folders.add(folder)
+      return { success: true, data: folder }
     } catch (error) { return failure(error, 'Could not create folder.') }
   },
   async get(id: string) { try { return { success: true, data: await db.folders.get(id) } } catch (error) { return failure(error, 'Could not load folder.') } },

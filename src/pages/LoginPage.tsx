@@ -1,14 +1,16 @@
 import {
   BookOpenIcon,
   ExclamationCircleIcon,
+  ArrowRightIcon,
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
 import { Spinner } from '@heroui/react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { AppButton } from '../components/common/AppButton'
-import { useAuthStore } from '../stores/useAuthStore'
+import { getAuthConfigError, useAuthStore } from '../stores/useAuthStore'
+import { loadGoogleIdentity } from '../utils/googleIdentity'
 
 interface LoginLocationState {
   from?: string
@@ -17,16 +19,58 @@ interface LoginLocationState {
 export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { clearError, error, isLoading, login } = useAuthStore()
+  const googleButtonRef = useRef<HTMLDivElement>(null)
+  const { clearError, error, isLoading, completeLogin } = useAuthStore()
   const destination = (location.state as LoginLocationState | null)?.from ?? '/home'
+  const configError = getAuthConfigError()
 
   useEffect(() => {
     clearError()
   }, [clearError])
 
+  useEffect(() => {
+    let active = true
+    const render = async () => {
+      try {
+        if (configError) return
+        await loadGoogleIdentity()
+        const google = window.google
+        if (!active || !google?.accounts?.id || !googleButtonRef.current) return
+
+        google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? '',
+          callback: (response) => {
+            if (!response.credential) {
+              return
+            }
+            void completeLogin(response.credential, 'consent').then((succeeded) => {
+              if (succeeded) navigate(destination, { replace: true })
+            })
+          },
+        })
+
+        googleButtonRef.current.innerHTML = ''
+        google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: 'outline',
+          size: 'large',
+          type: 'standard',
+          text: 'signin_with',
+          shape: 'rectangular',
+          width: 280,
+        })
+      } catch {
+        // The visible error state already explains missing config or auth issues.
+      }
+    }
+
+    void render()
+    return () => {
+      active = false
+    }
+  }, [completeLogin, configError, destination, navigate])
+
   const handleLogin = async () => {
-    const succeeded = await login()
-    if (succeeded) navigate(destination, { replace: true })
+    googleButtonRef.current?.querySelector<HTMLDivElement>('[role="button"]')?.click()
   }
 
   return (
@@ -49,16 +93,21 @@ export function LoginPage() {
           </div>
         ) : null}
 
+        <div className="mt-7 flex justify-center">
+          <div ref={googleButtonRef} aria-hidden="true" />
+        </div>
+
         <AppButton
           fullWidth
-          className="mt-7"
-          variant="primary"
-          isDisabled={isLoading}
+          className="mt-3"
+          variant="secondary"
+          isDisabled={isLoading || Boolean(configError)}
           onPress={handleLogin}
           aria-label="Continue with Google"
         >
           {isLoading ? <Spinner size="sm" aria-hidden="true" /> : null}
-          {isLoading ? 'Signing in...' : 'Continue with Google'}
+          <ArrowRightIcon aria-hidden="true" className="size-5" />
+          {configError ? 'Google sign-in not configured' : isLoading ? 'Signing in...' : 'Continue with Google'}
         </AppButton>
 
         <p aria-live="polite" className="sr-only">
@@ -72,6 +121,11 @@ export function LoginPage() {
             request access needed to manage files you create here.
           </p>
         </div>
+        {configError ? (
+          <p role="alert" className="mt-4 rounded-xl border border-warning/40 bg-warning-soft p-3 text-sm text-warning-soft-foreground">
+            {configError}
+          </p>
+        ) : null}
       </section>
     </main>
   )

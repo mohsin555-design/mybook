@@ -3,10 +3,9 @@ deployment:
   script: |
     #!/usr/bin/env bash
     # cPanel deployment script
-    # Replace <CPANEL_USERNAME> with your cPanel account username
 
     # Export the deploy path pointing to your site's document root
-    export DEPLOYPATH="/home/<CPANEL_USERNAME>/public_html"
+    export DEPLOYPATH="/home/celztxeo/public_html"
 
     # Ensure the deploy path exists
     mkdir -p "$DEPLOYPATH"

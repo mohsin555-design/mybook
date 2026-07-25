@@ -5,7 +5,7 @@ deployment:
     # cPanel deployment script
 
     # Export the deploy path pointing to your site's document root
-    export DEPLOYPATH="/home/celztxeo/public_html"
+    export DEPLOYPATH="/home/celztxeo/mybook"
 
     # Ensure the deploy path exists
     mkdir -p "$DEPLOYPATH"

@@ -1,5 +1,5 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH="/home/celztxeo/mybook/dist"
+    - export DEPLOYPATH="/home/celztxeo/mybook-live"
     - /bin/cp -R dist/. "$DEPLOYPATH"

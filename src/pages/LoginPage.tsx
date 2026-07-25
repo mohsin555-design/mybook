@@ -43,7 +43,7 @@ export function LoginPage() {
             if (!response.credential) {
               return
             }
-            void completeLogin(response.credential, 'consent').then((succeeded) => {
+            void completeLogin(response.credential, '').then((succeeded) => {
               if (succeeded) navigate(destination, { replace: true })
             })
           },

@@ -79,7 +79,7 @@ export function FolderNameDialog({
           className="mt-2 min-h-11 w-full rounded-[10px] border border-[var(--app-border)] bg-background px-3 text-base"
         />
         {error ? <p id="folder-name-error" role="alert" className="mt-2 text-sm text-danger">{error}</p> : null}
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
           <AppButton type="button" variant="secondary" onPress={close}>Cancel</AppButton>
           <AppButton type="submit" variant="primary">{submitLabel}</AppButton>
         </div>

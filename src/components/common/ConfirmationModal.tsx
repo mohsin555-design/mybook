@@ -34,7 +34,7 @@ export function ConfirmationModal({
                   <Modal.Heading className="text-lg">{title}</Modal.Heading>
                 </Modal.Header>
                 <Modal.Body className="text-base leading-7 text-muted">{description}</Modal.Body>
-                <Modal.Footer>
+                <Modal.Footer className="flex-wrap">
                   <AppButton variant="secondary" onPress={close}>Cancel</AppButton>
                   <AppButton
                     variant="danger"

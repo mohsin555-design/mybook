@@ -34,7 +34,7 @@ export function MobileBottomSheet({
               <Drawer.Heading className="text-lg">{title}</Drawer.Heading>
               <Drawer.CloseTrigger aria-label="Close bottom sheet" />
             </Drawer.Header>
-            <Drawer.Body className="text-base leading-7">{children}</Drawer.Body>
+            <Drawer.Body className="max-h-[calc(85vh-9rem)] overflow-y-auto overscroll-contain text-base leading-7">{children}</Drawer.Body>
             {footer ? <Drawer.Footer>{footer}</Drawer.Footer> : null}
           </Drawer.Dialog>
         </Drawer.Content>

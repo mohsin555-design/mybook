@@ -243,7 +243,7 @@ export const useAuthStore = create<AuthState>()(
           set({
             isAuthenticated: false,
             isLoading: false,
-            error: error instanceof Error ? error.message : 'We could not sign you in.',
+            error: getFriendlyGoogleAuthError(error),
           })
           return false
         }

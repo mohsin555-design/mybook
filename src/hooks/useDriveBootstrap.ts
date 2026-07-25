@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { backfillLocalFoldersToDrive, ensureMyBookDriveFolder, getDriveFolderStatus, importDriveFilesToLocal, importDriveFoldersToLocal } from '../services/googleDrive'
 import { useAuthStore } from '../stores/useAuthStore'
-import { folderRepository, settingsRepository } from '../database/repositories'
+import { folderRepository, processPendingDriveFolderSync, settingsRepository } from '../database/repositories'
 
 const DRIVE_BACKFILL_KEY = 'google-drive.folder-backfill-complete'
 
@@ -36,14 +36,7 @@ export function useDriveBootstrap() {
       setIsPreparing(true)
       try {
         const existingFolderId = await getDriveFolderStatus()
-        if (existingFolderId) {
-          if (!cancelled) {
-            setFolderId(existingFolderId)
-            setStatusMessage('MyBook Drive folder is connected.')
-          }
-          return
-        }
-        const result = await ensureMyBookDriveFolder()
+        const result = existingFolderId ? { success: true as const, folderId: existingFolderId, folderName: 'MyBook', created: false } : await ensureMyBookDriveFolder()
         if (!cancelled) {
           if (result.success) setFolderId(result.folderId)
           setStatusMessage(result.success
@@ -52,6 +45,7 @@ export function useDriveBootstrap() {
               : 'MyBook Drive folder connected.'
             : result.error)
         }
+        await processPendingDriveFolderSync()
         const backfillFlag = (await settingsRepository.get(DRIVE_BACKFILL_KEY)).data?.value
         if (backfillFlag !== true) {
           const folders = await folderRepository.list()
@@ -71,10 +65,13 @@ export function useDriveBootstrap() {
       }
     }
     void run()
+    const onlineHandler = () => { void processPendingDriveFolderSync() }
+    window.addEventListener('online', onlineHandler)
     return () => {
       cancelled = true
       if (refreshTimer !== null) window.clearInterval(refreshTimer)
       document.removeEventListener('visibilitychange', visibilityHandler)
+      window.removeEventListener('online', onlineHandler)
     }
   }, [email, isAuthenticated])
 

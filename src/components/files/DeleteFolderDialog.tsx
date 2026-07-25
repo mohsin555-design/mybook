@@ -39,7 +39,7 @@ export function DeleteFolderDialog({ isOpen, folderName, onClose, onConfirm }: D
         <p id="delete-folder-description" className="mt-2 text-base leading-7 text-muted">
           This folder is not empty. Its files and nested folders will also be deleted. This cannot be undone.
         </p>
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
           <AppButton variant="secondary" onPress={close}>Cancel</AppButton>
           <AppButton variant="danger" onPress={() => { onConfirm(); close() }}>Delete folder</AppButton>
         </div>

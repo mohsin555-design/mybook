@@ -1,0 +1,7 @@
+- main [ref=e3]:
+  - region [ref=e4]:
+    - heading "MyBook" [level=1] [ref=e8]
+    - paragraph [ref=e9]: Your private documents and spreadsheets, backed up to your Drive.
+    - button "Continue with Google" [ref=e10] [cursor=pointer]
+    - paragraph [ref=e11]
+    - paragraph [ref=e15]: Your files will be stored in your own Google Drive. MyBook will only request access needed to manage files you create here.

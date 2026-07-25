@@ -7,7 +7,7 @@ interface LoadingStateProps {
 
 export function LoadingState({ label = 'Loading content', rows = 3 }: LoadingStateProps) {
   return (
-    <section aria-label={label} aria-busy="true" className="space-y-3">
+    <section aria-label={label} aria-busy="true" role="status" className="space-y-3">
       <span className="sr-only">{label}</span>
       {Array.from({ length: rows }, (_, index) => (
         <div key={index} className="app-surface flex items-center gap-3 rounded-xl p-4">

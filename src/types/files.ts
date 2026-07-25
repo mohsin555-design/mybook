@@ -15,6 +15,7 @@ export interface MyBookFile {
   createdAt: string
   updatedAt: string
   lastSyncedAt: string | null
+  syncError?: string | null
   syncStatus: SyncStatus
   isDeleted: boolean
 }

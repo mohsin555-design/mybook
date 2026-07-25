@@ -24,7 +24,7 @@ export function SyncStatusBadge({ status }: SyncStatusBadgeProps) {
   const Icon = config.icon
 
   return (
-    <Badge color={config.color} variant="soft" className="inline-flex min-h-7 items-center gap-1 rounded-lg px-2 text-sm">
+    <Badge role="status" aria-label={config.label} color={config.color} variant="soft" className="inline-flex min-h-7 items-center gap-1 rounded-lg px-2 text-sm">
       <Icon aria-hidden="true" className={`size-4 ${status === 'backing-up' ? 'animate-spin' : ''}`} />
       <span>{config.label}</span>
     </Badge>

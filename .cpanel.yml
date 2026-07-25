@@ -1,5 +1,15 @@
 ---
 deployment:
-  tasks:
-    - export DEPLOYPATH="/home/celztxeo/mybook-live"
-    - /bin/cp -R dist/. "$DEPLOYPATH"
+  script: |
+    #!/usr/bin/env bash
+    # cPanel deployment script
+
+    # Export the deploy path pointing to your site's document root
+    export DEPLOYPATH="/home/celztxeo/mybook/dist"
+
+    # Ensure the deploy path exists
+    mkdir -p "$DEPLOYPATH"
+
+    # Recursively copy all files into the deploy path
+    /bin/cp -R dist/. "$DEPLOYPATH"
+

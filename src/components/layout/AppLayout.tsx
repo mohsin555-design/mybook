@@ -11,7 +11,6 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { navigationItems } from '../../utils/navigation'
 import { IconButton } from '../common/IconButton'
-import { PwaStatus } from '../common/PwaStatus'
 import { MobileBottomNavigation } from './MobileBottomNavigation'
 
 export function AppLayout() {
@@ -23,7 +22,6 @@ export function AppLayout() {
 
   return (
     <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-background text-foreground">
-      <PwaStatus />
       {!isEditor ? <header className="sticky top-0 z-30 shrink-0 border-b border-[var(--app-border)] bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
           <NavLink to="/home" className="flex items-center gap-2 font-semibold">

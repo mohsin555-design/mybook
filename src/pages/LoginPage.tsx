@@ -1,14 +1,11 @@
 import {
   BookOpenIcon,
   ExclamationCircleIcon,
-  ArrowRightIcon,
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
-import { Spinner } from '@heroui/react'
 import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-import { AppButton } from '../components/common/AppButton'
 import { getAuthConfigError, useAuthStore } from '../stores/useAuthStore'
 import { loadGoogleIdentity } from '../utils/googleIdentity'
 
@@ -69,10 +66,6 @@ export function LoginPage() {
     }
   }, [completeLogin, configError, destination, navigate])
 
-  const handleLogin = async () => {
-    googleButtonRef.current?.querySelector<HTMLDivElement>('[role="button"]')?.click()
-  }
-
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-[calc(2.5rem+env(safe-area-inset-top))] text-foreground sm:px-6">
       <section className="w-full max-w-sm" aria-labelledby="login-title">
@@ -94,21 +87,11 @@ export function LoginPage() {
         ) : null}
 
         <div className="mt-7 flex justify-center">
-          <div ref={googleButtonRef} aria-hidden="true" />
+          <div ref={googleButtonRef} />
         </div>
 
-        <AppButton
-          fullWidth
-          className="mt-3"
-          variant="secondary"
-          isDisabled={isLoading || Boolean(configError)}
-          onPress={handleLogin}
-          aria-label="Continue with Google"
-        >
-          {isLoading ? <Spinner size="sm" aria-hidden="true" /> : null}
-          <ArrowRightIcon aria-hidden="true" className="size-5" />
-          {configError ? 'Google sign-in not configured' : isLoading ? 'Signing in...' : 'Continue with Google'}
-        </AppButton>
+        {isLoading ? <p className="mt-3 text-center text-sm text-muted">Signing in...</p> : null}
+        {configError ? <p role="alert" className="mt-3 text-center text-sm text-warning-soft-foreground">Google sign-in is not configured.</p> : null}
 
         <p aria-live="polite" className="sr-only">
           {isLoading ? 'Signing in to MyBook' : error ?? ''}

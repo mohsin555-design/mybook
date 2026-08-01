@@ -107,7 +107,11 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
                 action={
                   <FolderActionsMenu
                     folderName={folder.name}
+                    folders={folders}
+                    folderId={folder.id}
+                    currentParentId={folder.parentId}
                     onRename={() => setRenameTarget(folder)}
+                    onMove={(destination) => void folderRepository.update(folder.id, { parentId: destination })}
                     onDelete={() => requestDelete(folder)}
                   />
                 }

@@ -7,6 +7,7 @@ import {
   ensureMyBookDriveFolder,
   importDriveFilesToLocal,
   listVisibleFoldersByName,
+  updateDriveFile,
 } from './googleDrive'
 
 vi.mock('../database/repositories', () => ({
@@ -109,5 +110,18 @@ describe('googleDrive helpers', () => {
       name: 'Drive Note',
       isDeleted: false,
     }))
+  })
+
+  it('moves a Drive file with addParents and removeParents', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ parents: ['old-parent'] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'file-1', name: 'Notes.docx', parents: ['new-parent'] }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await updateDriveFile('file-1', { parentId: 'new-parent' })
+
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('addParents=new-parent')
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('removeParents=old-parent')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'PATCH', body: '{}' })
   })
 })

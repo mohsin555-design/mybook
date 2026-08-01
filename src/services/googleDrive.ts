@@ -147,8 +147,10 @@ export async function updateDriveFolder(folderId: string, changes: { name?: stri
   if (changes.parentId) {
     const currentResponse = await fetch(`${DRIVE_API_BASE}/files/${folderId}?fields=parents`, { headers: { Authorization: `Bearer ${accessToken}` } })
     const current = await currentResponse.json().catch(() => null) as { parents?: string[] } | null
-    params.set('addParents', changes.parentId)
-    if (current?.parents?.length) params.set('removeParents', current.parents.join(','))
+    if (!current?.parents?.includes(changes.parentId)) {
+      params.set('addParents', changes.parentId)
+      if (current?.parents?.length) params.set('removeParents', current.parents.join(','))
+    }
   }
   const response = await fetch(`${DRIVE_API_BASE}/files/${folderId}?${params.toString()}`, {
     method: 'PATCH',
@@ -218,12 +220,23 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
 
   const metadata: Record<string, unknown> = {}
   if (changes.name !== undefined) metadata.name = changes.name
-  if (changes.parentId !== undefined) metadata.parents = changes.parentId ? [changes.parentId] : []
   if (changes.mimeType !== undefined) metadata.mimeType = changes.mimeType
   if (changes.trashed !== undefined) metadata.trashed = changes.trashed
 
+  const parentParams = new URLSearchParams()
+  if (changes.parentId !== undefined) {
+    const currentResult = await driveFetch(`/files/${encodeURIComponent(fileId)}?fields=parents`)
+    if (!currentResult.success) throw new Error(currentResult.error)
+    const current = await currentResult.response.json() as { parents?: string[] }
+    if (changes.parentId && !current.parents?.includes(changes.parentId)) {
+      parentParams.set('addParents', changes.parentId)
+      if (current.parents?.length) parentParams.set('removeParents', current.parents.join(','))
+    }
+  }
+
   if (changes.content === undefined) {
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,webViewLink`, {
+    parentParams.set('fields', 'id,name,webViewLink,parents')
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?${parentParams.toString()}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(metadata),
@@ -235,7 +248,8 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
     return await response.json() as { id: string; name: string; webViewLink?: string }
   }
 
-  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink' })
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,parents' })
+  parentParams.forEach((value, key) => query.set(key, value))
   const boundary = 'mybook-update-boundary'
   const bodyParts = [
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
@@ -311,7 +325,11 @@ async function uploadDocxBlob(title: string, json: JSONContent, parentId: string
   const accessToken = useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const safeTitle = safeDocxName(title)
-  const metadata = { name: `${safeTitle}.docx`, parents: [parentId], mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+  const metadata = {
+    name: `${safeTitle}.docx`,
+    ...(fileId ? {} : { parents: [parentId] }),
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  }
   const boundary = 'mybook-docx-boundary'
   const method = fileId ? 'PATCH' : 'POST'
   const endpoint = fileId
@@ -374,7 +392,11 @@ function safeXlsxName(name: string) {
 async function uploadXlsxBlob(name: string, blob: Blob, parentId: string, fileId?: string | null) {
   const accessToken = useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
-  const metadata = { name: safeXlsxName(name), parents: [parentId], mimeType: XLSX_MIME }
+  const metadata = {
+    name: safeXlsxName(name),
+    ...(fileId ? {} : { parents: [parentId] }),
+    mimeType: XLSX_MIME,
+  }
   const boundary = 'mybook-xlsx-boundary'
   const method = fileId ? 'PATCH' : 'POST'
   const endpoint = fileId
@@ -507,8 +529,8 @@ export async function importDriveFoldersToLocal(
       let matchedLocalId: string
       if (localMatch) {
         matchedLocalId = localMatch.id
-        if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id) {
-          await db.folders.update(localMatch.id, { name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, updatedAt: new Date().toISOString() })
+        if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted) {
+          await db.folders.update(localMatch.id, { name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, updatedAt: new Date().toISOString(), isDeleted: false })
         }
       } else {
         const now = new Date().toISOString()

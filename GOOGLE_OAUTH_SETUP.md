@@ -15,7 +15,8 @@ Use these settings to connect MyBook to Google Identity Services and Drive with 
 3. Add the scope:
    - `https://www.googleapis.com/auth/drive.file`
 4. Keep the app in **Testing** while you validate it.
-5. Add the allowed Google account as a **test user**.
+5. Add each account used during validation as a **test user**.
+6. Publish the app to **Production** when it is ready for all Google accounts.
 
 ## 3. Authorized origins
 
@@ -44,12 +45,11 @@ Add these values to your local `.env` file:
 
 ```bash
 VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
-VITE_ALLOWED_GOOGLE_EMAIL=allowed.user@example.com
 ```
 
 ## 7. Notes
 
 - MyBook only requests `drive.file`, not full Drive access.
-- The allowed email is checked in the browser after Google sign-in.
+- Any Google account permitted by the OAuth consent-screen publishing status can sign in.
 - OAuth client secrets must stay out of frontend code.
 - The app stores the auth session in browser session storage and clears it on logout or token expiry.

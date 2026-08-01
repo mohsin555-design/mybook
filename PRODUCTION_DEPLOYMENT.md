@@ -9,7 +9,6 @@ Copy `.env.production.example` into the deployment provider's environment settin
 Required variables:
 
 - `VITE_GOOGLE_CLIENT_ID`: production Web OAuth client ID
-- `VITE_ALLOWED_GOOGLE_EMAIL`: the single allowed Google email
 - `VITE_APP_VERSION`: displayed in Settings
 - `VITE_PRODUCTION_ORIGIN`: the exact HTTPS production origin
 
@@ -23,7 +22,7 @@ Cloudflare Pages can use the same build command and output directory; add the sa
 
 1. Create a separate production OAuth Web client.
 2. Enable Google Drive API.
-3. Configure the OAuth consent screen and add the allowed email as a test user while the app is in testing.
+3. Configure the OAuth consent screen, add validation accounts as test users while the app is in testing, and publish it to production when it is ready for all Google accounts.
 4. Add the exact production origin, including scheme and port when applicable, under Authorized JavaScript origins, for example `https://mybook.example.com`.
 5. Do not add a client secret to frontend variables.
 6. Verify the OAuth consent screen requests only `https://www.googleapis.com/auth/drive.file` plus sign-in identity scopes.

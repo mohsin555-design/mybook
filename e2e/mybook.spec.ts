@@ -36,7 +36,7 @@ test('document create, local save, backup, home open, rename, and delete', async
   await page.getByRole('button', { name: 'Save' }).click()
   await page.getByRole('button', { name: /More actions for Meeting Notes/i }).click()
   await page.getByRole('menuitem', { name: 'Move to Trash' }).click()
-  await expect(page.getByText(/Recent files/i)).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Recent' })).toBeVisible()
 })
 
 test('spreadsheet can be created and backed up with mocked Drive', async ({ page }) => {

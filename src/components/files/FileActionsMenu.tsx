@@ -16,7 +16,7 @@ interface FileActionsMenuProps {
 export function FileActionsMenu({ fileName, folders, currentFolderId, onRename, onDuplicate, onMove, onDelete }: FileActionsMenuProps) {
   return (
     <Dropdown>
-      <Dropdown.Trigger aria-label={`More actions for ${fileName}`} className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger>
+      <Dropdown.Trigger aria-label={`More actions for ${fileName}`} className="flex size-9 items-center justify-center rounded-full text-muted"><EllipsisHorizontalIcon aria-hidden="true" className="size-4" /></Dropdown.Trigger>
       <Dropdown.Popover placement="bottom end">
         <Dropdown.Menu aria-label={`Actions for ${fileName}`} onAction={(key) => {
           const action = String(key)

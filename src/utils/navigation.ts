@@ -1,15 +1,8 @@
-import {
-  Cog6ToothIcon,
-  FolderIcon,
-  HomeIcon,
-  MagnifyingGlassIcon,
-} from '@heroicons/react/24/outline'
-
 import type { NavigationItem } from '../types/navigation'
 
 export const navigationItems: NavigationItem[] = [
-  { label: 'Home', path: '/home', icon: HomeIcon },
-  { label: 'Folders', path: '/folders', icon: FolderIcon },
-  { label: 'Search', path: '/search', icon: MagnifyingGlassIcon },
-  { label: 'Settings', path: '/settings', icon: Cog6ToothIcon },
+  { label: 'Home', path: '/home', iconSrc: '/icons/house.svg' },
+  { label: 'Library', path: '/folders', iconSrc: '/icons/folder-small.svg' },
+  { label: 'Preferences', path: '/settings', iconSrc: '/icons/gear.svg' },
+  { label: 'Search', path: '/search', iconSrc: '/icons/magnifier.svg' },
 ]

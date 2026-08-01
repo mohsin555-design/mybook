@@ -40,6 +40,14 @@
     line-height: 1.6;
   }
 
+  main {
+    scrollbar-width: none;
+  }
+
+  main::-webkit-scrollbar {
+    display: none;
+  }
+
   button,
   a {
     -webkit-tap-highlight-color: transparent;
@@ -68,6 +76,11 @@
 }
 
 @layer components {
+  .mybook-bottom-sheet {
+    top: auto !important;
+    height: auto !important;
+  }
+
   .univer-mobile {
     touch-action: pan-x pan-y;
     overscroll-behavior: contain;

@@ -1,4 +1,4 @@
-import { ArrowRightStartOnRectangleIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { ArrowRightStartOnRectangleIcon, MoonIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -11,9 +11,11 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import { processPendingDriveFolderSync } from '../database/repositories'
 import { APP_VERSION } from '../config/app'
+import { useAppStore } from '../stores/useAppStore'
 
 export function SettingsPage() {
   const { email, logout, reconnect } = useAuthStore()
+  const { theme, toggleTheme } = useAppStore()
   const navigate = useNavigate()
   const { isPreparing, statusMessage } = useDriveBootstrap()
   const [storedFolderId, setStoredFolderId] = useState<string | null>(null)
@@ -41,14 +43,22 @@ export function SettingsPage() {
   }, [])
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="mx-auto max-w-3xl space-y-4 px-4">
       <PageHeader
-        title="Settings"
+        title="Preferences"
         description="Manage your MyBook preferences and account session."
       />
-      <section aria-labelledby="account-heading" className="border-t border-[var(--app-border)] pt-6">
-        <h2 id="account-heading" className="text-lg font-semibold leading-7">Account</h2>
-        <p className="mt-1 text-base leading-7 text-muted">
+      <section aria-labelledby="appearance-heading" className="rounded-2xl bg-default/70 p-4">
+        <h2 id="appearance-heading" className="text-base font-semibold leading-6">Appearance</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">Choose how MyBook looks on this device.</p>
+        <AppButton className="mt-3" variant="secondary" onPress={toggleTheme}>
+          {theme === 'light' ? <MoonIcon aria-hidden="true" className="size-5" /> : <SunIcon aria-hidden="true" className="size-5" />}
+          Use {theme === 'light' ? 'dark' : 'light'} theme
+        </AppButton>
+      </section>
+      <section aria-labelledby="account-heading" className="rounded-2xl bg-default/70 p-4">
+        <h2 id="account-heading" className="text-base font-semibold leading-6">Account</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">
           {email ? `Signed in as ${email}.` : 'Your Google session will appear here after sign-in.'}
         </p>
         <AppButton className="mt-4" variant="secondary" onPress={() => void logout()}>
@@ -56,9 +66,9 @@ export function SettingsPage() {
           Log out
         </AppButton>
       </section>
-      <section aria-labelledby="drive-heading" className="border-t border-[var(--app-border)] pt-6">
-        <h2 id="drive-heading" className="text-lg font-semibold leading-7">Google Drive</h2>
-        <p className="mt-1 text-base leading-7 text-muted">
+      <section aria-labelledby="drive-heading" className="rounded-2xl bg-default/70 p-4">
+        <h2 id="drive-heading" className="text-base font-semibold leading-6">Google Drive</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">
           {isPreparing
             ? 'Checking your MyBook Drive folder...'
             : storedFolderId
@@ -87,19 +97,19 @@ export function SettingsPage() {
         </dl>
         {backupStats.failed > 0 ? <div className="mt-4 rounded-xl border border-danger/30 bg-danger/5 p-3 text-sm"><p className="font-medium">Backup failures</p>{files.filter((file) => file.syncStatus === 'failed').map((file) => <p key={file.id} className="mt-1 text-muted">{file.name}: {file.syncError ?? 'Backup failed.'}</p>)}</div> : null}
       </section>
-      <section aria-labelledby="files-heading" className="border-t border-[var(--app-border)] pt-6">
-        <h2 id="files-heading" className="text-lg font-semibold leading-7">Files</h2>
+      <section aria-labelledby="files-heading" className="rounded-2xl bg-default/70 p-4">
+        <h2 id="files-heading" className="text-base font-semibold leading-6">Files</h2>
         <AppButton className="mt-4" variant="secondary" onPress={() => navigate('/trash')}><TrashIcon aria-hidden="true" className="size-5" />Open Trash</AppButton>
       </section>
-      <section aria-labelledby="privacy-heading" className="border-t border-[var(--app-border)] pt-6">
-        <h2 id="privacy-heading" className="text-lg font-semibold leading-7">Privacy and personal use</h2>
-        <p className="mt-1 text-base leading-7 text-muted">MyBook keeps editable files locally in this browser. Google Drive is used only for the visible MyBook folder and file-level backups you request. Access tokens stay in session storage and are never included in links or logs.</p>
-        <p className="mt-2 text-base leading-7 text-muted">This application is provided for personal use. Keep independent copies of important information and review Google permissions before connecting an account.</p>
+      <section aria-labelledby="privacy-heading" className="rounded-2xl bg-default/70 p-4">
+        <h2 id="privacy-heading" className="text-base font-semibold leading-6">Privacy and personal use</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">MyBook keeps editable files locally in this browser. Google Drive is used only for the visible MyBook folder and file-level backups you request. Access tokens stay in session storage and are never included in links or logs.</p>
+        <p className="mt-2 text-sm leading-6 text-muted">This application is provided for personal use. Keep independent copies of important information and review Google permissions before connecting an account.</p>
         <p className="mt-4 text-sm text-muted">MyBook version {APP_VERSION}</p>
       </section>
-      <section aria-labelledby="diagnostics-heading" className="border-t border-[var(--app-border)] pt-6">
-        <h2 id="diagnostics-heading" className="text-lg font-semibold leading-7">Sync diagnostics</h2>
-        <p className="mt-1 text-base leading-7 text-muted">Technical health information for recovery and troubleshooting. Private document content and access tokens are never shown.</p>
+      <section aria-labelledby="diagnostics-heading" className="rounded-2xl bg-default/70 p-4">
+        <h2 id="diagnostics-heading" className="text-base font-semibold leading-6">Sync diagnostics</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">Technical health information for recovery and troubleshooting. Private document content and access tokens are never shown.</p>
         <dl className="mt-4 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted">Local database</dt><dd className="mt-1 font-medium">{databaseStatus === 'ready' ? 'Available' : databaseStatus === 'failed' ? 'Unavailable' : 'Checking…'}</dd></div>
           <div className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted">Queued operations</dt><dd className="mt-1 font-medium">{syncQueue.filter((item) => item.status !== 'completed').length}</dd></div>

@@ -1,6 +1,6 @@
-import { ChevronRightIcon, FolderPlusIcon } from '@heroicons/react/24/outline'
-import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { ChevronLeftIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { fileRepository, folderRepository } from '../../database/repositories'
 import { useLibraryData } from '../../hooks/useLibraryData'
@@ -9,6 +9,7 @@ import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
 import { PageHeader } from '../common/PageHeader'
 import { DeleteFolderDialog } from './DeleteFolderDialog'
+import { CreateItemDrawer } from './CreateItemDrawer'
 import { FileCard } from './FileCard'
 import { FileActionsMenu } from './FileActionsMenu'
 import { FileNameDialog } from './FileNameDialog'
@@ -31,18 +32,6 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const childFolders = folders.filter((folder) => folder.parentId === folderId)
   const childFiles = files.filter((file) => file.folderId === folderId)
 
-  const breadcrumbs = useMemo(() => {
-    const items: MyBookFolder[] = []
-    let current = currentFolder
-    while (current) {
-      items.unshift(current)
-      current = current.parentId
-        ? folders.find((folder) => folder.id === current?.parentId)
-        : undefined
-    }
-    return items
-  }, [currentFolder, folders])
-
   if (folderId && !currentFolder) {
     return (
       <EmptyState
@@ -59,101 +48,97 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
 
   const requestDelete = (folder: MyBookFolder) => {
     if (itemCount(folder.id) > 0) setDeleteTarget(folder)
-    else void folderRepository.delete(folder.id)
+    else {
+      void folderRepository.delete(folder.id)
+      if (folder.id === folderId) navigate(folder.parentId ? `/folders/${folder.parentId}` : '/folders')
+    }
   }
 
   return (
-    <div className="space-y-8">
-      {folderId ? (
-        <nav aria-label="Folder breadcrumbs">
-          <ol className="flex flex-wrap items-center gap-1 text-sm text-muted">
-            <li><Link to="/folders" className="flex min-h-11 items-center rounded-lg px-2 hover:text-foreground">MyBook</Link></li>
-            {breadcrumbs.map((folder, index) => (
-              <li key={folder.id} className="flex items-center">
-                <ChevronRightIcon aria-hidden="true" className="size-4" />
-                {index === breadcrumbs.length - 1 ? (
-                  <span aria-current="page" className="px-2 font-medium text-foreground">{folder.name}</span>
-                ) : (
-                  <Link to={`/folders/${folder.id}`} className="flex min-h-11 items-center rounded-lg px-2 hover:text-foreground">{folder.name}</Link>
-                )}
-              </li>
-            ))}
-          </ol>
-        </nav>
-      ) : null}
-
+    <div className="px-4">
       <PageHeader
-        title={currentFolder?.name ?? 'Folders'}
-        description={folderId ? 'Browse folders and files in this location.' : 'Organize your documents and spreadsheets.'}
-        actions={
-          <AppButton variant="primary" onPress={() => setIsCreating(true)}>
-            <FolderPlusIcon aria-hidden="true" className="size-5" />
-            New folder
+        title={currentFolder?.name ?? 'Library'}
+        leading={currentFolder ? (
+          <button
+            type="button"
+            aria-label="Back to parent folder"
+            onClick={() => navigate(currentFolder.parentId ? `/folders/${currentFolder.parentId}` : '/folders')}
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-default"
+          >
+            <ChevronLeftIcon aria-hidden="true" className="size-4" />
+          </button>
+        ) : null}
+        actions={currentFolder ? (
+          <div className="flex size-10 items-center justify-center rounded-full bg-default">
+            <FolderActionsMenu
+              folderName={currentFolder.name}
+              onRename={() => setRenameTarget(currentFolder)}
+              onDelete={() => requestDelete(currentFolder)}
+            />
+          </div>
+        ) : (
+          <AppButton
+            className="min-h-8 rounded-full bg-danger/10 px-3 text-sm text-danger"
+            variant="ghost"
+            onPress={() => navigate('/trash')}
+          >
+            <TrashIcon aria-hidden="true" className="size-4" />
+            Trash
           </AppButton>
-        }
+        )}
       />
 
-      {childFolders.length > 0 ? (
-        <section aria-labelledby="subfolders-heading">
-          <h2 id="subfolders-heading" className="mb-4 text-lg font-semibold">{folderId ? 'Folders' : 'Your folders'}</h2>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {childFolders.map((folder) => (
-              <FolderCard
-                key={folder.id}
-                name={folder.name}
-                itemCount={itemCount(folder.id)}
-                driveStatus={folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
-                onOpen={() => navigate(`/folders/${folder.id}`)}
-                action={
-                  <FolderActionsMenu
-                    folderName={folder.name}
-                    onRename={() => setRenameTarget(folder)}
-                    onDelete={() => requestDelete(folder)}
-                  />
-                }
+      <div className="-mx-4 mt-4 px-1">
+        {childFiles.map((file) => (
+          <FileCard
+            key={file.id}
+            name={file.name}
+            meta={`Updated ${new Date(file.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}`}
+            type={file.type}
+            syncStatus={file.syncStatus}
+            folderName={currentFolder?.name ?? 'MyBook'}
+            onOpen={() => navigate(`/${file.type}/${file.id}`)}
+            action={
+              <FileActionsMenu
+                fileName={file.name}
+                folders={folders}
+                currentFolderId={file.folderId}
+                onRename={() => setFileRenameTarget(file)}
+                onDuplicate={() => void fileRepository.duplicate(file.id)}
+                onMove={(destination) => void fileRepository.update(file.id, { folderId: destination })}
+                onDelete={() => void fileRepository.delete(file.id)}
               />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {childFiles.length > 0 ? (
-        <section aria-labelledby="folder-files-heading">
-          <h2 id="folder-files-heading" className="mb-4 text-lg font-semibold">Files</h2>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {childFiles.map((file) => (
-              <FileCard
-                key={file.id}
-                name={file.name}
-                meta={`Edited ${new Date(file.updatedAt).toLocaleDateString()}`}
-                type={file.type}
-                syncStatus={file.syncStatus}
-                folderName={currentFolder?.name ?? 'MyBook'}
-                onOpen={() => navigate(`/${file.type}/${file.id}`)}
-                action={
-                  <FileActionsMenu
-                    fileName={file.name}
-                    folders={folders}
-                    currentFolderId={file.folderId}
-                    onRename={() => setFileRenameTarget(file)}
-                    onDuplicate={() => void fileRepository.duplicate(file.id)}
-                    onMove={(destination) => void fileRepository.update(file.id, { folderId: destination })}
-                    onDelete={() => void fileRepository.delete(file.id)}
-                  />
-                }
+            }
+          />
+        ))}
+        {childFolders.map((folder) => (
+          <FolderCard
+            key={folder.id}
+            name={folder.name}
+            itemCount={itemCount(folder.id)}
+            driveStatus={folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
+            onOpen={() => navigate(`/folders/${folder.id}`)}
+            action={
+              <FolderActionsMenu
+                folderName={folder.name}
+                onRename={() => setRenameTarget(folder)}
+                onDelete={() => requestDelete(folder)}
               />
-            ))}
-          </div>
-        </section>
-      ) : null}
+            }
+          />
+        ))}
+      </div>
 
       {childFolders.length === 0 && childFiles.length === 0 ? (
-        <EmptyState
-          title={folderId ? 'This folder is empty' : 'No folders or files'}
-          description="Create a folder or move a file here to get started."
-          action={<AppButton variant="primary" onPress={() => setIsCreating(true)}>Create folder</AppButton>}
-        />
+        <div className="pt-16">
+          <EmptyState
+            title={folderId ? 'This folder is empty' : 'No folders or files'}
+            description="Create a folder or move a file here to get started."
+          />
+        </div>
       ) : null}
+
+      <CreateItemDrawer folderId={folderId} onCreateFolder={() => setIsCreating(true)} />
 
       <FolderNameDialog
         isOpen={isCreating}

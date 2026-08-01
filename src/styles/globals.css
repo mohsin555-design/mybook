@@ -27,6 +27,7 @@
   html {
     min-width: 320px;
     background: var(--background);
+    touch-action: pan-x pan-y;
   }
 
   body {

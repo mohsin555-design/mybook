@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from './db'
 import { fileRepository, folderRepository, processPendingDriveFolderSync } from './repositories'
+import { ensureMyBookDriveFolder, ensureVisibleFolderInParent } from '../services/googleDrive'
 
 vi.mock('../services/googleDrive', () => ({
   ensureMyBookDriveFolder: vi.fn().mockResolvedValue({ success: false, error: 'offline' }),
@@ -37,6 +38,21 @@ describe('IndexedDB repositories', () => {
     expect(queue).toHaveLength(2)
     await processPendingDriveFolderSync()
     expect((await db.syncQueue.toArray())[0]?.status).toBe('pending')
+  })
+
+  it('creates a nested Drive folder under its synced parent', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: false })
+    vi.mocked(ensureVisibleFolderInParent)
+      .mockResolvedValueOnce({ id: 'drive-parent', name: 'Projects', mimeType: 'application/vnd.google-apps.folder' })
+      .mockResolvedValueOnce({ id: 'drive-child', name: '2026', mimeType: 'application/vnd.google-apps.folder' })
+
+    const parent = await folderRepository.create('Projects')
+    const child = await folderRepository.create('2026', parent.data!.id)
+
+    expect(ensureVisibleFolderInParent).toHaveBeenNthCalledWith(1, 'Projects', 'mybook-root')
+    expect(ensureVisibleFolderInParent).toHaveBeenNthCalledWith(2, '2026', 'drive-parent')
+    expect(child.data?.driveFolderId).toBe('drive-child')
   })
 
   it('avoids duplicate names when duplicating files', async () => {

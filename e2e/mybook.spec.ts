@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 async function signInForTest(page: Page) {
   await page.addInitScript(() => {
-    sessionStorage.setItem('mybook-auth', JSON.stringify({ state: { isAuthenticated: true, email: 'tester@example.com', accessToken: 'test-token', accessTokenExpiresAt: Date.now() + 3_600_000 }, version: 0 }))
+    localStorage.setItem('mybook-auth', JSON.stringify({ state: { isAuthenticated: true, email: 'tester@example.com', accessToken: 'test-token', accessTokenExpiresAt: Date.now() + 3_600_000 }, version: 0 }))
   })
   await page.route('https://www.googleapis.com/**', async (route) => {
     const request = route.request()
@@ -11,6 +11,14 @@ async function signInForTest(page: Page) {
   })
   await page.goto('/home')
 }
+
+test('a returning signed-in user goes directly to home', async ({ page }) => {
+  await signInForTest(page)
+  await page.reload()
+
+  await expect(page).toHaveURL(/\/home$/)
+  await expect(page.getByText(/Recent files/i)).toBeVisible()
+})
 
 test('login page provides Google sign-in without calling Drive', async ({ page }) => {
   await page.goto('/login')

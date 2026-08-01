@@ -286,7 +286,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'mybook-auth',
-      storage: createJSONStorage(() => sessionStorage),
+      storage: createJSONStorage(() => localStorage),
       partialize: (state) => safeStoredState(state),
       onRehydrateStorage: () => (state) => {
         if (!state) return

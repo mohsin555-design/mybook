@@ -24,7 +24,7 @@ export function DesignSystemPage() {
   const [message, setMessage] = useState('')
 
   return (
-    <div className="mx-auto max-w-4xl space-y-10">
+    <div className="mx-auto max-w-4xl space-y-10 px-4">
       <PageHeader
         eyebrow="Temporary review page"
         title="MyBook design system"

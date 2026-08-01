@@ -1,7 +1,9 @@
-import { ArrowDownTrayIcon, ArrowPathIcon, SignalIcon, WifiIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ArrowPathIcon, SignalIcon } from '@heroicons/react/24/outline'
+import { Modal } from '@heroui/react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import { useAuthStore } from '../../stores/useAuthStore'
 import { AppButton } from './AppButton'
 
 interface BeforeInstallPromptEvent extends Event {
@@ -9,14 +11,22 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+const INSTALL_HELP_STORAGE_PREFIX = 'mybook-install-help-seen:'
+
 export function PwaStatus() {
   const [online, setOnline] = useState(() => navigator.onLine)
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [showIosHelp, setShowIosHelp] = useState(false)
+  const [showInstallHelp, setShowInstallHelp] = useState(false)
+  const { email, isAuthenticated } = useAuthStore()
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent)
   const isSafari = isIos && /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent)
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  const installHelpStorageKey = useMemo(
+    () => email ? `${INSTALL_HELP_STORAGE_PREFIX}${email.trim().toLowerCase()}` : null,
+    [email],
+  )
+  const canOfferInstall = Boolean(installPrompt) || (isSafari && !isStandalone)
 
   useEffect(() => {
     const onlineHandler = () => setOnline(true)
@@ -28,16 +38,67 @@ export function PwaStatus() {
     return () => { window.removeEventListener('online', onlineHandler); window.removeEventListener('offline', offlineHandler); window.removeEventListener('beforeinstallprompt', installHandler) }
   }, [])
 
+  useEffect(() => {
+    if (!isAuthenticated || !installHelpStorageKey || isStandalone || !canOfferInstall) {
+      setShowInstallHelp(false)
+      return
+    }
+
+    setShowInstallHelp(localStorage.getItem(installHelpStorageKey) !== 'true')
+  }, [canOfferInstall, installHelpStorageKey, isAuthenticated, isStandalone])
+
+  const dismissInstallHelp = () => {
+    if (installHelpStorageKey) localStorage.setItem(installHelpStorageKey, 'true')
+    setShowInstallHelp(false)
+  }
+
   const install = async () => {
     if (!installPrompt) return
+    dismissInstallHelp()
     await installPrompt.prompt()
+    await installPrompt.userChoice
     setInstallPrompt(null)
   }
 
   return <>
     {!online ? <div role="status" className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-sm text-warning-800"><SignalIcon className="mr-1 inline size-4" />Offline mode: saved local files remain available. Drive sync will resume when you reconnect.</div> : null}
     {needRefresh ? <div role="status" className="border-b border-accent/30 bg-accent/10 px-4 py-2 text-center text-sm"><ArrowPathIcon aria-hidden="true" className="mr-1 inline size-4" />Update available. <button type="button" className="min-h-11 rounded-lg px-2 font-semibold underline" onClick={() => void updateServiceWorker(true)}>Update MyBook</button></div> : null}
-    {installPrompt ? <div className="border-b border-[var(--app-border)] bg-background px-4 py-2 text-center text-sm"><ArrowDownTrayIcon aria-hidden="true" className="mr-1 inline size-4" />Install MyBook for faster offline access. <button type="button" className="min-h-11 rounded-lg px-2 font-semibold underline" onClick={() => void install()}>Install</button></div> : null}
-    {isSafari && !isStandalone ? <div className="border-b border-[var(--app-border)] bg-background px-4 py-2 text-center text-sm"><WifiIcon className="mr-1 inline size-4" />Add MyBook to your Home Screen for faster access. <AppButton className="ml-2 inline-flex" variant="secondary" onPress={() => setShowIosHelp((value) => !value)}>How to install</AppButton>{showIosHelp ? <span className="ml-2 text-muted">Tap Safari’s Share button, choose “Add to Home Screen”, then tap “Add”.</span> : null}</div> : null}
+
+    <Modal
+      isOpen={showInstallHelp}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) dismissInstallHelp()
+      }}
+    >
+      <Modal.Backdrop>
+        <Modal.Container placement="center" className="px-4">
+          <Modal.Dialog className="w-full max-w-sm rounded-[var(--radius-dialog)] border border-[var(--app-border)] bg-white text-foreground">
+            <Modal.Header>
+              <Modal.Icon className="bg-accent/10 text-accent">
+                <ArrowDownTrayIcon aria-hidden="true" className="size-6" />
+              </Modal.Icon>
+              <Modal.Heading className="text-lg">Install MyBook</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body className="text-base leading-7 text-muted">
+              {isSafari ? (
+                <ol className="list-decimal space-y-2 pl-5">
+                  <li>Tap Safari&apos;s Share button.</li>
+                  <li>Choose <span className="font-medium text-foreground">Add to Home Screen</span>.</li>
+                  <li>Tap <span className="font-medium text-foreground">Add</span>.</li>
+                </ol>
+              ) : (
+                <p>Install MyBook for faster access and reliable offline use.</p>
+              )}
+            </Modal.Body>
+            <Modal.Footer className="flex-wrap">
+              <AppButton variant="secondary" onPress={dismissInstallHelp}>
+                {installPrompt ? 'Not now' : 'Got it'}
+              </AppButton>
+              {installPrompt ? <AppButton variant="primary" onPress={() => void install()}>Install</AppButton> : null}
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal>
   </>
 }

@@ -1,4 +1,3 @@
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { SearchField } from '@heroui/react'
 
 interface SearchInputProps {
@@ -20,13 +19,13 @@ export function SearchInput({
       value={value}
       onChange={onChange}
       fullWidth
-      className="rounded-[var(--radius-control)]"
+      className="rounded-xl"
     >
-      <SearchField.Group className="min-h-11 rounded-[var(--radius-control)] border border-[var(--app-border)] bg-[var(--app-surface)]">
+      <SearchField.Group className="min-h-9 rounded-xl border-0 bg-default px-3">
         <SearchField.SearchIcon>
-          <MagnifyingGlassIcon aria-hidden="true" className="size-5" />
+          <img src="/icons/magnifier.svg" alt="" aria-hidden="true" className="size-4" />
         </SearchField.SearchIcon>
-        <SearchField.Input className="text-base" placeholder={placeholder} />
+        <SearchField.Input className="text-sm" placeholder={placeholder} />
         <SearchField.ClearButton aria-label="Clear search" />
       </SearchField.Group>
     </SearchField>

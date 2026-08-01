@@ -21,8 +21,8 @@ export function AppLayout() {
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
 
   return (
-    <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-background text-foreground">
-      {!isEditor ? <header className="sticky top-0 z-30 shrink-0 border-b border-[var(--app-border)] bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur">
+    <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-white text-zinc-900">
+      {!isEditor ? <header className="sticky top-0 z-30 hidden shrink-0 border-b border-[var(--app-border)] bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur lg:block">
         <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
           <NavLink to="/home" className="flex items-center gap-2 font-semibold">
             <BookOpenIcon aria-hidden="true" className="size-7 text-accent" />
@@ -62,7 +62,7 @@ export function AppLayout() {
                   }`
                 }
               >
-                <item.icon aria-hidden="true" className="size-5" />
+                <img src={item.iconSrc} alt="" aria-hidden="true" className="size-5" />
                 {item.label}
               </NavLink>
             ))}
@@ -70,7 +70,7 @@ export function AppLayout() {
           <NavLink to="/trash" className={({ isActive }) => `mt-auto flex min-h-11 items-center gap-3 rounded-[10px] px-3 text-sm font-medium ${isActive ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-default hover:text-foreground'}`}><TrashIcon aria-hidden="true" className="size-5" />Trash</NavLink>
         </aside>
 
-        <main className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6 sm:px-6 lg:px-8 ${isEditor ? 'pb-0' : 'pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8'}`}>
+        <main className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-white ${isEditor ? 'px-4 py-6 pb-0 sm:px-6 lg:px-8' : 'px-0 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:px-8 lg:pb-8 lg:pt-6'}`}>
           <div className={isEditor ? 'w-full' : 'mx-auto w-full max-w-6xl'}>
             <Outlet />
           </div>

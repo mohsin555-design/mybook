@@ -29,8 +29,8 @@ export function FolderActionsMenu({ folderName, folders, folderId, currentParent
 
   return (
     <Dropdown>
-      <Dropdown.Trigger aria-label={`Actions for ${folderName}`} className="flex size-11 items-center justify-center rounded-[10px]">
-        <EllipsisHorizontalIcon aria-hidden="true" className="size-6" />
+      <Dropdown.Trigger aria-label={`Actions for ${folderName}`} className="flex size-9 items-center justify-center rounded-full text-muted">
+        <EllipsisHorizontalIcon aria-hidden="true" className="size-4" />
       </Dropdown.Trigger>
       <Dropdown.Popover placement="bottom end">
         <Dropdown.Menu aria-label={`Actions for ${folderName}`} onAction={(key) => {

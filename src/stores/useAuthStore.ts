@@ -4,7 +4,6 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { decodeJwtPayload, loadGoogleIdentity } from '../utils/googleIdentity'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
-const ALLOWED_GOOGLE_EMAIL = import.meta.env.VITE_ALLOWED_GOOGLE_EMAIL?.trim().toLowerCase() ?? ''
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
 interface AuthState {
@@ -35,7 +34,6 @@ export function isTokenFresh(expiresAt: number | null) {
 
 function configuredErrors() {
   if (!GOOGLE_CLIENT_ID) return 'Set VITE_GOOGLE_CLIENT_ID to enable Google sign-in.'
-  if (!ALLOWED_GOOGLE_EMAIL) return 'Set VITE_ALLOWED_GOOGLE_EMAIL to restrict access.'
   return null
 }
 
@@ -111,7 +109,6 @@ async function signInWithGoogle(prompt: '' | 'consent' | 'select_account') {
   const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : ''
   const emailVerified = payload.email_verified === true || payload.email_verified === 'true'
   if (!email || !emailVerified) throw new Error('Google account email could not be verified.')
-  if (email !== ALLOWED_GOOGLE_EMAIL) throw new Error('That Google account is not allowed to use MyBook.')
 
   const tokenResponse = await new Promise<TokenResponse>((resolve, reject) => {
     const tokenClient = google.accounts.oauth2.initTokenClient({
@@ -148,7 +145,6 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
   const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : ''
   const emailVerified = payload.email_verified === true || payload.email_verified === 'true'
   if (!email || !emailVerified) throw new Error('Google account email could not be verified.')
-  if (email !== ALLOWED_GOOGLE_EMAIL) throw new Error('That Google account is not allowed to use MyBook.')
 
   const google = window.google
   if (!google?.accounts?.oauth2) throw new Error('Google Identity Services is unavailable.')

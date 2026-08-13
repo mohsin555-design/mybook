@@ -8,11 +8,12 @@ This folder documents how MyBook works at the product and implementation level.
 - [Google Drive sync](./google-drive-sync.md)
 - [Files and folders](./files-and-folders.md)
 - [Document editor](./document-editor.md)
+- [Advanced editor and MyBook Markdown spec](./advanced-editor-and-format-spec.md)
 - [Spreadsheet editor](./spreadsheet-editor.md)
 
 ## Product Summary
 
-MyBook is a local-first browser workspace for personal documents and spreadsheets. Editable content is stored in IndexedDB so the app remains usable offline. Google Drive is used for visible file backups and folder mirroring after the user signs in with Google.
+MyBook is a local-first browser workspace for personal documents and spreadsheets. Editable content is stored in IndexedDB so the app remains usable offline. Google Drive is used for visible backups, folder mirroring, and explicit import/export after the user signs in with Google.
 
 The app should treat local access and Drive access separately:
 

@@ -29,14 +29,14 @@ Supported editor actions include:
 
 ## Import and Export
 
-The editor can import `.docx` files using Mammoth. Some complex formatting may be simplified.
+The editor can import `.docx`, `.md`, and `.mybook.md` files. DOCX imports use Mammoth and some complex formatting may be simplified.
 
-The editor can export/download `.docx` files.
+The editor can export/download `.docx` files and `.mybook.md` files.
 
 ## Drive Backup
 
-Document backups are uploaded to Google Drive as `.docx`. Backup can run automatically after local save or manually through editor actions.
+Document backups are uploaded to Google Drive as `.mybook.md`. Backup can run automatically after local save or manually through editor actions.
 
-## Drive Conflict
+## Drive Edits
 
-If the Drive copy is newer than the last backup, the editor stops replacement and asks the user to choose which version to keep.
+Drive backups are not treated as live collaborative copies. If a user edits a Drive backup directly, they can import that file explicitly to replace the MyBook content.

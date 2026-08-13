@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Google Drive stores visible backup copies of MyBook files and mirrors folder structure under a Drive folder named `MyBook`.
+Google Drive stores visible backup copies of MyBook files and mirrors the app-created folder structure under a Drive folder named `MyBook`.
+
+MyBook is the source of truth. Drive is used for backup, storage, and explicit import/export, not as a live second editor.
 
 ## Drive Folder
 
@@ -21,7 +23,7 @@ Queued work is retried when the browser comes online or when the user clicks ret
 
 ## File Backup
 
-Documents are backed up as `.docx` files.
+Documents are backed up as `.mybook.md` files. This keeps backups text-based and portable while preserving MyBook metadata in Markdown frontmatter.
 
 Spreadsheets are backed up as `.xlsx` files.
 
@@ -34,12 +36,8 @@ Each local file stores:
 
 ## Drive Imports
 
-MyBook periodically imports Drive folders and files into local IndexedDB after sign-in. It matches records by Drive ID first, then by name and parent folder.
+MyBook does not automatically import arbitrary Drive files into IndexedDB. Users import documents or spreadsheets explicitly from editor actions.
 
-## Conflict Handling
+## External Drive Edits
 
-Editors check Drive file status. If the Drive file changed after `lastSyncedAt`, MyBook shows a conflict screen with options:
-
-- Keep MyBook version.
-- Use Drive version.
-- Download both.
+If a user edits a backup directly in Drive, MyBook does not silently replace local content. The user should import that file explicitly if they want the Drive version to become the MyBook version.

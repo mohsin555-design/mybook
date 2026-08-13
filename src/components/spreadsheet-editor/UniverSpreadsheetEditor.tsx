@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { fileRepository } from '../../database/repositories'
 import { useAutosave } from '../../hooks/useAutosave'
-import { backupSpreadsheetToDrive, copyDriveFileLink, getDriveFileStatus, importDriveFilesToLocal, openDriveFileInBrowser, refreshDriveFileToLocal } from '../../services/googleDrive'
+import { backupSpreadsheetToDrive, copyDriveFileLink, getDriveFileStatus, openDriveFileInBrowser } from '../../services/googleDrive'
 import type { UniverWorkbookSnapshot, XlsxResult } from '../../utils/xlsx'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
@@ -30,7 +30,7 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   const workbookRef = useRef<{ save: () => object } | null>(null)
   const skipCleanupSaveRef = useRef(false)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-  const { content, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
+  const { content, isHydrated, save, setContent, status } = useAutosave(file)
   const [editorHeight, setEditorHeight] = useState(() => Math.max(320, (window.visualViewport?.height ?? window.innerHeight) - 72))
   const [workbookRevision, setWorkbookRevision] = useState(0)
   const [xlsxBlob, setXlsxBlob] = useState<Blob | null>(null)
@@ -60,30 +60,12 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     try {
       const result = await getDriveFileStatus(file.driveFileId)
       setDriveExists(result.exists)
-      if (result.modifiedTime && new Date(result.modifiedTime).getTime() > new Date(file.lastSyncedAt).getTime()) {
-        await importDriveFilesToLocal()
-      } else if (result.modifiedTime) {
-        await refreshDriveFileToLocal(file.id)
-      }
-      const latest = (await fileRepository.get(file.id)).data
-      if (latest?.content && latest.content !== latestSnapshot.current) {
-        skipCleanupSaveRef.current = true
-        latestSnapshot.current = latest.content
-        replaceContent(latest.content, 'backed-up')
-        setWorkbookRevision((revision) => revision + 1)
-        setCloudMessage('Updated from Drive. Previous local version was saved.')
-      }
+      if (result.exists) setCloudMessage('Drive backup is available.')
+      else if (result.error) setCloudMessage(result.error)
     } finally { setIsCheckingDrive(false); setHasCheckedDrive(true) }
-  }, [file?.driveFileId, file?.id, file?.lastSyncedAt, replaceContent])
+  }, [file?.driveFileId, file?.lastSyncedAt])
   useEffect(() => {
     void checkDriveChanges()
-    const onVisible = () => { if (document.visibilityState === 'visible') void checkDriveChanges() }
-    const refreshTimer = window.setInterval(() => { void checkDriveChanges() }, 10_000)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.clearInterval(refreshTimer)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
   }, [checkDriveChanges])
 
   useEffect(() => {

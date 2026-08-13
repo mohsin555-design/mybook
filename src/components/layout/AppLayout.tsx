@@ -47,7 +47,7 @@ export function AppLayout() {
         </div>
       </header> : null}
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1">
+      <div className={`${isEditor ? 'mx-0 max-w-none' : 'mx-auto max-w-[1600px]'} flex min-h-0 w-full flex-1`}>
         <aside className={`${isEditor ? 'hidden' : 'hidden lg:flex'} w-60 shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-surface)] p-4`}>
           <nav aria-label="Main navigation" className="flex flex-col gap-1">
             {navigationItems.map((item) => (
@@ -70,7 +70,7 @@ export function AppLayout() {
           <NavLink to="/trash" className={({ isActive }) => `mt-auto flex min-h-11 items-center gap-3 rounded-[10px] px-3 text-sm font-medium ${isActive ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-default hover:text-foreground'}`}><TrashIcon aria-hidden="true" className="size-5" />Trash</NavLink>
         </aside>
 
-        <main className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain bg-white ${isEditor ? 'px-4 py-6 pb-0 sm:px-6 lg:px-8' : 'px-0 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:px-8 lg:pb-8 lg:pt-6'}`}>
+        <main className={`min-w-0 flex-1 overflow-y-auto overscroll-contain bg-white ${isEditor ? 'overflow-x-auto p-0' : 'overflow-x-hidden px-0 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:px-8 lg:pb-8 lg:pt-6'}`}>
           <div className={isEditor ? 'w-full' : 'mx-auto w-full max-w-6xl'}>
             <Outlet />
           </div>

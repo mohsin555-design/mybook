@@ -79,6 +79,7 @@
 @layer components {
   .mybook-bottom-sheet {
     top: auto !important;
+    bottom: var(--mybook-keyboard-offset, 0px) !important;
     height: auto !important;
   }
 
@@ -103,12 +104,21 @@
     color: var(--foreground);
     font-size: 1rem;
     line-height: 1.8;
-    scroll-padding-block: 6rem;
+    scroll-padding-block: 8rem;
     overflow-wrap: anywhere;
+    caret-color: var(--accent);
   }
 
   .tiptap > * + * {
     margin-top: 1rem;
+  }
+
+  .tiptap p.is-editor-empty:first-child::before {
+    color: var(--muted);
+    content: "Start writing...";
+    float: left;
+    height: 0;
+    pointer-events: none;
   }
 
   .tiptap h1 { font-size: 2rem; line-height: 1.25; font-weight: 700; }
@@ -119,14 +129,93 @@
   .tiptap blockquote { border-left: 3px solid var(--app-border); padding-left: 1rem; color: var(--muted); }
   .tiptap hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--app-border); }
   .tiptap a { color: var(--accent); text-decoration: underline; }
-  .tiptap ul[data-type="taskList"] { list-style: none; padding: 0; }
-  .tiptap ul[data-type="taskList"] li { display: flex; gap: 0.5rem; align-items: flex-start; }
-  .tiptap ul[data-type="taskList"] li > label { padding-top: 0.2rem; }
-  .tiptap ul[data-type="taskList"] li > div { flex: 1; }
+  .tiptap code { border-radius: 6px; background: var(--app-subtle); padding: 0.125rem 0.35rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.9em; }
+  .tiptap pre { overflow-x: auto; border-radius: 8px; background: var(--app-subtle); padding: 1rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; line-height: 1.6; }
+  .tiptap pre code { display: block; background: transparent; padding: 0; font-size: 0.9rem; }
+  .tiptap .mybook-callout { border: 1px solid var(--app-border); border-left-width: 4px; border-radius: 8px; padding: 0.875rem 1rem; background: var(--app-subtle); }
+  .tiptap .mybook-callout[data-kind="info"] { border-left-color: #2563eb; }
+  .tiptap .mybook-callout[data-kind="success"] { border-left-color: #16a34a; }
+  .tiptap .mybook-callout[data-kind="warning"] { border-left-color: #d97706; }
+  .tiptap .mybook-callout-content > * + * { margin-top: 0.75rem; }
+  .tiptap .mybook-toggle { border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); }
+  .tiptap .mybook-toggle-summary { cursor: pointer; padding: 0.75rem 0.875rem; font-weight: 650; }
+  .tiptap .mybook-toggle-title { min-width: 0; width: calc(100% - 1.5rem); border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
+  .tiptap .mybook-toggle-title:focus-visible { border-radius: 6px; outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  .tiptap .mybook-toggle-content { border-top: 1px solid var(--app-border); padding: 0.875rem 1rem; }
+  .tiptap .mybook-toggle-content > * + * { margin-top: 0.75rem; }
+  .tiptap .mybook-image-block { margin: 1.25rem 0; }
+  .tiptap .mybook-image { display: block; max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--app-border); background: var(--app-subtle); }
+  .tiptap .ProseMirror-selectednode.mybook-image-block .mybook-image { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+  .tiptap .mybook-file-attachment { display: flex; min-width: 0; align-items: center; gap: 0.75rem; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); padding: 0.875rem 1rem; }
+  .tiptap .mybook-file-attachment::before { content: ""; width: 2rem; height: 2rem; flex: 0 0 auto; border-radius: 8px; background: color-mix(in srgb, var(--accent) 12%, var(--app-subtle)); }
+  .tiptap .mybook-file-attachment-link { min-width: 0; flex: 1; overflow: hidden; color: var(--foreground); text-overflow: ellipsis; white-space: nowrap; text-decoration: none; font-weight: 650; }
+  .tiptap .mybook-file-attachment-link:hover { color: var(--accent); text-decoration: underline; }
+  .tiptap .mybook-file-attachment-meta { flex: 0 0 auto; color: var(--muted); font-size: 0.875rem; }
+  .tiptap .ProseMirror-selectednode.mybook-file-attachment { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+  .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+  .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0.5rem; padding-left: 1.75rem; }
+  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] { display: flex; gap: 0.625rem; align-items: flex-start; border-radius: 8px; padding: 0.125rem 0.25rem; }
+  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label { display: flex; min-height: 1.75rem; align-items: center; padding-top: 0.05rem; }
+  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label input { size: 1rem; width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
+  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div { min-width: 0; flex: 1; }
+  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div > p:first-child { margin-top: 0; }
+  .tiptap ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+  .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   .tiptap .tableWrapper { overflow-x: auto; }
   .tiptap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .tiptap th,
   .tiptap td { min-width: 6rem; border: 1px solid var(--app-border); padding: 0.5rem; vertical-align: top; }
   .tiptap th { background: var(--app-subtle); font-weight: 600; }
   .tiptap .selectedCell { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+  .mybook-document-canvas {
+    background:
+      linear-gradient(
+        90deg,
+        transparent 0,
+        transparent calc((100% - 1024px) / 2),
+        var(--app-surface) calc((100% - 1024px) / 2),
+        var(--app-surface) calc((100% + 1024px) / 2),
+        transparent calc((100% + 1024px) / 2),
+        transparent 100%
+      );
+  }
+
+  @media (max-width: 767px) {
+    .mybook-document-canvas {
+      background: var(--app-surface);
+    }
+
+    .mybook-document-page {
+      width: 100% !important;
+      min-height: calc(100dvh - 9rem) !important;
+      box-shadow: none !important;
+    }
+
+    .mybook-document-scale {
+      width: 100% !important;
+      max-width: 100% !important;
+      transform: none !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .tiptap {
+      font-size: 1rem;
+      line-height: 1.75;
+      scroll-padding-block: 7rem;
+    }
+
+    .tiptap h1 { font-size: 1.75rem; }
+    .tiptap h2 { font-size: 1.35rem; }
+    .tiptap h3 { font-size: 1.125rem; }
+    .tiptap ul:not([data-type="taskList"]),
+    .tiptap ol { padding-left: 1.25rem; }
+    .tiptap ul[data-type="taskList"] li[data-type="taskItem"] { gap: 0.75rem; padding: 0.25rem 0; }
+    .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label { min-width: 2.25rem; min-height: 2.25rem; justify-content: center; }
+    .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label input { width: 1.2rem; height: 1.2rem; }
+    .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { padding-left: 1.25rem; }
+    .tiptap .mybook-file-attachment { align-items: flex-start; padding: 0.875rem; }
+    .tiptap .mybook-file-attachment-meta { display: none; }
+  }
 }

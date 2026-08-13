@@ -1,6 +1,6 @@
 # Google OAuth Setup
 
-Use these settings to connect MyBook to Google Identity Services and Drive with full Drive sync access.
+Use these settings to connect MyBook to Google Identity Services and Drive with the narrow `drive.file` scope.
 
 ## 1. Google Cloud project
 
@@ -13,7 +13,7 @@ Use these settings to connect MyBook to Google Identity Services and Drive with 
 1. Open **APIs & Services > OAuth consent screen**.
 2. Set the application name, support email, and branding.
 3. Add the scope:
-   - `https://www.googleapis.com/auth/drive`
+   - `https://www.googleapis.com/auth/drive.file`
 4. Keep the app in **Testing** while you validate it.
 5. Add each account used during validation as a **test user**.
 6. Publish the app to **Production** when it is ready for all Google accounts.
@@ -49,7 +49,7 @@ VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
 
 ## 7. Notes
 
-- MyBook requests full Drive access so files and folders created directly in Drive can sync into the app, and app changes can sync back to Drive.
+- MyBook requests `drive.file` access so it can create and manage MyBook backups in Drive without broad access to the user's whole Drive.
 - Any Google account permitted by the OAuth consent-screen publishing status can sign in.
 - OAuth client secrets must stay out of frontend code.
 - The app stores the auth session in browser session storage and clears it on logout or token expiry.

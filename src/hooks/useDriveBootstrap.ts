@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { backfillLocalFoldersToDrive, ensureMyBookDriveFolder, getDriveFolderStatus, importDriveFilesToLocal, importDriveFoldersToLocal } from '../services/googleDrive'
+import { backfillLocalFoldersToDrive, ensureMyBookDriveFolder, getDriveFolderStatus } from '../services/googleDrive'
 import { useAuthStore } from '../stores/useAuthStore'
 import { folderRepository, processPendingDriveFolderSync, settingsRepository } from '../database/repositories'
 
@@ -16,22 +16,6 @@ export function useDriveBootstrap() {
   useEffect(() => {
     if (!isAuthenticated || !email) return
     let cancelled = false
-    let refreshTimer: number | null = null
-    const visibilityHandler = () => {
-      if (document.visibilityState === 'visible') void refreshDriveMirror()
-    }
-    const refreshDriveMirror = async (showStatus = false) => {
-      try {
-        await importDriveFoldersToLocal()
-        await importDriveFilesToLocal()
-        if (showStatus && !cancelled) setStatusMessage('Google Drive changes were refreshed.')
-      } catch (error) {
-        if (showStatus && !cancelled) {
-          setStatusMessage(error instanceof Error ? error.message : 'Could not refresh Google Drive changes.')
-        }
-      }
-    }
-
     const run = async () => {
       setIsPreparing(true)
       try {
@@ -57,9 +41,6 @@ export function useDriveBootstrap() {
           }
           await settingsRepository.update(DRIVE_BACKFILL_KEY, true)
         }
-        await refreshDriveMirror()
-        refreshTimer = window.setInterval(() => { void refreshDriveMirror() }, 60_000)
-        document.addEventListener('visibilitychange', visibilityHandler)
       } finally {
         if (!cancelled) setIsPreparing(false)
       }
@@ -69,8 +50,6 @@ export function useDriveBootstrap() {
     window.addEventListener('online', onlineHandler)
     return () => {
       cancelled = true
-      if (refreshTimer !== null) window.clearInterval(refreshTimer)
-      document.removeEventListener('visibilitychange', visibilityHandler)
       window.removeEventListener('online', onlineHandler)
     }
   }, [email, isAuthenticated])

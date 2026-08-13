@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { decodeJwtPayload, loadGoogleIdentity } from '../utils/googleIdentity'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
 interface AuthState {
   isAuthenticated: boolean
@@ -152,7 +152,8 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
 
   return {
     email,
-    ...token,
+    accessToken,
+    accessTokenExpiresAt: Date.now() + expiresIn * 1000,
   }
 }
 

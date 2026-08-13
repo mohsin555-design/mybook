@@ -82,6 +82,10 @@ function blocks(node: JSONContent): Array<Paragraph | Table> {
     else if (child.type === 'blockquote') output.push(new Paragraph({ children: inlineChildren(child), indent: { left: 540 } }))
     else if (child.type === 'horizontalRule') output.push(new Paragraph({ thematicBreak: true }))
     else if (child.type === 'table') output.push(tableFromNode(child))
+    else if (child.type === 'fileAttachment') {
+      const name = typeof child.attrs?.name === 'string' ? child.attrs.name : 'Attachment'
+      output.push(new Paragraph({ children: [new TextRun({ text: `Attachment: ${name}`, bold: true })] }))
+    }
     else if (child.content?.length) output.push(...blocks(child))
   }
   return output

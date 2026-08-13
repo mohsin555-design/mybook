@@ -6,6 +6,7 @@ const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
 const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
 const GOOGLE_SHEET_MIME = 'application/vnd.google-apps.spreadsheet'
+const MYBOOK_MARKDOWN_MIME = 'text/markdown'
 const MYBOOK_FOLDER_NAME = 'MyBook'
 const MYBOOK_FOLDER_KEY = 'google-drive.mybook-folder-id'
 
@@ -387,6 +388,39 @@ async function uploadDocxBlob(title: string, json: JSONContent, parentId: string
   return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
 }
 
+function safeMarkdownName(name: string) {
+  return `${name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').trim() || 'Untitled document'}.mybook.md`
+}
+
+async function uploadMarkdownFile(title: string, content: string, parentId: string, fileId?: string | null) {
+  const accessToken = await useAuthStore.getState().getAccessToken()
+  if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
+  const boundary = 'mybook-markdown-boundary'
+  const metadata = {
+    name: safeMarkdownName(title),
+    ...(fileId ? {} : { parents: [parentId] }),
+    mimeType: MYBOOK_MARKDOWN_MIME,
+  }
+  const method = fileId ? 'PATCH' : 'POST'
+  const endpoint = fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id,name,webViewLink,modifiedTime`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime'
+  const response = await fetch(endpoint, {
+    method,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: new Blob([
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+      `--${boundary}\r\nContent-Type: ${MYBOOK_MARKDOWN_MIME}; charset=UTF-8\r\n\r\n${content}\r\n`,
+      `--${boundary}--`,
+    ], { type: `multipart/related; boundary=${boundary}` }),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? 'Could not upload the MyBook Markdown file to Google Drive.')
+  }
+  return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
+}
+
 export async function backupDocumentToDrive(input: {
   fileId: string
   title: string
@@ -408,9 +442,12 @@ export async function backupDocumentToDrive(input: {
       const parsedContent = (() => {
         try { return JSON.parse(content || '{"type":"doc","content":[{"type":"paragraph"}]}') as JSONContent } catch { return { type: 'doc', content: [{ type: 'paragraph' }] } as JSONContent }
       })()
-      const result = await retryWithBackoff(() => uploadDocxBlob(title, parsedContent, driveParentId, latest?.driveFileId ?? file.driveFileId, latest?.mimeType === GOOGLE_DOC_MIME ? GOOGLE_DOC_MIME : undefined))
+      const { documentToMyBookMarkdown } = await import('../utils/mybookMarkdown')
+      const markdown = documentToMyBookMarkdown(title, parsedContent)
+      const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId))
       await db.files.update(file.id, {
         driveFileId: result.id,
+        mimeType: 'application/x-mybook-document',
         syncStatus: 'backed-up',
         lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString(),
       })
@@ -632,7 +669,7 @@ function inferFileType(name: string, mimeType: string) {
 function localFileName(name: string, type: 'document' | 'spreadsheet') {
   return type === 'spreadsheet'
     ? name.replace(/\.xlsx$/i, '')
-    : name.replace(/\.docx$/i, '')
+    : name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').replace(/\.docx$/i, '')
 }
 
 function normalizedTitle(value: string) {
@@ -754,6 +791,10 @@ function tiptapDocFromText(text: string) {
 }
 
 async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string) {
+  if (file.mimeType === MYBOOK_MARKDOWN_MIME || /\.md$/i.test(file.name)) {
+    const { myBookMarkdownToDocument } = await import('../utils/mybookMarkdown')
+    return JSON.stringify(myBookMarkdownToDocument(await getDriveFileContent(file.id)))
+  }
   if (file.mimeType === GOOGLE_DOC_MIME || file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)) {
     const blob = file.mimeType === GOOGLE_DOC_MIME
       ? await exportGoogleWorkspaceFile(file.id, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')

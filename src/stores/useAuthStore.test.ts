@@ -1,9 +1,22 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getFriendlyGoogleAuthError, isTokenFresh, useAuthStore } from './useAuthStore'
 
 describe('auth helpers', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    localStorage.clear()
+    useAuthStore.setState({
+      isAuthenticated: false,
+      isLoading: false,
+      error: null,
+      email: null,
+      accessToken: null,
+      accessTokenExpiresAt: null,
+    })
+  })
+
   it('maps Google auth errors to clear messages', () => {
     expect(getFriendlyGoogleAuthError(new Error('access_denied'))).toMatch(/test user/i)
     expect(getFriendlyGoogleAuthError(new Error('invalid_client'))).toMatch(/OAuth client ID/i)
@@ -40,6 +53,72 @@ describe('auth helpers', () => {
       email: 'reader@example.com',
       accessToken: 'saved-token',
       accessTokenExpiresAt: expiresAt,
+    })
+  })
+
+  it('keeps the user signed in when the stored Drive token is expired', async () => {
+    localStorage.setItem('mybook-auth', JSON.stringify({
+      state: {
+        email: 'reader@example.com',
+        accessToken: 'expired-token',
+        accessTokenExpiresAt: Date.now() - 1_000,
+      },
+      version: 0,
+    }))
+
+    await useAuthStore.persist.rehydrate()
+
+    expect(useAuthStore.getState()).toMatchObject({
+      isAuthenticated: true,
+      email: 'reader@example.com',
+      accessToken: null,
+      accessTokenExpiresAt: null,
+    })
+  })
+
+  it('silently renews an expired Drive token when Google allows it', async () => {
+    const requestAccessToken = vi.fn((overrides?: { prompt?: string }) => {
+      expect(overrides).toEqual({ prompt: '' })
+    })
+    const tokenCallbacks: Array<(response: { access_token?: string; expires_in?: number }) => void> = []
+    Object.defineProperty(window, 'google', {
+      configurable: true,
+      value: {
+        accounts: {
+          oauth2: {
+            initTokenClient: vi.fn((config: { callback: (response: { access_token?: string; expires_in?: number }) => void }) => {
+              tokenCallbacks.push(config.callback)
+              return { requestAccessToken }
+            }),
+            revoke: vi.fn(),
+          },
+          id: {
+            disableAutoSelect: vi.fn(),
+            initialize: vi.fn(),
+            prompt: vi.fn(),
+            renderButton: vi.fn(),
+          },
+        },
+      },
+    })
+
+    useAuthStore.setState({
+      isAuthenticated: true,
+      email: 'reader@example.com',
+      accessToken: null,
+      accessTokenExpiresAt: null,
+    })
+    const tokenPromise = useAuthStore.getState().getAccessToken()
+    await vi.waitFor(() => expect(requestAccessToken).toHaveBeenCalled())
+    const callback = tokenCallbacks[0]
+    if (!callback) throw new Error('Google token callback was not registered.')
+    callback({ access_token: 'fresh-token', expires_in: 3600 })
+
+    await expect(tokenPromise).resolves.toBe('fresh-token')
+    expect(useAuthStore.getState()).toMatchObject({
+      isAuthenticated: true,
+      accessToken: 'fresh-token',
+      error: null,
     })
   })
 })

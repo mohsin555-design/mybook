@@ -18,7 +18,7 @@ interface AuthState {
   reconnect: () => Promise<boolean>
   logout: () => Promise<void>
   clearError: () => void
-  getAccessToken: () => string | null
+  getAccessToken: () => Promise<string | null>
 }
 
 interface TokenResponse {
@@ -64,6 +64,7 @@ function safeStoredState(state: Pick<AuthState, 'email' | 'accessToken' | 'acces
 }
 
 let expiryTimer: number | null = null
+let tokenRefreshPromise: Promise<{ accessToken: string; accessTokenExpiresAt: number }> | null = null
 
 function clearExpiryTimer() {
   if (expiryTimer !== null) {
@@ -78,74 +79,17 @@ function scheduleExpiry(set: (partial: Partial<AuthState>) => void, expiresAt: n
   const timeout = Math.max(1000, expiresAt - Date.now())
   expiryTimer = window.setTimeout(() => {
     set({
-      isAuthenticated: false,
-      email: null,
       accessToken: null,
       accessTokenExpiresAt: null,
-      error: 'Your Google session expired. Please reconnect.',
     })
   }, timeout)
 }
 
-async function signInWithGoogle(prompt: '' | 'consent' | 'select_account') {
+async function requestDriveAccessToken(prompt: '' | 'consent' | 'select_account') {
   const configuredError = configuredErrors()
   if (configuredError) throw new Error(configuredError)
 
   await loadGoogleIdentity()
-  const google = window.google
-  if (!google?.accounts?.id || !google.accounts.oauth2) throw new Error('Google Identity Services is unavailable.')
-
-  const credential = await new Promise<string>((resolve, reject) => {
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: ({ credential: token }) => {
-        if (!token) reject(new Error('Google did not return a sign-in token.'))
-        else resolve(token)
-      },
-    })
-  })
-
-  const payload = decodeJwtPayload(credential)
-  const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : ''
-  const emailVerified = payload.email_verified === true || payload.email_verified === 'true'
-  if (!email || !emailVerified) throw new Error('Google account email could not be verified.')
-
-  const tokenResponse = await new Promise<TokenResponse>((resolve, reject) => {
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: DRIVE_FILE_SCOPE,
-      callback: (response) => {
-        if (response.error) {
-          reject(new Error(response.error_description ?? 'Google denied access to Drive.'))
-          return
-        }
-        resolve(response)
-      },
-    })
-    tokenClient.requestAccessToken({ prompt })
-  })
-
-  const accessToken = tokenResponse.access_token
-  const expiresIn = tokenResponse.expires_in
-  if (!accessToken || typeof expiresIn !== 'number') throw new Error('Google did not return an access token.')
-
-  return {
-    email,
-    accessToken,
-    accessTokenExpiresAt: Date.now() + expiresIn * 1000,
-  }
-}
-
-async function completeLoginWithCredential(credential: string, prompt: '' | 'consent' | 'select_account') {
-  const configuredError = configuredErrors()
-  if (configuredError) throw new Error(configuredError)
-
-  await loadGoogleIdentity()
-  const payload = decodeJwtPayload(credential)
-  const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : ''
-  const emailVerified = payload.email_verified === true || payload.email_verified === 'true'
-  if (!email || !emailVerified) throw new Error('Google account email could not be verified.')
-
   const google = window.google
   if (!google?.accounts?.oauth2) throw new Error('Google Identity Services is unavailable.')
 
@@ -169,9 +113,26 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
   if (!accessToken || typeof expiresIn !== 'number') throw new Error('Google did not return an access token.')
 
   return {
-    email,
     accessToken,
     accessTokenExpiresAt: Date.now() + expiresIn * 1000,
+  }
+}
+
+async function completeLoginWithCredential(credential: string, prompt: '' | 'consent' | 'select_account') {
+  const configuredError = configuredErrors()
+  if (configuredError) throw new Error(configuredError)
+
+  await loadGoogleIdentity()
+  const payload = decodeJwtPayload(credential)
+  const email = typeof payload.email === 'string' ? payload.email.toLowerCase() : ''
+  const emailVerified = payload.email_verified === true || payload.email_verified === 'true'
+  if (!email || !emailVerified) throw new Error('Google account email could not be verified.')
+
+  const token = await requestDriveAccessToken(prompt)
+
+  return {
+    email,
+    ...token,
   }
 }
 
@@ -209,31 +170,56 @@ export const useAuthStore = create<AuthState>()(
       },
       getAccessToken: () => {
         const { accessToken, accessTokenExpiresAt } = get()
-        if (!isTokenFresh(accessTokenExpiresAt)) {
+        if (accessToken && isTokenFresh(accessTokenExpiresAt)) return Promise.resolve(accessToken)
+        const { email } = get()
+        if (!email) {
           set({
             isAuthenticated: false,
-            email: null,
             accessToken: null,
             accessTokenExpiresAt: null,
-            error: 'Your Google session expired. Please sign in again.',
+            error: 'Please sign in to connect Google Drive.',
           })
-          return null
+          return Promise.resolve(null)
         }
-        return accessToken
+        tokenRefreshPromise ??= requestDriveAccessToken('')
+        return tokenRefreshPromise
+          .then((session) => {
+            set({
+              isAuthenticated: true,
+              error: null,
+              accessToken: session.accessToken,
+              accessTokenExpiresAt: session.accessTokenExpiresAt,
+            })
+            scheduleExpiry(set, session.accessTokenExpiresAt)
+            return session.accessToken
+          })
+          .catch((error) => {
+            set({
+              isAuthenticated: true,
+              accessToken: null,
+              accessTokenExpiresAt: null,
+              error: getFriendlyGoogleAuthError(error) || 'Google Drive needs to reconnect.',
+            })
+            return null
+          })
+          .finally(() => {
+            tokenRefreshPromise = null
+          })
       },
       login: async () => {
         set({ isLoading: true, error: null })
         try {
-          const session = await signInWithGoogle('consent')
+          const token = await requestDriveAccessToken('consent')
+          const email = get().email
+          if (!email) throw new Error('Please use the Google sign-in button first.')
           set({
             isAuthenticated: true,
             isLoading: false,
             error: null,
-            email: session.email,
-            accessToken: session.accessToken,
-            accessTokenExpiresAt: session.accessTokenExpiresAt,
+            accessToken: token.accessToken,
+            accessTokenExpiresAt: token.accessTokenExpiresAt,
           })
-          scheduleExpiry(set, session.accessTokenExpiresAt)
+          scheduleExpiry(set, token.accessTokenExpiresAt)
           return true
         } catch (error) {
           set({
@@ -247,20 +233,22 @@ export const useAuthStore = create<AuthState>()(
       reconnect: async () => {
         set({ isLoading: true, error: null })
         try {
-          const session = await signInWithGoogle('select_account')
+          const token = await requestDriveAccessToken('select_account')
+          const email = get().email
+          if (!email) throw new Error('Please sign in again.')
           set({
             isAuthenticated: true,
             isLoading: false,
             error: null,
-            email: session.email,
-            accessToken: session.accessToken,
-            accessTokenExpiresAt: session.accessTokenExpiresAt,
+            email,
+            accessToken: token.accessToken,
+            accessTokenExpiresAt: token.accessTokenExpiresAt,
           })
-          scheduleExpiry(set, session.accessTokenExpiresAt)
+          scheduleExpiry(set, token.accessTokenExpiresAt)
           return true
         } catch (error) {
           set({
-            isAuthenticated: false,
+            isAuthenticated: Boolean(get().email),
             isLoading: false,
             error: getFriendlyGoogleAuthError(error) || 'We could not reconnect your Google session.',
           })
@@ -291,10 +279,9 @@ export const useAuthStore = create<AuthState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return
         if (!isTokenFresh(state.accessTokenExpiresAt)) {
-          state.isAuthenticated = false
-          state.email = null
           state.accessToken = null
           state.accessTokenExpiresAt = null
+          state.isAuthenticated = Boolean(state.email)
         } else {
           state.isAuthenticated = true
           scheduleExpiry(

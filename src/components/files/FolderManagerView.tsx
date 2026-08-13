@@ -72,7 +72,11 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
           <div className="flex size-10 items-center justify-center rounded-full bg-default">
             <FolderActionsMenu
               folderName={currentFolder.name}
+              folders={folders}
+              folderId={currentFolder.id}
+              currentParentId={currentFolder.parentId}
               onRename={() => setRenameTarget(currentFolder)}
+              onMove={(destination) => void folderRepository.update(currentFolder.id, { parentId: destination })}
               onDelete={() => requestDelete(currentFolder)}
             />
           </div>
@@ -121,7 +125,11 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
             action={
               <FolderActionsMenu
                 folderName={folder.name}
+                folders={folders}
+                folderId={folder.id}
+                currentParentId={folder.parentId}
                 onRename={() => setRenameTarget(folder)}
+                onMove={(destination) => void folderRepository.update(folder.id, { parentId: destination })}
                 onDelete={() => requestDelete(folder)}
               />
             }

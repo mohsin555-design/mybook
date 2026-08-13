@@ -40,7 +40,7 @@ function buildHeaders(accessToken: string) {
 }
 
 async function driveFetch(path: string, init: RequestInit = {}) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) {
     return { success: false as const, error: 'Your Google session expired. Please sign in again.' }
   }
@@ -88,7 +88,7 @@ async function listChildFiles(parentId: string): Promise<DriveFile[]> {
 }
 
 async function getDriveFileContent(fileId: string) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -100,7 +100,7 @@ async function getDriveFileContent(fileId: string) {
 }
 
 export async function downloadDriveFileBlob(fileId: string): Promise<Blob> {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const response = await fetch(`${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { Authorization: `Bearer ${accessToken}` } })
   if (!response.ok) throw new Error('Could not download the Drive file.')
@@ -139,7 +139,7 @@ export async function ensureVisibleFolderInParent(name: string, parentId: string
 }
 
 export async function updateDriveFolder(folderId: string, changes: { name?: string; parentId?: string | null }) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const metadata: Record<string, unknown> = {}
   if (changes.name !== undefined) metadata.name = changes.name
@@ -173,7 +173,7 @@ export async function restoreDriveFolder(folderId: string) {
 }
 
 async function updateDriveFolderState(folderId: string, trashed: boolean) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const response = await fetch(`${DRIVE_API_BASE}/files/${folderId}`, {
     method: 'PATCH',
@@ -187,7 +187,7 @@ async function updateDriveFolderState(folderId: string, trashed: boolean) {
 }
 
 export async function createDriveFileInFolder(name: string, content: string, mimeType: string, parentId: string) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
 
   const result = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
@@ -215,7 +215,7 @@ export async function createDriveFileInFolder(name: string, content: string, mim
 }
 
 export async function updateDriveFile(fileId: string, changes: { name?: string; content?: string; parentId?: string | null; mimeType?: string; trashed?: boolean }) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
 
   const metadata: Record<string, unknown> = {}
@@ -274,7 +274,7 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
 }
 
 export async function restoreDriveFile(fileId: string) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
     method: 'PATCH',
@@ -288,7 +288,7 @@ export async function restoreDriveFile(fileId: string) {
 }
 
 export async function trashDriveFile(fileId: string) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
     method: 'PATCH',
@@ -322,7 +322,7 @@ function safeDocxName(name: string) {
 async function uploadDocxBlob(title: string, json: JSONContent, parentId: string, fileId?: string | null) {
   const { createDocxBlob } = await import('../utils/docx')
   const blob = await createDocxBlob(title, json)
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const safeTitle = safeDocxName(title)
   const metadata = {
@@ -390,7 +390,7 @@ function safeXlsxName(name: string) {
 }
 
 async function uploadXlsxBlob(name: string, blob: Blob, parentId: string, fileId?: string | null) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const metadata = {
     name: safeXlsxName(name),

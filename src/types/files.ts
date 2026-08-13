@@ -20,6 +20,21 @@ export interface MyBookFile {
   isDeleted: boolean
 }
 
+export type FileVersionSource = 'local' | 'drive'
+
+export interface MyBookFileVersion {
+  id: string
+  fileId: string
+  source: FileVersionSource
+  content: string
+  name: string
+  mimeType: string
+  driveFileId: string | null
+  driveModifiedTime: string | null
+  createdAt: string
+  label: string
+}
+
 export interface MyBookFolder {
   id: string
   driveFolderId: string | null

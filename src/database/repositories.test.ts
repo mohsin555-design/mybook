@@ -6,10 +6,12 @@ import { fileRepository, folderRepository, processPendingDriveFolderSync } from 
 import { ensureMyBookDriveFolder, ensureVisibleFolderInParent } from '../services/googleDrive'
 
 vi.mock('../services/googleDrive', () => ({
+  backupDocumentToDrive: vi.fn().mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true }),
+  backupSpreadsheetToDrive: vi.fn().mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true }),
   ensureMyBookDriveFolder: vi.fn().mockResolvedValue({ success: false, error: 'offline' }),
   ensureVisibleFolderInParent: vi.fn(),
   restoreDriveFile: vi.fn(), restoreDriveFolder: vi.fn(), trashDriveFile: vi.fn(), trashDriveFolder: vi.fn(),
-  updateDriveFile: vi.fn(), updateDriveFolder: vi.fn(),
+  updateDriveFolder: vi.fn(),
 }))
 
 describe('IndexedDB repositories', () => {

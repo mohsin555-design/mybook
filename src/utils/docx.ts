@@ -88,11 +88,9 @@ function blocks(node: JSONContent): Array<Paragraph | Table> {
 }
 
 export function createDocxDocument(title: string, json: JSONContent): Document {
-  const children = [
-    new Paragraph({ text: title.trim() || 'Untitled document', heading: HeadingLevel.TITLE }),
-    ...blocks(json),
-  ]
+  const children = blocks(json)
   return new Document({
+    title: title.trim() || 'Untitled document',
     numbering: {
       config: [{
         reference: 'mybook-numbering',

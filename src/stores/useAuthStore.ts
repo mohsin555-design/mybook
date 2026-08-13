@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { decodeJwtPayload, loadGoogleIdentity } from '../utils/googleIdentity'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
-const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 interface AuthState {
   isAuthenticated: boolean
@@ -96,7 +96,7 @@ async function requestDriveAccessToken(prompt: '' | 'consent' | 'select_account'
   const tokenResponse = await new Promise<TokenResponse>((resolve, reject) => {
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
-      scope: DRIVE_FILE_SCOPE,
+      scope: DRIVE_SCOPE,
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description ?? 'Google denied access to Drive.'))
@@ -128,7 +128,27 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
   const emailVerified = payload.email_verified === true || payload.email_verified === 'true'
   if (!email || !emailVerified) throw new Error('Google account email could not be verified.')
 
-  const token = await requestDriveAccessToken(prompt)
+  const google = window.google
+  if (!google?.accounts?.oauth2) throw new Error('Google Identity Services is unavailable.')
+
+  const tokenResponse = await new Promise<TokenResponse>((resolve, reject) => {
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: (response) => {
+        if (response.error) {
+          reject(new Error(response.error_description ?? 'Google denied access to Drive.'))
+          return
+        }
+        resolve(response)
+      },
+    })
+    tokenClient.requestAccessToken({ prompt })
+  })
+
+  const accessToken = tokenResponse.access_token
+  const expiresIn = tokenResponse.expires_in
+  if (!accessToken || typeof expiresIn !== 'number') throw new Error('Google did not return an access token.')
 
   return {
     email,

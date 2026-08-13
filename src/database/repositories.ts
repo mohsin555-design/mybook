@@ -1,6 +1,6 @@
 import { db } from './db'
-import type { AppSetting, FileType, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem } from '../types/files'
-import { createDriveFileInFolder, ensureMyBookDriveFolder, ensureVisibleFolderInParent, restoreDriveFile, restoreDriveFolder, trashDriveFile, trashDriveFolder, updateDriveFile, updateDriveFolder } from '../services/googleDrive'
+import type { AppSetting, FileType, FileVersionSource, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem } from '../types/files'
+import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, restoreDriveFile, restoreDriveFolder, trashDriveFile, trashDriveFolder, updateDriveFolder } from '../services/googleDrive'
 import { devLog } from '../utils/safeLog'
 
 export interface RepositoryResult<T = void> {
@@ -56,10 +56,20 @@ async function ensureLocalFolderOnDrive(folderId: string | null, visiting = new 
   return driveFolder.id
 }
 
-function driveFileName(file: MyBookFile) {
-  return file.type === 'spreadsheet'
-    ? `${file.name.replace(/\.xlsx$/i, '')}.xlsx`
-    : `${file.name.replace(/\.docx$/i, '')}.docx`
+export async function saveFileVersion(file: MyBookFile, source: FileVersionSource, label: string, driveModifiedTime: string | null = null) {
+  if (!file.content) return
+  await db.fileVersions.add({
+    id: crypto.randomUUID(),
+    fileId: file.id,
+    source,
+    content: file.content,
+    name: file.name,
+    mimeType: file.mimeType,
+    driveFileId: file.driveFileId,
+    driveModifiedTime,
+    createdAt: new Date().toISOString(),
+    label,
+  })
 }
 
 async function syncFileItem(item: SyncQueueItem) {
@@ -74,15 +84,13 @@ async function syncFileItem(item: SyncQueueItem) {
     return
   }
 
-  const driveParentId = await ensureLocalFolderOnDrive(file.folderId)
-  if (!file.driveFileId) {
-    if (file.isDeleted) return
-    const created = await createDriveFileInFolder(driveFileName(file), file.content, file.mimeType, driveParentId)
-    await db.files.update(file.id, { driveFileId: created.id, syncStatus: 'backed-up', syncError: null, lastSyncedAt: new Date().toISOString() })
-    return
-  }
-  await updateDriveFile(file.driveFileId, { name: driveFileName(file), parentId: driveParentId })
-  await db.files.update(file.id, { syncError: null, lastSyncedAt: new Date().toISOString() })
+  await ensureLocalFolderOnDrive(file.folderId)
+  if (file.isDeleted) return
+  const result = file.type === 'spreadsheet'
+    ? await backupSpreadsheetToDrive({ fileId: file.id, title: file.name, content: file.content, folderId: file.folderId })
+    : await backupDocumentToDrive({ fileId: file.id, title: file.name, content: file.content, folderId: file.folderId })
+  if (!result.success) throw new Error(result.error)
+  await db.files.update(file.id, { syncError: null, syncStatus: 'backed-up' })
 }
 
 export async function processPendingDriveSync() {
@@ -153,7 +161,7 @@ export const fileRepository = {
         changes = { ...changes, name }
       }
       await db.files.update(id, { ...changes, updatedAt: new Date().toISOString() })
-      if (changes.name !== undefined || changes.folderId !== undefined) {
+      if (changes.name !== undefined || changes.folderId !== undefined || changes.content !== undefined) {
         await queueFileSync(id, existing.driveFileId ? 'update' : 'create', navigator.onLine ? null : 'Offline. File changes will sync when you reconnect.')
         if (navigator.onLine) await processPendingDriveSync()
       }
@@ -313,4 +321,38 @@ export const syncQueueRepository = {
   async delete(id: string) { try { await db.syncQueue.delete(id); return { success: true } } catch (error) { return failure(error, 'Could not delete sync operation.') } },
   async restore() { return { success: false, error: 'Sync queue items do not support restore.' } },
   async list() { return db.syncQueue.toArray() }, async search(query: string) { return db.syncQueue.filter((item) => item.entityId.includes(query)).toArray() },
+}
+
+export const fileVersionRepository = {
+  async list(fileId: string) {
+    try {
+      return await db.fileVersions.where('fileId').equals(fileId).reverse().sortBy('createdAt')
+    } catch (error) {
+      devLog('error', 'Could not list file versions.', error)
+      return []
+    }
+  },
+  async restore(versionId: string): Promise<RepositoryResult<MyBookFile>> {
+    try {
+      const version = await db.fileVersions.get(versionId)
+      if (!version) return { success: false, error: 'Version could not be found.' }
+      const file = await db.files.get(version.fileId)
+      if (!file) return { success: false, error: 'File could not be found.' }
+      await saveFileVersion(file, 'local', 'Before version restore')
+      await db.files.update(file.id, {
+        content: version.content,
+        name: version.name,
+        mimeType: version.mimeType,
+        syncStatus: 'pending',
+        syncError: null,
+        updatedAt: new Date().toISOString(),
+      })
+      await queueFileSync(file.id, file.driveFileId ? 'update' : 'create')
+      if (navigator.onLine) await processPendingDriveSync()
+      const restored = await db.files.get(file.id)
+      return { success: true, data: restored }
+    } catch (error) {
+      return failure(error, 'Could not restore version.')
+    }
+  },
 }

@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { fileRepository } from '../../database/repositories'
 import { useAutosave } from '../../hooks/useAutosave'
-import { backupSpreadsheetToDrive, copyDriveFileLink, downloadDriveFileBlob, getDriveFileStatus, openDriveFileInBrowser } from '../../services/googleDrive'
+import { backupSpreadsheetToDrive, copyDriveFileLink, getDriveFileStatus, importDriveFilesToLocal, openDriveFileInBrowser, refreshDriveFileToLocal } from '../../services/googleDrive'
 import type { UniverWorkbookSnapshot, XlsxResult } from '../../utils/xlsx'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
@@ -30,7 +30,7 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   const workbookRef = useRef<{ save: () => object } | null>(null)
   const skipCleanupSaveRef = useRef(false)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-  const { content, isHydrated, save, setContent, status } = useAutosave(file)
+  const { content, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
   const [editorHeight, setEditorHeight] = useState(() => Math.max(320, (window.visualViewport?.height ?? window.innerHeight) - 72))
   const [workbookRevision, setWorkbookRevision] = useState(0)
   const [xlsxBlob, setXlsxBlob] = useState<Blob | null>(null)
@@ -39,8 +39,8 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   const [isConverting, setIsConverting] = useState(false)
   const [cloudMessage, setCloudMessage] = useState<string | null>(null)
   const [driveExists, setDriveExists] = useState<boolean | null>(null)
-  const [driveConflict, setDriveConflict] = useState<string | null>(null)
   const [isCheckingDrive, setIsCheckingDrive] = useState(false)
+  const [hasCheckedDrive, setHasCheckedDrive] = useState(false)
   const cloudTimerRef = useRef<number | null>(null)
   const cloudFlightRef = useRef(false)
   const latestSnapshot = useRef('')
@@ -55,19 +55,35 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     void getDriveFileStatus(file.driveFileId).then((result) => setDriveExists(result.exists))
   }, [file?.driveFileId])
   const checkDriveChanges = useCallback(async () => {
-    if (!file?.driveFileId || !file.lastSyncedAt) return
+    if (!file?.driveFileId || !file.lastSyncedAt) { setHasCheckedDrive(true); return }
     setIsCheckingDrive(true)
     try {
       const result = await getDriveFileStatus(file.driveFileId)
       setDriveExists(result.exists)
-      if (result.modifiedTime && new Date(result.modifiedTime).getTime() > new Date(file.lastSyncedAt).getTime()) setDriveConflict(result.modifiedTime)
-    } finally { setIsCheckingDrive(false) }
-  }, [file?.driveFileId, file?.lastSyncedAt])
+      if (result.modifiedTime && new Date(result.modifiedTime).getTime() > new Date(file.lastSyncedAt).getTime()) {
+        await importDriveFilesToLocal()
+      } else if (result.modifiedTime) {
+        await refreshDriveFileToLocal(file.id)
+      }
+      const latest = (await fileRepository.get(file.id)).data
+      if (latest?.content && latest.content !== latestSnapshot.current) {
+        skipCleanupSaveRef.current = true
+        latestSnapshot.current = latest.content
+        replaceContent(latest.content, 'backed-up')
+        setWorkbookRevision((revision) => revision + 1)
+        setCloudMessage('Updated from Drive. Previous local version was saved.')
+      }
+    } finally { setIsCheckingDrive(false); setHasCheckedDrive(true) }
+  }, [file?.driveFileId, file?.id, file?.lastSyncedAt, replaceContent])
   useEffect(() => {
     void checkDriveChanges()
     const onVisible = () => { if (document.visibilityState === 'visible') void checkDriveChanges() }
+    const refreshTimer = window.setInterval(() => { void checkDriveChanges() }, 10_000)
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(refreshTimer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [checkDriveChanges])
 
   useEffect(() => {
@@ -119,7 +135,7 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   }, [fileId, fileName, isHydrated, workbookRevision])
 
   useEffect(() => {
-    if (!file || file.isDeleted || file.type !== 'spreadsheet' || !isHydrated) return
+    if (!file || file.isDeleted || file.type !== 'spreadsheet' || !isHydrated || isCheckingDrive || !hasCheckedDrive) return
     if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
     if (status !== 'pending' && status !== 'saved-locally') return
     cloudTimerRef.current = window.setTimeout(() => {
@@ -144,7 +160,7 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
       if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
       cloudTimerRef.current = null
     }
-  }, [content, file, isHydrated, save, status])
+  }, [content, file, hasCheckedDrive, isCheckingDrive, isHydrated, save, status])
 
   if (file === undefined) return <div role="status" className="p-4 text-muted">Loading spreadsheet…</div>
   if (!file || file.isDeleted) return <EmptyState title="Spreadsheet not found" description="This spreadsheet may have been moved to Trash or deleted." />
@@ -213,30 +229,6 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     const result = await copyDriveFileLink(file.driveFileId)
     setCloudMessage(result.success ? 'Drive link copied.' : result.error ?? 'Could not copy the Drive link.')
   }
-  const applyDriveVersion = async () => {
-    if (!file.driveFileId) return
-    try {
-      setContent(JSON.stringify(workbookRef.current?.save() ?? {}))
-      localStorage.setItem(`mybook-recovery:${file.id}`, JSON.stringify({ content: contentRef.current, updatedAt: new Date().toISOString(), reason: 'Drive conflict recovery' }))
-      const blob = await downloadDriveFileBlob(file.driveFileId)
-      const imported = await import('../../utils/xlsx').then(({ importXlsxToWorkbook }) => importXlsxToWorkbook({ name: `${file.name}.xlsx`, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', size: blob.size, arrayBuffer: () => blob.arrayBuffer() }, file.id))
-      if (!imported.success || !imported.data) throw new Error(imported.error ?? 'Could not import the Drive version.')
-      skipCleanupSaveRef.current = true
-      latestSnapshot.current = JSON.stringify(imported.data)
-      setContent(latestSnapshot.current)
-      await fileRepository.update(file.id, { lastSyncedAt: driveConflict, syncError: null, syncStatus: 'pending' })
-      setDriveConflict(null); setWorkbookRevision((revision) => revision + 1)
-      setXlsxMessage(imported.warnings.length ? 'Drive version imported with some formatting simplified.' : 'Drive version imported.')
-    } catch (error) { setCloudMessage(error instanceof Error ? error.message : 'Could not import the Drive version.') }
-  }
-  const downloadBoth = async () => {
-    await makeXlsx(true)
-    if (file.driveFileId) {
-      const blob = await downloadDriveFileBlob(file.driveFileId)
-      const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${file.name}.xlsx`; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    }
-  }
-
   const handleMenuAction = (key: Key) => {
     if (key === 'save') void save()
     if (key === 'backup') void backupNow()
@@ -248,8 +240,6 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     if (key === 'download') void makeXlsx(true)
     if (key === 'close') void close()
   }
-
-  if (driveConflict) return <section className="mx-auto max-w-2xl space-y-5 py-16"><h1 className="text-2xl font-semibold">Drive version is newer</h1><p className="text-muted">This workbook changed in Google Drive after the last MyBook backup. Nothing has been replaced.</p><p className="text-sm text-muted">Complex formatting added externally may not be fully supported when importing XLSX.</p><div className="flex flex-wrap gap-2"><AppButton variant="secondary" onPress={() => { void fileRepository.update(file!.id, { lastSyncedAt: driveConflict }); setDriveConflict(null) }}>Keep MyBook version</AppButton><AppButton variant="primary" onPress={() => void applyDriveVersion()}>Use Drive version</AppButton><AppButton variant="secondary" onPress={() => void downloadBoth()}>Download both</AppButton></div></section>
 
   return (
     <section className="-mx-4 -my-6 flex min-h-0 flex-col sm:-mx-6 lg:-mx-8" style={{ height: editorHeight }}>

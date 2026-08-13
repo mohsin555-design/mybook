@@ -3,6 +3,7 @@ import { Dropdown } from '@heroui/react'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
+import Underline from '@tiptap/extension-underline'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -11,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { fileRepository } from '../../database/repositories'
 import { useAutosave } from '../../hooks/useAutosave'
-import { backupDocumentToDrive, copyDriveFileLink, downloadDriveFileBlob, getDriveFileStatus, openDriveFileInBrowser } from '../../services/googleDrive'
+import { backupDocumentToDrive, copyDriveFileLink, getDriveFileStatus, importDriveFilesToLocal, openDriveFileInBrowser, refreshDriveFileToLocal } from '../../services/googleDrive'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
 import { DocumentToolbar } from './DocumentToolbar'
@@ -28,28 +29,34 @@ function parseContent(content: string) {
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-  const { content, isHydrated, save, setContent, status } = useAutosave(file)
+  const { content, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
   const [loadedId, setLoadedId] = useState<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
   const [docxMessage, setDocxMessage] = useState('')
   const [cloudMessage, setCloudMessage] = useState<string | null>(null)
   const [driveExists, setDriveExists] = useState<boolean | null>(null)
-  const [driveConflict, setDriveConflict] = useState<string | null>(null)
   const [isCheckingDrive, setIsCheckingDrive] = useState(false)
+  const [hasCheckedDrive, setHasCheckedDrive] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const cloudTimerRef = useRef<number | null>(null)
   const cloudFlightRef = useRef(false)
+  const editorContentRef = useRef('')
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: { openOnClick: false, autolink: true }, heading: { levels: [1, 2, 3] } }),
       TaskList,
       TaskItem.configure({ nested: true }),
       TableKit.configure({ table: { resizable: false } }),
+      Underline,
     ],
     content: emptyDocument,
     editorProps: { attributes: { class: 'tiptap min-h-[65vh] outline-none', 'aria-label': 'Document content' } },
-    onUpdate: ({ editor: currentEditor }) => setContent(JSON.stringify(currentEditor.getJSON())),
+    onUpdate: ({ editor: currentEditor }) => {
+      const next = JSON.stringify(currentEditor.getJSON())
+      editorContentRef.current = next
+      setContent(next)
+    },
   })
 
   useEffect(() => { if (file) setTitle(file.name) }, [file])
@@ -58,30 +65,49 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     void getDriveFileStatus(file.driveFileId).then((result) => setDriveExists(result.exists))
   }, [file?.driveFileId])
   const checkDriveChanges = useCallback(async () => {
-    if (!file?.driveFileId || !file.lastSyncedAt) return
+    if (!file?.driveFileId || !file.lastSyncedAt) { setHasCheckedDrive(true); return }
     setIsCheckingDrive(true)
     try {
       const result = await getDriveFileStatus(file.driveFileId)
       setDriveExists(result.exists)
-      if (result.modifiedTime && new Date(result.modifiedTime).getTime() > new Date(file.lastSyncedAt).getTime()) setDriveConflict(result.modifiedTime)
-    } finally { setIsCheckingDrive(false) }
-  }, [file?.driveFileId, file?.lastSyncedAt])
+      if (result.modifiedTime && new Date(result.modifiedTime).getTime() > new Date(file.lastSyncedAt).getTime()) {
+        await importDriveFilesToLocal()
+      } else if (result.modifiedTime) {
+        await refreshDriveFileToLocal(file.id)
+      }
+      const latest = (await fileRepository.get(file.id)).data
+      if (latest?.content && latest.content !== editorContentRef.current) {
+        replaceContent(latest.content, 'backed-up')
+        editor.commands.setContent(parseContent(latest.content), { emitUpdate: false })
+        editorContentRef.current = latest.content
+        setLoadedId(file.id)
+        setTitle(latest.name)
+        setCloudMessage('Updated from Drive. Previous local version was saved.')
+      }
+    } finally { setIsCheckingDrive(false); setHasCheckedDrive(true) }
+  }, [editor, file?.driveFileId, file?.id, file?.lastSyncedAt, replaceContent])
   useEffect(() => {
     void checkDriveChanges()
     const onVisible = () => { if (document.visibilityState === 'visible') void checkDriveChanges() }
+    const refreshTimer = window.setInterval(() => { void checkDriveChanges() }, 10_000)
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(refreshTimer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [checkDriveChanges])
   useEffect(() => {
-    if (!editor || !file || !isHydrated || loadedId === file.id) return
+    if (!editor || !file || !isHydrated) return
+    if (loadedId === file.id && content === editorContentRef.current) return
     editor.commands.setContent(parseContent(content), { emitUpdate: false })
+    editorContentRef.current = content
     setLoadedId(file.id)
   }, [content, editor, file, isHydrated, loadedId])
   const saveTitle = useCallback(async () => {
     if (title !== file?.name && file) await fileRepository.update(file.id, { name: title })
   }, [file, title])
   useEffect(() => {
-    if (!file || file.isDeleted) return
+    if (!file || file.isDeleted || isCheckingDrive || !hasCheckedDrive) return
     if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
     if (status !== 'pending' && status !== 'saved-locally') return
     cloudTimerRef.current = window.setTimeout(() => {
@@ -107,7 +133,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
       cloudTimerRef.current = null
     }
-  }, [content, file, save, saveTitle, status, title])
+  }, [content, file, hasCheckedDrive, isCheckingDrive, save, saveTitle, status, title])
 
   if (file === undefined || !editor) return <div role="status" className="p-4 text-muted">Loading editor…</div>
   if (!file || file.isDeleted) return <EmptyState title="Document not found" description="This document may have been moved to Trash or deleted." />
@@ -157,27 +183,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       setDocxMessage('DOCX import failed.')
     }
   }
-
-  const applyDriveVersion = async () => {
-    if (!file.driveFileId) return
-    try {
-      localStorage.setItem(`mybook-recovery:${file.id}`, JSON.stringify({ content, updatedAt: new Date().toISOString(), reason: 'Drive conflict recovery' }))
-      const blob = await downloadDriveFileBlob(file.driveFileId)
-      const result = await (await import('mammoth')).default.convertToHtml({ arrayBuffer: await blob.arrayBuffer() })
-      editor.commands.setContent(result.value)
-      await fileRepository.update(file.id, { lastSyncedAt: driveConflict, syncError: null, syncStatus: 'pending' })
-      setDriveConflict(null)
-      setCloudMessage(result.messages.length ? 'Drive version imported with some formatting simplified.' : 'Drive version imported.')
-    } catch (error) { setCloudMessage(error instanceof Error ? error.message : 'Could not import the Drive version.') }
-  }
-  const downloadBoth = async () => {
-    await exportDocx(true)
-    if (file.driveFileId) {
-      const blob = await downloadDriveFileBlob(file.driveFileId)
-      const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${title || 'Drive version'}.docx`; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    }
-  }
-  if (driveConflict) return <section className="mx-auto max-w-2xl space-y-5 py-16"><h1 className="text-2xl font-semibold">Drive version is newer</h1><p className="text-muted">This file changed in Google Drive after the last MyBook backup. Nothing has been replaced.</p><p className="text-sm text-muted">Complex formatting added externally may not be fully supported when importing DOCX.</p><div className="flex flex-wrap gap-2"><AppButton variant="secondary" onPress={() => { void fileRepository.update(file.id, { lastSyncedAt: driveConflict }); setDriveConflict(null) }}>Keep MyBook version</AppButton><AppButton variant="primary" onPress={() => void applyDriveVersion()}>Use Drive version</AppButton><AppButton variant="secondary" onPress={() => void downloadBoth()}>Download both</AppButton></div></section>
 
   return (
     <section className="min-h-[calc(100dvh-4rem)] pb-[calc(4.5rem+env(safe-area-inset-bottom))]">

@@ -69,5 +69,13 @@ export function useAutosave(file: MyBookFile | undefined) {
     if (file) localStorage.setItem(recoveryKey, JSON.stringify({ content: value, updatedAt: new Date().toISOString() }))
   }
 
-  return { content, isHydrated, status, setContent: changeContent, save }
+  const replaceContent = (value: string, nextStatus: EditorSaveStatus = 'saved-locally') => {
+    setContent(value)
+    contentRef.current = value
+    lastSaved.current = value
+    if (file) localStorage.removeItem(recoveryKey)
+    setStatus(nextStatus)
+  }
+
+  return { content, isHydrated, status, setContent: changeContent, replaceContent, save }
 }

@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { decodeJwtPayload, loadGoogleIdentity } from '../utils/googleIdentity'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
-const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 interface AuthState {
   isAuthenticated: boolean
@@ -113,7 +113,7 @@ async function signInWithGoogle(prompt: '' | 'consent' | 'select_account') {
   const tokenResponse = await new Promise<TokenResponse>((resolve, reject) => {
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
-      scope: DRIVE_FILE_SCOPE,
+      scope: DRIVE_SCOPE,
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description ?? 'Google denied access to Drive.'))
@@ -152,7 +152,7 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
   const tokenResponse = await new Promise<TokenResponse>((resolve, reject) => {
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
-      scope: DRIVE_FILE_SCOPE,
+      scope: DRIVE_SCOPE,
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description ?? 'Google denied access to Drive.'))

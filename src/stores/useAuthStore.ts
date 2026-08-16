@@ -5,6 +5,13 @@ import { decodeJwtPayload, loadGoogleIdentity } from '../utils/googleIdentity'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+export const isBackendAuthEnabled = import.meta.env.VITE_GOOGLE_AUTH_MODE === 'server'
+const AUTH_API_BASE = (import.meta.env.VITE_AUTH_API_BASE?.trim() || '/api/auth').replace(/\/$/u, '')
+const AUTH_API_EXTENSION = import.meta.env.VITE_AUTH_API_EXTENSION ?? '.php'
+
+export function authApiUrl(path: string) {
+  return `${AUTH_API_BASE}${path}${AUTH_API_EXTENSION}`
+}
 
 interface AuthState {
   isAuthenticated: boolean
@@ -13,6 +20,7 @@ interface AuthState {
   email: string | null
   accessToken: string | null
   accessTokenExpiresAt: number | null
+  initializeSession: () => Promise<void>
   login: () => Promise<boolean>
   completeLogin: (credential: string, prompt: '' | 'consent' | 'select_account') => Promise<boolean>
   reconnect: () => Promise<boolean>
@@ -33,6 +41,7 @@ export function isTokenFresh(expiresAt: number | null) {
 }
 
 function configuredErrors() {
+  if (isBackendAuthEnabled) return null
   if (!GOOGLE_CLIENT_ID) return 'Set VITE_GOOGLE_CLIENT_ID to enable Google sign-in.'
   return null
 }
@@ -58,13 +67,13 @@ export function getFriendlyGoogleAuthError(error: unknown) {
 function safeStoredState(state: Pick<AuthState, 'email' | 'accessToken' | 'accessTokenExpiresAt'>) {
   return {
     email: state.email,
-    accessToken: state.accessToken,
-    accessTokenExpiresAt: state.accessTokenExpiresAt,
+    accessToken: isBackendAuthEnabled ? null : state.accessToken,
+    accessTokenExpiresAt: isBackendAuthEnabled ? null : state.accessTokenExpiresAt,
   }
 }
 
 let expiryTimer: number | null = null
-let tokenRefreshPromise: Promise<{ accessToken: string; accessTokenExpiresAt: number }> | null = null
+let tokenRefreshPromise: Promise<{ accessToken: string; accessTokenExpiresAt: number; email?: string }> | null = null
 
 function clearExpiryTimer() {
   if (expiryTimer !== null) {
@@ -118,6 +127,28 @@ async function requestDriveAccessToken(prompt: '' | 'consent' | 'select_account'
   }
 }
 
+async function readBackendSession() {
+  const response = await fetch(authApiUrl('/session'), { credentials: 'include' })
+  if (!response.ok) throw new Error('Could not check your sign-in session.')
+  return await response.json() as { authenticated: boolean; email: string | null }
+}
+
+async function requestBackendDriveAccessToken() {
+  const response = await fetch(authApiUrl('/token'), {
+    method: 'POST',
+    credentials: 'include',
+  })
+  const body = await response.json().catch(() => null) as { accessToken?: string; expiresIn?: number; email?: string; error?: string } | null
+  if (!response.ok || !body?.accessToken || typeof body.expiresIn !== 'number') {
+    throw new Error(body?.error ?? 'Google Drive needs to reconnect.')
+  }
+  return {
+    email: body.email,
+    accessToken: body.accessToken,
+    accessTokenExpiresAt: Date.now() + body.expiresIn * 1000,
+  }
+}
+
 async function completeLoginWithCredential(credential: string, prompt: '' | 'consent' | 'select_account') {
   const configuredError = configuredErrors()
   if (configuredError) throw new Error(configuredError)
@@ -161,13 +192,36 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       isAuthenticated: false,
-      isLoading: false,
+      isLoading: isBackendAuthEnabled,
       error: null,
       email: null,
       accessToken: null,
       accessTokenExpiresAt: null,
       clearError: () => set({ error: null }),
+      initializeSession: async () => {
+        if (!isBackendAuthEnabled) return
+        set({ isLoading: true })
+        try {
+          const session = await readBackendSession()
+          set({
+            isAuthenticated: session.authenticated || Boolean(get().email),
+            isLoading: false,
+            error: null,
+            email: session.email ?? get().email,
+          })
+        } catch (error) {
+          set({
+            isAuthenticated: Boolean(get().email),
+            isLoading: false,
+            error: error instanceof Error ? error.message : 'Could not check your sign-in session.',
+          })
+        }
+      },
       completeLogin: async (credential, prompt) => {
+        if (isBackendAuthEnabled) {
+          window.location.assign(`${authApiUrl('/google/start')}?returnTo=/home`)
+          return false
+        }
         try {
           const session = await completeLoginWithCredential(credential, prompt)
           set({
@@ -192,6 +246,33 @@ export const useAuthStore = create<AuthState>()(
       getAccessToken: () => {
         const { accessToken, accessTokenExpiresAt } = get()
         if (accessToken && isTokenFresh(accessTokenExpiresAt)) return Promise.resolve(accessToken)
+        if (isBackendAuthEnabled) {
+          tokenRefreshPromise ??= requestBackendDriveAccessToken()
+          return tokenRefreshPromise
+            .then((session) => {
+              set({
+                isAuthenticated: true,
+                error: null,
+                email: session.email ?? get().email,
+                accessToken: session.accessToken,
+                accessTokenExpiresAt: session.accessTokenExpiresAt,
+              })
+              scheduleExpiry(set, session.accessTokenExpiresAt)
+              return session.accessToken
+            })
+            .catch((error) => {
+              set({
+                isAuthenticated: Boolean(get().email),
+                accessToken: null,
+                accessTokenExpiresAt: null,
+                error: getFriendlyGoogleAuthError(error) || 'Google Drive needs to reconnect.',
+              })
+              return null
+            })
+            .finally(() => {
+              tokenRefreshPromise = null
+            })
+        }
         const { email } = get()
         if (!email) {
           set({
@@ -228,6 +309,11 @@ export const useAuthStore = create<AuthState>()(
           })
       },
       login: async () => {
+        if (isBackendAuthEnabled) {
+          set({ isLoading: true, error: null })
+          window.location.assign(`${authApiUrl('/google/start')}?returnTo=/home`)
+          return false
+        }
         set({ isLoading: true, error: null })
         try {
           const token = await requestDriveAccessToken('consent')
@@ -252,6 +338,11 @@ export const useAuthStore = create<AuthState>()(
         }
       },
       reconnect: async () => {
+        if (isBackendAuthEnabled) {
+          set({ isLoading: true, error: null })
+          window.location.assign(`${authApiUrl('/google/start')}?returnTo=/home`)
+          return false
+        }
         set({ isLoading: true, error: null })
         try {
           const token = await requestDriveAccessToken('select_account')
@@ -278,6 +369,9 @@ export const useAuthStore = create<AuthState>()(
       },
       logout: async () => {
         const accessToken = get().accessToken
+        if (isBackendAuthEnabled) {
+          await fetch(authApiUrl('/logout'), { method: 'POST', credentials: 'include' }).catch(() => undefined)
+        }
         set({
           isAuthenticated: false,
           isLoading: false,
@@ -287,7 +381,7 @@ export const useAuthStore = create<AuthState>()(
           accessTokenExpiresAt: null,
         })
         clearExpiryTimer()
-        if (accessToken && window.google?.accounts?.oauth2) {
+        if (!isBackendAuthEnabled && accessToken && window.google?.accounts?.oauth2) {
           window.google.accounts.oauth2.revoke(accessToken, () => undefined)
         }
         window.google?.accounts?.id?.disableAutoSelect()

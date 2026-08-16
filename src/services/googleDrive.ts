@@ -339,10 +339,6 @@ export async function retryWithBackoff<T>(task: () => Promise<T>, attempts = 3):
   throw lastError instanceof Error ? lastError : new Error('The operation could not be completed.')
 }
 
-function safeDocxName(name: string) {
-  return name.replace(/\.docx$/i, '').trim() || 'Untitled document'
-}
-
 const backupFlights = new Map<string, Promise<DriveSetupResult>>()
 
 async function runSingleFileBackup(fileId: string, task: () => Promise<DriveSetupResult>) {
@@ -353,39 +349,6 @@ async function runSingleFileBackup(fileId: string, task: () => Promise<DriveSetu
   })
   backupFlights.set(fileId, next)
   return next
-}
-
-async function uploadDocxBlob(title: string, json: JSONContent, parentId: string, fileId?: string | null, targetMimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-  const { createDocxBlob } = await import('../utils/docx')
-  const blob = await createDocxBlob(title, json)
-  const accessToken = await useAuthStore.getState().getAccessToken()
-  if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
-  const safeTitle = safeDocxName(title)
-  const metadata = {
-    name: targetMimeType === GOOGLE_DOC_MIME ? safeTitle : `${safeTitle}.docx`,
-    ...(fileId ? {} : { parents: [parentId] }),
-    mimeType: targetMimeType,
-  }
-  const boundary = 'mybook-docx-boundary'
-  const method = fileId ? 'PATCH' : 'POST'
-  const endpoint = fileId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id,name,webViewLink,modifiedTime`
-    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime'
-  const response = await fetch(endpoint, {
-    method,
-    headers: { Authorization: `Bearer ${accessToken}` },
-    body: new Blob([
-      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
-      `--${boundary}\r\nContent-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n\r\n`,
-      blob,
-      `\r\n--${boundary}--`,
-    ], { type: `multipart/related; boundary=${boundary}` }),
-  })
-  if (!response.ok) {
-    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
-    throw new Error(body?.error?.message ?? 'Could not upload the DOCX file to Google Drive.')
-  }
-  return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
 }
 
 function safeMarkdownName(name: string) {
@@ -676,15 +639,6 @@ function normalizedTitle(value: string) {
   return value.replace(/\.(docx|xlsx)$/i, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase()
 }
 
-function stripLeadingTitleEchoes(text: string, fileName: string) {
-  const title = normalizedTitle(fileName)
-  if (!title) return text
-  const paragraphs = text.split(/\n{2,}/)
-  let start = 0
-  while (start < paragraphs.length && normalizedTitle(paragraphs[start] ?? '') === title) start += 1
-  return paragraphs.slice(start).join('\n\n')
-}
-
 function textNode(text: string, marks: Array<{ type: string; attrs?: Record<string, unknown> }> = []): JSONContent[] {
   return text ? [{ type: 'text', text, ...(marks.length ? { marks } : {}) }] : []
 }
@@ -777,17 +731,6 @@ function tiptapDocFromHtml(html: string, fileName: string) {
   const document = new DOMParser().parseFromString(html, 'text/html')
   const content = stripLeadingTitleNodes([...document.body.childNodes].flatMap((child) => blockJson(child)), fileName)
   return JSON.stringify({ type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] })
-}
-
-function tiptapDocFromText(text: string) {
-  const paragraphs = text.split(/\n+/).map((paragraph) => paragraph.trim()).filter(Boolean)
-  return JSON.stringify({
-    type: 'doc',
-    content: (paragraphs.length ? paragraphs : ['']).map((paragraph) => ({
-      type: 'paragraph',
-      content: paragraph ? [{ type: 'text', text: paragraph }] : undefined,
-    })),
-  })
 }
 
 async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string) {

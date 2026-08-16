@@ -29,9 +29,12 @@ Use the exact scheme, host, and port.
 
 ## 4. Authorized redirect URIs
 
-For the Google Identity Services token flow used by MyBook, you normally do not need a redirect URI for the popup/token callback flow.
+For the browser token flow, you normally do not need a redirect URI for the popup/token callback flow.
 
-If you later switch to a code flow or a backend exchange, add the redirect URI used by that backend.
+For backend refresh-token auth, add the redirect URI used by the backend:
+
+- Local: `http://localhost:5173/api/auth/google/callback`
+- Razor/cPanel Node production: `https://your-production-domain.example/api/auth/google/callback`
 
 ## 5. Drive API enablement
 
@@ -45,11 +48,29 @@ Add these values to your local `.env` file:
 
 ```bash
 VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+VITE_GOOGLE_AUTH_MODE=browser
 ```
+
+To use backend refresh-token auth instead:
+
+```bash
+VITE_GOOGLE_AUTH_MODE=server
+VITE_AUTH_API_BASE=/api/auth
+VITE_AUTH_API_EXTENSION=
+VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+AUTH_COOKIE_SECRET=replace-with-at-least-32-random-characters
+APP_ORIGIN=http://localhost:5173
+GOOGLE_REDIRECT_URI=http://localhost:5173/api/auth/google/callback
+```
+
+On Razor/cPanel Node.js hosting, create a Node app that uses `server/` as the application root and set the backend variables in the Node app environment section.
 
 ## 7. Notes
 
 - MyBook requests `drive.file` access so it can create and manage MyBook backups in Drive without broad access to the user's whole Drive.
 - Any Google account permitted by the OAuth consent-screen publishing status can sign in.
 - OAuth client secrets must stay out of frontend code.
-- The app stores the auth session in browser session storage and clears it on logout or token expiry.
+- Browser mode stores the auth session in browser storage and clears it on logout.
+- Backend mode stores the Google refresh token in an encrypted HttpOnly cookie and uses the Node backend in `server/` to mint short-lived Drive access tokens.

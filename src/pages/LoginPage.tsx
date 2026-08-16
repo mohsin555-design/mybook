@@ -6,7 +6,7 @@ import {
 import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-import { getAuthConfigError, useAuthStore } from '../stores/useAuthStore'
+import { authApiUrl, getAuthConfigError, isBackendAuthEnabled, useAuthStore } from '../stores/useAuthStore'
 import { loadGoogleIdentity } from '../utils/googleIdentity'
 
 interface LoginLocationState {
@@ -19,6 +19,7 @@ export function LoginPage() {
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const { clearError, error, isLoading, completeLogin } = useAuthStore()
   const destination = (location.state as LoginLocationState | null)?.from ?? '/home'
+  const queryError = new URLSearchParams(location.search).get('error')
   const configError = getAuthConfigError()
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export function LoginPage() {
     let active = true
     const render = async () => {
       try {
-        if (configError) return
+        if (configError || isBackendAuthEnabled) return
         await loadGoogleIdentity()
         const google = window.google
         if (!active || !google?.accounts?.id || !googleButtonRef.current) return
@@ -66,6 +67,10 @@ export function LoginPage() {
     }
   }, [completeLogin, configError, destination, navigate])
 
+  const startBackendLogin = () => {
+    window.location.assign(`${authApiUrl('/google/start')}?returnTo=${encodeURIComponent(destination)}`)
+  }
+
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-[calc(2.5rem+env(safe-area-inset-top))] text-foreground sm:px-6">
       <section className="w-full max-w-sm" aria-labelledby="login-title">
@@ -79,22 +84,32 @@ export function LoginPage() {
           Your private documents and spreadsheets, backed up to your Drive.
         </p>
 
-        {error ? (
+        {error || queryError ? (
           <div role="alert" className="mt-6 flex gap-2 rounded-xl border border-danger/40 bg-danger-soft p-3 text-sm leading-5 text-danger-soft-foreground">
             <ExclamationCircleIcon aria-hidden="true" className="size-5 shrink-0" />
-            <span>{error}</span>
+            <span>{error ?? queryError}</span>
           </div>
         ) : null}
 
         <div className="mt-7 flex justify-center">
-          <div ref={googleButtonRef} />
+          {isBackendAuthEnabled ? (
+            <button
+              type="button"
+              onClick={startBackendLogin}
+              className="min-h-11 rounded-[var(--radius-control)] bg-accent px-5 text-base font-semibold text-accent-foreground transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            >
+              Continue with Google
+            </button>
+          ) : (
+            <div ref={googleButtonRef} />
+          )}
         </div>
 
         {isLoading ? <p className="mt-3 text-center text-sm text-muted">Signing in...</p> : null}
         {configError ? <p role="alert" className="mt-3 text-center text-sm text-warning-soft-foreground">Google sign-in is not configured.</p> : null}
 
         <p aria-live="polite" className="sr-only">
-          {isLoading ? 'Signing in to MyBook' : error ?? ''}
+          {isLoading ? 'Signing in to MyBook' : error ?? queryError ?? ''}
         </p>
 
         <div className="mt-6 flex items-start gap-3 border-t border-[var(--app-border)] pt-5">

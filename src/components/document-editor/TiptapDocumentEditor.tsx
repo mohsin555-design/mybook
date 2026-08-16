@@ -100,7 +100,7 @@ function DesktopMenu({ label, children }: { label: string; children: ReactNode }
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-  const { content, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
+  const { content, isHydrated, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
   const [loadedId, setLoadedId] = useState<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
@@ -456,7 +456,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     : 'mybook-document-page mybook-document-page--continuous mx-auto min-h-[calc(100dvh-13rem)] w-full bg-transparent px-4 pb-[55vh] pt-6 shadow-none sm:px-6 md:px-16 md:pb-[55vh] md:pt-14'
 
   return (
-    <section className={`min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
+    <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
       <header className="sticky top-0 z-30 border-b border-[var(--app-border)] bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8">
         <div className="flex min-h-16 items-center gap-2">
           <button type="button" onClick={() => void close()} aria-label="Close document" className="flex size-11 shrink-0 items-center justify-center rounded-[10px] transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"><ArrowLeftIcon aria-hidden="true" className="size-5" /></button>

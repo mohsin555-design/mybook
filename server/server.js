@@ -112,7 +112,10 @@ async function getUserInfo(accessToken) {
 }
 
 function normalizePath(pathname) {
-  return pathname.startsWith('/api/auth') ? pathname.slice('/api/auth'.length) || '/' : pathname
+  if (pathname.startsWith('/api/auth')) return pathname.slice('/api/auth'.length) || '/'
+  if (pathname.startsWith('/auth')) return pathname.slice('/auth'.length) || '/'
+  if (pathname === '/api/health') return '/health'
+  return pathname
 }
 
 async function handleStart(req, res, url) {

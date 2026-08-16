@@ -83,6 +83,11 @@
     height: auto !important;
   }
 
+  .mybook-mobile-document-toolbar {
+    transform: translateZ(0);
+    will-change: bottom;
+  }
+
   .univer-mobile {
     touch-action: pan-x pan-y;
     overscroll-behavior: contain;
@@ -217,5 +222,26 @@
     .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { padding-left: 1.25rem; }
     .tiptap .mybook-file-attachment { align-items: flex-start; padding: 0.875rem; }
     .tiptap .mybook-file-attachment-meta { display: none; }
+  }
+
+  @supports (-webkit-touch-callout: none) {
+    .mybook-document-editor {
+      min-height: -webkit-fill-available;
+      padding-bottom: calc(6.5rem + var(--mybook-keyboard-offset, 0px) + env(safe-area-inset-bottom));
+    }
+
+    .mybook-document-editor .mybook-document-page {
+      padding-bottom: calc(60vh + var(--mybook-keyboard-offset, 0px) + env(safe-area-inset-bottom));
+    }
+
+    .mybook-document-editor .tiptap {
+      scroll-padding-top: 6rem;
+      scroll-padding-bottom: calc(8rem + var(--mybook-keyboard-offset, 0px) + env(safe-area-inset-bottom));
+    }
+
+    .mybook-mobile-document-toolbar {
+      backface-visibility: hidden;
+      contain: layout paint;
+    }
   }
 }

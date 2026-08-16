@@ -1,7 +1,6 @@
 import {
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
-  EllipsisHorizontalIcon,
   PlusIcon,
   TableCellsIcon,
   TrashIcon,

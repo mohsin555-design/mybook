@@ -1,7 +1,7 @@
 import { ArrowDownTrayIcon, ArrowPathIcon, SignalIcon } from '@heroicons/react/24/outline'
 import { Modal } from '@heroui/react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useAuthStore } from '../../stores/useAuthStore'
 import { AppButton } from './AppButton'
@@ -17,8 +17,13 @@ export function PwaStatus() {
   const [online, setOnline] = useState(() => navigator.onLine)
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [showInstallHelp, setShowInstallHelp] = useState(false)
+  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null)
   const { email, isAuthenticated } = useAuthStore()
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
+    onRegisteredSW: (_swUrl, swRegistration) => {
+      setRegistration(swRegistration ?? null)
+    },
+  })
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent)
   const isSafari = isIos && /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent)
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
@@ -60,6 +65,33 @@ export function PwaStatus() {
     setInstallPrompt(null)
   }
 
+  const checkForUpdates = useCallback(() => {
+    if (!registration) return
+    void registration.update().catch(() => undefined)
+  }, [registration])
+
+  useEffect(() => {
+    if (!registration) return
+
+    checkForUpdates()
+    const visibilityHandler = () => {
+      if (document.visibilityState === 'visible') checkForUpdates()
+    }
+    const pageShowHandler = () => checkForUpdates()
+    const focusHandler = () => checkForUpdates()
+    const interval = window.setInterval(checkForUpdates, isIos ? 30 * 60 * 1000 : 60 * 60 * 1000)
+
+    document.addEventListener('visibilitychange', visibilityHandler)
+    window.addEventListener('pageshow', pageShowHandler)
+    window.addEventListener('focus', focusHandler)
+    return () => {
+      document.removeEventListener('visibilitychange', visibilityHandler)
+      window.removeEventListener('pageshow', pageShowHandler)
+      window.removeEventListener('focus', focusHandler)
+      window.clearInterval(interval)
+    }
+  }, [checkForUpdates, isIos, registration])
+
   return <>
     {!online ? <div role="status" className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-sm text-warning-800"><SignalIcon className="mr-1 inline size-4" />Offline mode: saved local files remain available. Drive sync will resume when you reconnect.</div> : null}
     {needRefresh ? <div role="status" className="border-b border-accent/30 bg-accent/10 px-4 py-2 text-center text-sm"><ArrowPathIcon aria-hidden="true" className="mr-1 inline size-4" />Update available. <button type="button" className="min-h-11 rounded-lg px-2 font-semibold underline" onClick={() => void updateServiceWorker(true)}>Update MyBook</button></div> : null}
@@ -95,6 +127,27 @@ export function PwaStatus() {
                 {installPrompt ? 'Not now' : 'Got it'}
               </AppButton>
               {installPrompt ? <AppButton variant="primary" onPress={() => void install()}>Install</AppButton> : null}
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+    </Modal>
+
+    <Modal isOpen={needRefresh}>
+      <Modal.Backdrop>
+        <Modal.Container placement="center" className="px-4">
+          <Modal.Dialog className="w-full max-w-sm rounded-[var(--radius-dialog)] border border-[var(--app-border)] bg-white text-foreground">
+            <Modal.Header>
+              <Modal.Icon className="bg-accent/10 text-accent">
+                <ArrowPathIcon aria-hidden="true" className="size-6" />
+              </Modal.Icon>
+              <Modal.Heading className="text-lg">Update available</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body className="text-base leading-7 text-muted">
+              A newer version of MyBook is ready. Update now to use the latest fixes.
+            </Modal.Body>
+            <Modal.Footer className="flex-wrap">
+              <AppButton variant="primary" onPress={() => void updateServiceWorker(true)}>Update MyBook</AppButton>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

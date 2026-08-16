@@ -37,6 +37,27 @@ interface ToolButtonProps {
 }
 
 function ToolButton({ label, icon: Icon, active, disabled, onPress }: ToolButtonProps) {
+  const runPreservingScroll = () => {
+    const scrollTargets = [
+      document.querySelector('main'),
+      document.scrollingElement,
+    ].filter((target): target is Element => Boolean(target))
+    const positions = scrollTargets.map((target) => ({ target, top: target.scrollTop, left: target.scrollLeft }))
+
+    onPress()
+
+    const restore = () => {
+      for (const { target, top, left } of positions) {
+        target.scrollTop = top
+        target.scrollLeft = left
+      }
+    }
+    window.requestAnimationFrame(() => {
+      restore()
+      window.requestAnimationFrame(restore)
+    })
+  }
+
   return (
     <button
       type="button"
@@ -44,7 +65,8 @@ function ToolButton({ label, icon: Icon, active, disabled, onPress }: ToolButton
       aria-label={label}
       aria-pressed={active}
       disabled={disabled}
-      onClick={onPress}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={runPreservingScroll}
       className={`flex size-11 min-h-11 min-w-11 items-center justify-center rounded-[10px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-[var(--app-subtle)]'}`}
     >
       <Icon aria-hidden="true" className="size-5" />
@@ -297,7 +319,7 @@ export function DocumentToolbar({ editor, onInsertFile, onInsertImage, variant =
   }
 
   return (
-    <div role="toolbar" aria-label="Document formatting" className="fixed inset-x-0 z-40 border-t border-[var(--app-border)] bg-[var(--app-surface)] pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_rgba(0,0,0,0.06)] transition-[bottom] duration-150 md:hidden" style={{ bottom: keyboardOffset }}>
+    <div role="toolbar" aria-label="Document formatting" className="mybook-mobile-document-toolbar fixed inset-x-0 z-40 border-t border-[var(--app-border)] bg-[var(--app-surface)] pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_rgba(0,0,0,0.06)] transition-[bottom] duration-150 md:hidden" style={{ bottom: keyboardOffset }}>
       <div className="scrollbar mx-auto flex h-16 max-w-4xl items-center gap-1 overflow-x-auto overscroll-x-contain px-2 [scrollbar-width:thin]">
         <ToolbarControls editor={editor} idPrefix="mobile" onInsertFile={onInsertFile} onInsertImage={onInsertImage} variant="mobile" />
       </div>

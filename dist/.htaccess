@@ -9,3 +9,11 @@
   # Let React Router handle client-side routes.
   RewriteRule ^ index.html [L]
 </IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "^(sw\.js|workbox-.*\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+</IfModule>

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getFriendlyGoogleAuthError, isTokenFresh, useAuthStore } from './useAuthStore'
+import { getFriendlyGoogleAuthError, isBackendAuthEnabled, isTokenFresh, useAuthStore } from './useAuthStore'
 
 describe('auth helpers', () => {
   beforeEach(() => {
@@ -76,7 +76,7 @@ describe('auth helpers', () => {
     })
   })
 
-  it('silently renews an expired Drive token when Google allows it', async () => {
+  it.skipIf(isBackendAuthEnabled)('silently renews an expired Drive token when Google allows it', async () => {
     const requestAccessToken = vi.fn((overrides?: { prompt?: string }) => {
       expect(overrides).toEqual({ prompt: '' })
     })
@@ -118,6 +118,33 @@ describe('auth helpers', () => {
     expect(useAuthStore.getState()).toMatchObject({
       isAuthenticated: true,
       accessToken: 'fresh-token',
+      error: null,
+    })
+  })
+
+  it.runIf(isBackendAuthEnabled)('requests a Drive token from the backend when server auth is enabled', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      accessToken: 'backend-token',
+      expiresIn: 3600,
+      email: 'reader@example.com',
+    }), { status: 200 }))
+
+    useAuthStore.setState({
+      isAuthenticated: true,
+      email: 'reader@example.com',
+      accessToken: null,
+      accessTokenExpiresAt: null,
+    })
+
+    await expect(useAuthStore.getState().getAccessToken()).resolves.toBe('backend-token')
+    expect(window.fetch).toHaveBeenCalledWith('/api/auth/token', {
+      method: 'POST',
+      credentials: 'include',
+    })
+    expect(useAuthStore.getState()).toMatchObject({
+      isAuthenticated: true,
+      email: 'reader@example.com',
+      accessToken: 'backend-token',
       error: null,
     })
   })

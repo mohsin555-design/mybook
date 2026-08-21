@@ -4,4 +4,5 @@ dist
 .env.local
 *.local
 *.log
+dist.zip
 .DS_Store

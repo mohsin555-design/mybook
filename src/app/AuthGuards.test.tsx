@@ -8,7 +8,7 @@ import { RedirectAuthenticated, RequireAuth } from './AuthGuards'
 import { useAuthStore } from '../stores/useAuthStore'
 
 describe('route protection', () => {
-  beforeEach(() => useAuthStore.setState({ isAuthenticated: false, error: null }))
+  beforeEach(() => useAuthStore.setState({ isAuthenticated: false, isLoading: false, error: null }))
 
   it('redirects unauthenticated users to login', () => {
     render(<MemoryRouter initialEntries={['/home']}><Routes><Route element={<RequireAuth />}><Route path="/home" element={<p>Home</p>} /></Route><Route path="/login" element={<p>Login</p>} /></Routes></MemoryRouter>)

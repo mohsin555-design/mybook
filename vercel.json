@@ -15,5 +15,12 @@
       "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
     }
   ],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/api/auth/google/start", "destination": "/api/auth-google-start" },
+    { "source": "/api/auth/google/callback", "destination": "/api/auth-google-callback" },
+    { "source": "/api/auth/session", "destination": "/api/auth-session" },
+    { "source": "/api/auth/token", "destination": "/api/auth-token" },
+    { "source": "/api/auth/logout", "destination": "/api/auth-logout" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

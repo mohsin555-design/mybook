@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getFriendlyGoogleAuthError, isBackendAuthEnabled, isTokenFresh, useAuthStore } from './useAuthStore'
 
+const canRunBrowserTokenTest = !isBackendAuthEnabled && Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim())
+
 describe('auth helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -76,7 +78,7 @@ describe('auth helpers', () => {
     })
   })
 
-  it.skipIf(isBackendAuthEnabled)('silently renews an expired Drive token when Google allows it', async () => {
+  it.skipIf(!canRunBrowserTokenTest)('silently renews an expired Drive token when Google allows it', async () => {
     const requestAccessToken = vi.fn((overrides?: { prompt?: string }) => {
       expect(overrides).toEqual({ prompt: '' })
     })

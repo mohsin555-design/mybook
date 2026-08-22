@@ -6,3 +6,7 @@ export const navigationItems: NavigationItem[] = [
   { label: 'Preferences', path: '/settings', iconSrc: '/icons/gear.svg' },
   { label: 'Search', path: '/search', iconSrc: '/icons/magnifier.svg' },
 ]
+
+export function getSafeReturnPath(path: unknown) {
+  return typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') ? path : '/home'
+}

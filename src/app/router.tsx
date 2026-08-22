@@ -12,8 +12,10 @@ import { SettingsPage } from '../pages/SettingsPage'
 import { SearchPage } from '../pages/SearchPage'
 import { TrashPage } from '../pages/TrashPage'
 import { RedirectAuthenticated, RequireAuth } from './AuthGuards'
+import { LegacyGoogleAuthStartRedirect } from './LegacyGoogleAuthStartRedirect'
 
 export const router = createBrowserRouter([
+  { path: '/api/auth/google/start', element: <LegacyGoogleAuthStartRedirect /> },
   {
     element: <RedirectAuthenticated />,
     children: [{ path: '/login', element: <LoginPage /> }],

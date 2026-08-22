@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 
 import { authApiUrl, getAuthConfigError, isBackendAuthEnabled, useAuthStore } from '../stores/useAuthStore'
 import { loadGoogleIdentity } from '../utils/googleIdentity'
+import { getSafeReturnPath } from '../utils/navigation'
 
 interface LoginLocationState {
   from?: string
@@ -18,7 +19,7 @@ export function LoginPage() {
   const location = useLocation()
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const { clearError, error, isLoading, completeLogin } = useAuthStore()
-  const destination = (location.state as LoginLocationState | null)?.from ?? '/home'
+  const destination = getSafeReturnPath((location.state as LoginLocationState | null)?.from)
   const queryError = new URLSearchParams(location.search).get('error')
   const configError = getAuthConfigError()
 

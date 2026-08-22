@@ -104,7 +104,7 @@ async function getDriveFileContent(fileId: string) {
 }
 
 async function getDriveFileBlob(fileId: string) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -114,7 +114,7 @@ async function getDriveFileBlob(fileId: string) {
 }
 
 async function exportGoogleWorkspaceFile(fileId: string, mimeType: string) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const response = await fetch(`${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(mimeType)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -430,7 +430,7 @@ function safeXlsxName(name: string) {
 }
 
 async function uploadXlsxBlob(name: string, blob: Blob, parentId: string, fileId?: string | null, targetMimeType = XLSX_MIME) {
-  const accessToken = useAuthStore.getState().getAccessToken()
+  const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const metadata = {
     name: targetMimeType === GOOGLE_SHEET_MIME ? name.replace(/\.xlsx$/i, '').trim() || 'Untitled spreadsheet' : safeXlsxName(name),
@@ -509,7 +509,7 @@ export async function copyDriveFileLink(fileId: string): Promise<{ success: bool
     await navigator.clipboard.writeText(`https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`)
     return { success: true }
   } catch {
-    return { success: false, error: 'Could not copy the Google Drive link.' }
+    return { success: false, error: 'Could not copy the backup link.' }
   }
 }
 
@@ -633,6 +633,16 @@ function localFileName(name: string, type: 'document' | 'spreadsheet') {
   return type === 'spreadsheet'
     ? name.replace(/\.xlsx$/i, '')
     : name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').replace(/\.docx$/i, '')
+}
+
+function preferLocalFileMatch<T extends { driveFileId: string | null; syncStatus: string; lastSyncedAt: string | null; updatedAt: string }>(current: T | undefined, candidate: T) {
+  if (!current) return candidate
+  const currentScore = (current.driveFileId ? 100 : 0) + (current.syncStatus === 'backed-up' ? 20 : 0)
+  const candidateScore = (candidate.driveFileId ? 100 : 0) + (candidate.syncStatus === 'backed-up' ? 20 : 0)
+  if (candidateScore !== currentScore) return candidateScore > currentScore ? candidate : current
+  const currentTime = new Date(current.lastSyncedAt ?? current.updatedAt).getTime()
+  const candidateTime = new Date(candidate.lastSyncedAt ?? candidate.updatedAt).getTime()
+  return candidateTime > currentTime ? candidate : current
 }
 
 function normalizedTitle(value: string) {
@@ -789,8 +799,10 @@ export async function importDriveFilesToLocal() {
   const byDriveId = new Map(localFiles.filter((file) => file.driveFileId).map((file) => [file.driveFileId as string, file]))
   const byNameAndParent = new Map<string, typeof localFiles[number]>()
   for (const file of localFiles) {
-    byNameAndParent.set(`${file.folderId ?? 'root'}:${file.name.toLowerCase()}`, file)
-    byNameAndParent.set(`${file.folderId ?? 'root'}:${localFileName(file.name, file.type).toLowerCase()}`, file)
+    const exactKey = `${file.folderId ?? 'root'}:${file.name.toLowerCase()}`
+    const localNameKey = `${file.folderId ?? 'root'}:${localFileName(file.name, file.type).toLowerCase()}`
+    byNameAndParent.set(exactKey, preferLocalFileMatch(byNameAndParent.get(exactKey), file))
+    byNameAndParent.set(localNameKey, preferLocalFileMatch(byNameAndParent.get(localNameKey), file))
   }
   const folderByDriveId = new Map(localFolders.filter((folder) => folder.driveFolderId).map((folder) => [folder.driveFolderId as string, folder]))
   const seenDriveFileIds = new Set<string>()

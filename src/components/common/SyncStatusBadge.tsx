@@ -12,10 +12,10 @@ interface SyncStatusBadgeProps {
 }
 
 const statusConfig = {
-  pending: { label: 'Backup pending', className: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300', icon: ArrowPathIcon },
-  'backing-up': { label: 'Backing up', className: 'bg-primary/10 text-primary', icon: ArrowPathIcon },
-  'backed-up': { label: 'Backed up', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', icon: CheckCircleIcon },
-  failed: { label: 'Backup failed', className: 'bg-destructive/10 text-destructive', icon: ExclamationCircleIcon },
+  pending: { label: 'Syncing', className: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300', icon: ArrowPathIcon },
+  'backing-up': { label: 'Syncing', className: 'bg-primary/10 text-primary', icon: ArrowPathIcon },
+  'backed-up': { label: 'Synced', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', icon: CheckCircleIcon },
+  failed: { label: 'Sync paused', className: 'bg-destructive/10 text-destructive', icon: ExclamationCircleIcon },
   offline: { label: 'Offline', className: 'bg-muted text-muted-foreground', icon: ExclamationCircleIcon },
 } as const
 

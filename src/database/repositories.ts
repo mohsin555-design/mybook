@@ -18,6 +18,14 @@ function cleanName(name: string) {
   return name.trim().replace(/\s+/g, ' ')
 }
 
+function appFileName(name: string, type: FileType) {
+  const cleaned = cleanName(name)
+  const withoutExtension = type === 'spreadsheet'
+    ? cleaned.replace(/\.xlsx$/i, '')
+    : cleaned.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').replace(/\.docx$/i, '')
+  return cleanName(withoutExtension) || cleaned
+}
+
 async function queueFolderSync(folderId: string, operation: SyncOperation, errorMessage: string | null = null) {
   const existing = await db.syncQueue.filter((item) => item.entityType === 'folder' && item.entityId === folderId && item.status !== 'completed').first()
   const now = new Date().toISOString()
@@ -131,7 +139,33 @@ export const processPendingDriveFolderSync = processPendingDriveSync
 
 async function uniqueFileName(name: string, folderId: string | null, excludedId?: string) {
   const files = await db.files.filter((file) => file.folderId === folderId).toArray()
-  return !files.some((file) => file.id !== excludedId && !file.isDeleted && file.folderId === folderId && file.name.toLocaleLowerCase() === name.toLocaleLowerCase())
+  return !files.some((file) => file.id !== excludedId && !file.isDeleted && file.folderId === folderId && appFileName(file.name, file.type).toLocaleLowerCase() === name.toLocaleLowerCase())
+}
+
+function logicalFileKeys(file: MyBookFile) {
+  const nameKey = `${file.folderId ?? 'root'}:${file.type}:${appFileName(file.name, file.type).toLocaleLowerCase()}`
+  return file.driveFileId ? [`drive:${file.driveFileId}`, `name:${nameKey}`] : [`name:${nameKey}`]
+}
+
+function filePreference(file: MyBookFile) {
+  const syncScore = file.driveFileId ? 100 : 0
+  const backedUpScore = file.syncStatus === 'backed-up' ? 20 : 0
+  const syncedAt = file.lastSyncedAt ? new Date(file.lastSyncedAt).getTime() : 0
+  const updatedAt = new Date(file.updatedAt).getTime()
+  return syncScore + backedUpScore + Math.max(syncedAt, updatedAt) / 1_000_000_000_000
+}
+
+function uniqueLogicalFiles(files: MyBookFile[]) {
+  const sorted = [...files].sort((a, b) => filePreference(b) - filePreference(a))
+  const seen = new Set<string>()
+  const visible: MyBookFile[] = []
+  for (const file of sorted) {
+    const keys = logicalFileKeys(file)
+    if (keys.some((key) => seen.has(key))) continue
+    keys.forEach((key) => seen.add(key))
+    visible.push(file)
+  }
+  return visible
 }
 
 export const fileRepository = {
@@ -146,14 +180,19 @@ export const fileRepository = {
       return { success: true, data: synced ?? file }
     } catch (error) { return failure(error, 'Could not create file.') }
   },
-  async get(id: string) { try { return { success: true, data: await db.files.get(id) } } catch (error) { return failure(error, 'Could not load file.') } },
+  async get(id: string) {
+    try {
+      const file = await db.files.get(id)
+      return { success: true, data: file ? { ...file, name: appFileName(file.name, file.type) } : file }
+    } catch (error) { return failure(error, 'Could not load file.') }
+  },
   async update(id: string, changes: Partial<Omit<MyBookFile, 'id'>>): Promise<RepositoryResult> {
     try {
       const existing = await db.files.get(id)
       if (!existing) return { success: false, error: 'File could not be found.' }
       if (changes.content !== undefined && changes.content === existing.content && Object.keys(changes).every((key) => key === 'content')) return { success: true }
       if (changes.name !== undefined) {
-        const name = cleanName(changes.name)
+        const name = appFileName(changes.name, existing.type)
         if (!name) return { success: false, error: 'File name cannot be empty.' }
         const file = await db.files.get(id)
         if (!file) return { success: false, error: 'File could not be found.' }
@@ -189,8 +228,21 @@ export const fileRepository = {
     } catch (error) { return failure(error, 'Could not restore file.') }
   },
   async permanentlyDelete(id: string): Promise<RepositoryResult> { try { await db.files.delete(id); return { success: true } } catch (error) { return failure(error, 'Could not permanently delete file.') } },
-  async list(includeDeleted = false): Promise<MyBookFile[]> { try { return await db.files.filter((file) => includeDeleted || !file.isDeleted).toArray() } catch (error) { devLog('error', 'Could not list files.', error); return [] } },
-  async search(query: string): Promise<MyBookFile[]> { try { const value = query.trim().toLocaleLowerCase(); return await db.files.filter((file) => !file.isDeleted && file.name.toLocaleLowerCase().includes(value)).toArray() } catch (error) { devLog('error', 'Could not search files.', error); return [] } },
+  async list(includeDeleted = false): Promise<MyBookFile[]> {
+    try {
+      const files = await db.files.filter((file) => includeDeleted || !file.isDeleted).toArray()
+      const normalized = files.map((file) => ({ ...file, name: appFileName(file.name, file.type) }))
+      return includeDeleted ? normalized : uniqueLogicalFiles(normalized)
+    } catch (error) { devLog('error', 'Could not list files.', error); return [] }
+  },
+  async search(query: string): Promise<MyBookFile[]> {
+    try {
+      const value = query.trim().toLocaleLowerCase()
+      const files = (await db.files.filter((file) => !file.isDeleted && appFileName(file.name, file.type).toLocaleLowerCase().includes(value)).toArray())
+        .map((file) => ({ ...file, name: appFileName(file.name, file.type) }))
+      return uniqueLogicalFiles(files)
+    } catch (error) { devLog('error', 'Could not search files.', error); return [] }
+  },
   async duplicate(id: string): Promise<RepositoryResult<MyBookFile>> {
     try {
       const source = await db.files.get(id)

@@ -13,6 +13,9 @@ These instructions apply to the whole repository.
   - `test/...` for test-only work.
 - Keep branch names short, lowercase, and hyphen-separated.
 - Before creating a branch, check the current branch and working tree state.
+- Before creating a fix branch, make sure local `main` is up to date with `origin/main`.
+- If `main` is behind, ask before pulling, rebasing, or otherwise updating it.
+- Prefer creating new work branches from the latest `origin/main` to avoid CI failures caused by a stale base branch.
 
 ## Working Tree Safety
 
@@ -46,6 +49,8 @@ npm run build:production
 ```
 
 If any check fails, fix the issue before finishing. If a failure cannot be fixed in the current task, clearly report the failing command and the reason.
+
+If checks pass locally but the branch was created from an outdated `main`, rebase or recreate the branch on the latest `origin/main` before pushing.
 
 ## Tests
 

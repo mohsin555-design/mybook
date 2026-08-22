@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getFriendlyGoogleAuthError, isBackendAuthEnabled, isTokenFresh, useAuthStore } from './useAuthStore'
+import { authApiUrl, getFriendlyGoogleAuthError, isBackendAuthEnabled, isTokenFresh, useAuthStore } from './useAuthStore'
 
 const canRunBrowserTokenTest = !isBackendAuthEnabled && Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim())
+
+function createGoogleCredential(payload: Record<string, unknown>) {
+  return [
+    'header',
+    btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+    'signature',
+  ].join('.')
+}
 
 describe('auth helpers', () => {
   beforeEach(() => {
@@ -30,6 +38,51 @@ describe('auth helpers', () => {
     expect(isTokenFresh(now + 61_000)).toBe(true)
     expect(isTokenFresh(now + 30_000)).toBe(false)
     expect(isTokenFresh(null)).toBe(false)
+  })
+
+  it.skipIf(isBackendAuthEnabled)('completes Google credential login with a Drive access token', async () => {
+    const requestAccessToken = vi.fn((overrides?: { prompt?: string }) => {
+      expect(overrides).toEqual({ prompt: '' })
+    })
+    const tokenCallbacks: Array<(response: { access_token?: string; expires_in?: number }) => void> = []
+    Object.defineProperty(window, 'google', {
+      configurable: true,
+      value: {
+        accounts: {
+          oauth2: {
+            initTokenClient: vi.fn((config: { callback: (response: { access_token?: string; expires_in?: number }) => void }) => {
+              tokenCallbacks.push(config.callback)
+              return { requestAccessToken }
+            }),
+            revoke: vi.fn(),
+          },
+          id: {
+            disableAutoSelect: vi.fn(),
+            initialize: vi.fn(),
+            prompt: vi.fn(),
+            renderButton: vi.fn(),
+          },
+        },
+      },
+    })
+
+    const credential = createGoogleCredential({
+      email: 'Reader@Example.com',
+      email_verified: true,
+    })
+    const loginPromise = useAuthStore.getState().completeLogin(credential, '')
+    await vi.waitFor(() => expect(requestAccessToken).toHaveBeenCalled())
+    const callback = tokenCallbacks[0]
+    if (!callback) throw new Error('Google token callback was not registered.')
+    callback({ access_token: 'drive-token', expires_in: 3600 })
+
+    await expect(loginPromise).resolves.toBe(true)
+    expect(useAuthStore.getState()).toMatchObject({
+      isAuthenticated: true,
+      email: 'reader@example.com',
+      accessToken: 'drive-token',
+      error: null,
+    })
   })
 
   it('restores a valid login after the browser session is reopened', async () => {
@@ -139,7 +192,7 @@ describe('auth helpers', () => {
     })
 
     await expect(useAuthStore.getState().getAccessToken()).resolves.toBe('backend-token')
-    expect(window.fetch).toHaveBeenCalledWith('/api/auth/token', {
+    expect(window.fetch).toHaveBeenCalledWith(authApiUrl('/token'), {
       method: 'POST',
       credentials: 'include',
     })

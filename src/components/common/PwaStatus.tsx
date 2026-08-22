@@ -1,9 +1,16 @@
 import { ArrowDownTrayIcon, ArrowPathIcon, SignalIcon } from '@heroicons/react/24/outline'
-import { Modal } from '@heroui/react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useAuthStore } from '../../stores/useAuthStore'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog'
 import { AppButton } from './AppButton'
 
 interface BeforeInstallPromptEvent extends Event {
@@ -93,65 +100,57 @@ export function PwaStatus() {
   }, [checkForUpdates, isIos, registration])
 
   return <>
-    {!online ? <div role="status" className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-sm text-warning-800"><SignalIcon className="mr-1 inline size-4" />Offline mode: saved local files remain available. Drive sync will resume when you reconnect.</div> : null}
-    {needRefresh ? <div role="status" className="border-b border-accent/30 bg-accent/10 px-4 py-2 text-center text-sm"><ArrowPathIcon aria-hidden="true" className="mr-1 inline size-4" />Update available. <button type="button" className="min-h-11 rounded-lg px-2 font-semibold underline" onClick={() => void updateServiceWorker(true)}>Update MyBook</button></div> : null}
+    {!online ? <div role="status" className="border-b border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-center text-sm text-yellow-800"><SignalIcon className="mr-1 inline size-4" />Offline mode: saved local files remain available. Drive sync will resume when you reconnect.</div> : null}
+    {needRefresh ? <div role="status" className="border-b border-accent/30 bg-primary/10 px-4 py-2 text-center text-sm"><ArrowPathIcon aria-hidden="true" className="mr-1 inline size-4" />Update available. <button type="button" className="min-h-11 rounded-lg px-2 font-semibold underline" onClick={() => void updateServiceWorker(true)}>Update MyBook</button></div> : null}
 
-    <Modal
-      isOpen={showInstallHelp}
+    <Dialog
+      open={showInstallHelp}
       onOpenChange={(isOpen) => {
         if (!isOpen) dismissInstallHelp()
       }}
     >
-      <Modal.Backdrop>
-        <Modal.Container placement="center" className="px-4">
-          <Modal.Dialog className="w-full max-w-sm rounded-[var(--radius-dialog)] border border-[var(--app-border)] bg-white text-foreground">
-            <Modal.Header>
-              <Modal.Icon className="bg-accent/10 text-accent">
-                <ArrowDownTrayIcon aria-hidden="true" className="size-6" />
-              </Modal.Icon>
-              <Modal.Heading className="text-lg">Install MyBook</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body className="text-base leading-7 text-muted">
-              {isSafari ? (
-                <ol className="list-decimal space-y-2 pl-5">
-                  <li>Tap Safari&apos;s Share button.</li>
-                  <li>Choose <span className="font-medium text-foreground">Add to Home Screen</span>.</li>
-                  <li>Tap <span className="font-medium text-foreground">Add</span>.</li>
-                </ol>
-              ) : (
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <ArrowDownTrayIcon aria-hidden="true" className="size-6" />
+          </div>
+          <DialogTitle>Install MyBook</DialogTitle>
+          <div className="text-sm leading-6 text-muted-foreground">
+            {isSafari ? (
+              <ol className="list-decimal space-y-2 pl-5">
+                <li>Tap Safari&apos;s Share button.</li>
+                <li>Choose <span className="font-medium text-foreground">Add to Home Screen</span>.</li>
+                <li>Tap <span className="font-medium text-foreground">Add</span>.</li>
+              </ol>
+            ) : (
                 <p>Install MyBook for faster access and reliable offline use.</p>
               )}
-            </Modal.Body>
-            <Modal.Footer className="flex-wrap">
-              <AppButton variant="secondary" onPress={dismissInstallHelp}>
-                {installPrompt ? 'Not now' : 'Got it'}
-              </AppButton>
-              {installPrompt ? <AppButton variant="primary" onPress={() => void install()}>Install</AppButton> : null}
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+          </div>
+        </DialogHeader>
+        <DialogFooter>
+          <AppButton variant="secondary" onPress={dismissInstallHelp}>
+            {installPrompt ? 'Not now' : 'Got it'}
+          </AppButton>
+          {installPrompt ? <AppButton variant="primary" onPress={() => void install()}>Install</AppButton> : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
-    <Modal isOpen={needRefresh}>
-      <Modal.Backdrop>
-        <Modal.Container placement="center" className="px-4">
-          <Modal.Dialog className="w-full max-w-sm rounded-[var(--radius-dialog)] border border-[var(--app-border)] bg-white text-foreground">
-            <Modal.Header>
-              <Modal.Icon className="bg-accent/10 text-accent">
-                <ArrowPathIcon aria-hidden="true" className="size-6" />
-              </Modal.Icon>
-              <Modal.Heading className="text-lg">Update available</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body className="text-base leading-7 text-muted">
-              A newer version of MyBook is ready. Update now to use the latest fixes.
-            </Modal.Body>
-            <Modal.Footer className="flex-wrap">
-              <AppButton variant="primary" onPress={() => void updateServiceWorker(true)}>Update MyBook</AppButton>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+    <Dialog open={needRefresh}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <ArrowPathIcon aria-hidden="true" className="size-6" />
+          </div>
+          <DialogTitle>Update available</DialogTitle>
+          <DialogDescription>
+            A newer version of MyBook is ready. Update now to use the latest fixes.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <AppButton variant="primary" onPress={() => void updateServiceWorker(true)}>Update MyBook</AppButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </>
 }

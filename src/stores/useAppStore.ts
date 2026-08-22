@@ -8,6 +8,11 @@ interface AppState {
   toggleNavigation: () => void
 }
 
+function applyTheme(theme: AppState['theme']) {
+  document.documentElement.dataset.theme = theme
+  document.documentElement.classList.toggle('dark', theme === 'dark')
+}
+
 export const useAppStore = create<AppState>((set) => ({
   isNavigationOpen: false,
   theme: 'light',
@@ -15,7 +20,7 @@ export const useAppStore = create<AppState>((set) => ({
   toggleTheme: () =>
     set((state) => {
       const theme = state.theme === 'light' ? 'dark' : 'light'
-      document.documentElement.dataset.theme = theme
+      applyTheme(theme)
       return { theme }
     }),
   toggleNavigation: () =>

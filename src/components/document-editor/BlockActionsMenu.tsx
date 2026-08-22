@@ -108,7 +108,7 @@ function ActionButton({
         event.preventDefault()
         onClick()
       }}
-      className="flex size-9 items-center justify-center rounded-[8px] text-muted transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-35"
+      className="flex size-9 items-center justify-center rounded-[8px] text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-35"
     >
       {children}
     </button>

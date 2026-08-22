@@ -11,6 +11,20 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { navigationItems } from '../../utils/navigation'
 import { IconButton } from '../common/IconButton'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+} from '../ui/sidebar'
 import { MobileBottomNavigation } from './MobileBottomNavigation'
 
 export function AppLayout() {
@@ -20,63 +34,101 @@ export function AppLayout() {
   const { pathname } = useLocation()
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
 
+  if (isEditor) {
+    return (
+      <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-background text-foreground">
+        <main className="min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain bg-background p-0">
+          <Outlet />
+        </main>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-white text-zinc-900">
-      {!isEditor ? <header className="sticky top-0 z-30 hidden shrink-0 border-b border-[var(--app-border)] bg-white/95 pt-[env(safe-area-inset-top)] backdrop-blur lg:block">
-        <div className="mx-auto flex h-16 w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
-          <NavLink to="/home" className="flex items-center gap-2 font-semibold">
-            <BookOpenIcon aria-hidden="true" className="size-7 text-accent" />
-            <span className="text-lg">MyBook</span>
-          </NavLink>
-          <div className="ml-auto flex items-center gap-2">
-            <span className={`hidden max-w-[16rem] rounded-full px-3 py-1 text-xs font-medium sm:inline-flex ${isAuthenticated ? 'bg-success/10 text-success' : 'bg-default text-muted'}`}>
-              {isAuthenticated ? `Signed in${email ? ` as ${email}` : ''}` : 'Not signed in'}
-            </span>
-            <IconButton
-              label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-              variant="ghost"
-              onPress={toggleTheme}
-            >
-              {theme === 'light' ? (
-                <MoonIcon className="size-5" />
-              ) : (
-                <SunIcon className="size-5" />
-              )}
-            </IconButton>
-          </div>
-        </div>
-      </header> : null}
-
-      <div className={`${isEditor ? 'mx-0 max-w-none' : 'mx-auto max-w-[1600px]'} flex min-h-0 w-full flex-1`}>
-        <aside className={`${isEditor ? 'hidden' : 'hidden lg:flex'} w-60 shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-surface)] p-4`}>
-          <nav aria-label="Main navigation" className="flex flex-col gap-1">
-            {navigationItems.map((item) => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex min-h-11 items-center gap-3 rounded-[10px] px-3 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted hover:bg-default hover:text-foreground'
-                  }`
-                }
+    <SidebarProvider className="h-dvh min-h-[480px] overflow-hidden bg-background text-foreground">
+      <Sidebar side="left" collapsible="icon">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={<NavLink to="/home" />}
+                size="lg"
+                tooltip="MyBook"
               >
-                <img src={item.iconSrc} alt="" aria-hidden="true" className="size-5" />
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-          <NavLink to="/trash" className={({ isActive }) => `mt-auto flex min-h-11 items-center gap-3 rounded-[10px] px-3 text-sm font-medium ${isActive ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-default hover:text-foreground'}`}><TrashIcon aria-hidden="true" className="size-5" />Trash</NavLink>
-        </aside>
+                <BookOpenIcon aria-hidden="true" className="size-5 text-sidebar-primary" />
+                <span className="font-semibold">MyBook</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {navigationItems.map((item) => (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      render={<NavLink to={item.path} />}
+                      isActive={pathname === item.path}
+                      size="lg"
+                      tooltip={item.label}
+                    >
+                      <img src={item.iconSrc} alt="" aria-hidden="true" className="size-5" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={<NavLink to="/trash" />}
+                isActive={pathname === '/trash'}
+                size="lg"
+                tooltip="Trash"
+              >
+                <TrashIcon aria-hidden="true" className="size-5" />
+                <span>Trash</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
 
-        <main className={`min-w-0 flex-1 overflow-y-auto overscroll-contain bg-white ${isEditor ? 'overflow-x-auto p-0' : 'overflow-x-hidden px-0 pb-[calc(7rem+env(safe-area-inset-bottom))] lg:px-8 lg:pb-8 lg:pt-6'}`}>
-          <div className={isEditor ? 'w-full' : 'mx-auto w-full max-w-6xl'}>
+      <SidebarInset className="min-w-0 overflow-hidden">
+        <header className="sticky top-0 z-30 hidden shrink-0 border-b bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur md:block">
+          <div className="flex h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-8">
+            <div className="ml-auto flex items-center gap-2">
+              <span className={`hidden max-w-[16rem] rounded-full px-3 py-1 text-xs font-medium sm:inline-flex ${isAuthenticated ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+                {isAuthenticated ? `Signed in${email ? ` as ${email}` : ''}` : 'Not signed in'}
+              </span>
+              <IconButton
+                label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+                variant="ghost"
+                onPress={toggleTheme}
+              >
+                {theme === 'light' ? (
+                  <MoonIcon className="size-5" />
+                ) : (
+                  <SunIcon className="size-5" />
+                )}
+              </IconButton>
+            </div>
+          </div>
+        </header>
+
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-background px-0 pb-[calc(7rem+env(safe-area-inset-bottom))] md:px-8 md:pb-8 md:pt-6">
+          <div className="mx-auto w-full max-w-6xl">
             <Outlet />
           </div>
         </main>
-      </div>
-      {!isEditor ? <MobileBottomNavigation /> : null}
-    </div>
+        <MobileBottomNavigation />
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

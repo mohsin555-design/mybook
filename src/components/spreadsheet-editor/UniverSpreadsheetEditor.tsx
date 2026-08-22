@@ -1,5 +1,5 @@
 import { ArrowDownTrayIcon, ArrowLeftIcon, ArrowUpTrayIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline'
-import { Dropdown } from '@heroui/react'
+import { Dropdown } from '../ui/compat-dropdown'
 import '@univerjs/preset-sheets-core/lib/index.css'
 import UniverPresetSheetsCoreEnUS from '@univerjs/preset-sheets-core/locales/en-US'
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core'
@@ -144,7 +144,7 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     }
   }, [content, file, hasCheckedDrive, isCheckingDrive, isHydrated, save, status])
 
-  if (file === undefined) return <div role="status" className="p-4 text-muted">Loading spreadsheet…</div>
+  if (file === undefined) return <div role="status" className="p-4 text-muted-foreground">Loading spreadsheet…</div>
   if (!file || file.isDeleted) return <EmptyState title="Spreadsheet not found" description="This spreadsheet may have been moved to Trash or deleted." />
 
   const close = async () => { await save(); navigate(file.folderId ? `/folders/${file.folderId}` : '/home') }
@@ -227,7 +227,7 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     <section className="-mx-4 -my-6 flex min-h-0 flex-col sm:-mx-6 lg:-mx-8" style={{ height: editorHeight }}>
       <header className="z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-[var(--app-border)] bg-background px-2 sm:px-4">
         <button type="button" onClick={() => void close()} aria-label="Close spreadsheet" className="flex size-11 shrink-0 items-center justify-center rounded-[10px]"><ArrowLeftIcon aria-hidden="true" className="size-5" /></button>
-        <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">{file.name}</h1><EditorStatus status={status} />{cloudMessage ? <p className="mt-1 text-xs text-muted">{cloudMessage}</p> : null}{file.driveFileId ? <p className="mt-1 text-xs text-muted">{driveExists === false ? 'Drive file not found' : 'Drive file exists'}{file.lastSyncedAt ? ` · Last backup ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? ` · ${file.syncError}` : ''}</p> : null}</div>
+        <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">{file.name}</h1><EditorStatus status={status} />{cloudMessage ? <p className="mt-1 text-xs text-muted-foreground">{cloudMessage}</p> : null}{file.driveFileId ? <p className="mt-1 text-xs text-muted-foreground">{driveExists === false ? 'Drive file not found' : 'Drive file exists'}{file.lastSyncedAt ? ` · Last backup ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? ` · ${file.syncError}` : ''}</p> : null}</div>
         <Dropdown><Dropdown.Trigger aria-label="More spreadsheet actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Spreadsheet actions" onAction={handleMenuAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Back up now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId || driveExists === false}>Open in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId || driveExists === false}>Copy Drive link</Dropdown.Item><Dropdown.Item id="download-local">Download local copy</Dropdown.Item><Dropdown.Item id="import"><span className="flex items-center gap-2"><ArrowUpTrayIcon aria-hidden="true" className="size-5" />Import XLSX</span></Dropdown.Item><Dropdown.Item id="export">Export XLSX</Dropdown.Item><Dropdown.Item id="download"><span className="flex items-center gap-2"><ArrowDownTrayIcon aria-hidden="true" className="size-5" />Download XLSX</span></Dropdown.Item><Dropdown.Item id="close">Close spreadsheet</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
         <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void save()}>Save</AppButton>
         <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void backupNow()}>Back up now</AppButton>
@@ -238,7 +238,7 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
       {(isConverting || xlsxMessage || xlsxWarnings.length > 0) && (
         <div className="shrink-0 border-b border-[var(--app-border)] bg-background px-4 py-2 text-sm" role={xlsxMessage?.toLowerCase().includes('could not') || xlsxMessage?.toLowerCase().includes('invalid') ? 'alert' : 'status'}>
           <p className="font-medium">{isConverting ? 'Processing XLSX…' : xlsxMessage}</p>
-          {xlsxWarnings.map((warning) => <p key={warning} className="mt-1 text-warning-700 dark:text-warning-400">{warning}</p>)}
+          {xlsxWarnings.map((warning) => <p key={warning} className="mt-1 text-yellow-700 dark:text-yellow-300">{warning}</p>)}
           {xlsxBlob && <span className="sr-only">Prepared XLSX size: {xlsxBlob.size} bytes.</span>}
         </div>
       )}

@@ -1,4 +1,3 @@
-import { Tabs } from '@heroui/react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -12,6 +11,7 @@ import { FolderNameDialog } from '../components/files/FolderNameDialog'
 import { fileRepository, folderRepository } from '../database/repositories'
 import { useLibraryData } from '../hooks/useLibraryData'
 import type { MyBookFile } from '../types/files'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 
 type HomeTab = 'recent' | 'favorites' | 'all'
 
@@ -64,29 +64,17 @@ export function HomePage() {
 
       <Tabs
         className="-mx-4 mt-2"
-        selectedKey={activeTab}
-        onSelectionChange={(key) => setActiveTab(String(key) as HomeTab)}
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as HomeTab)}
       >
-        <Tabs.ListContainer className="mx-4 rounded-3xl bg-default px-1">
-          <Tabs.List aria-label="File view" className="grid w-full grid-cols-3 gap-0.5">
-            {([
-              ['recent', 'Recent'],
-              ['favorites', 'Favorites'],
-              ['all', 'All files'],
-            ] as const).map(([id, label]) => (
-              <Tabs.Tab
-                key={id}
-                id={id}
-                className="relative flex min-h-8 items-center justify-center rounded-3xl px-3 py-1.5 text-sm font-medium text-muted outline-none data-[selected]:bg-[var(--app-surface)] data-[selected]:text-foreground data-[selected]:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-              >
-                {label}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-        </Tabs.ListContainer>
-        <Tabs.Panel id="recent">{activeTab === 'recent' ? fileList : null}</Tabs.Panel>
-        <Tabs.Panel id="favorites">{activeTab === 'favorites' ? fileList : null}</Tabs.Panel>
-        <Tabs.Panel id="all">{activeTab === 'all' ? fileList : null}</Tabs.Panel>
+        <TabsList aria-label="File view" className="mx-4 grid w-auto grid-cols-3">
+          <TabsTrigger value="recent">Recent</TabsTrigger>
+          <TabsTrigger value="favorites">Favorites</TabsTrigger>
+          <TabsTrigger value="all">All files</TabsTrigger>
+        </TabsList>
+        <TabsContent value="recent">{activeTab === 'recent' ? fileList : null}</TabsContent>
+        <TabsContent value="favorites">{activeTab === 'favorites' ? fileList : null}</TabsContent>
+        <TabsContent value="all">{activeTab === 'all' ? fileList : null}</TabsContent>
       </Tabs>
 
       <CreateItemDrawer folderId={null} onCreateFolder={() => setIsCreatingFolder(true)} />

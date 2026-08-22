@@ -9,7 +9,7 @@ interface ErrorStateProps {
 
 export function ErrorState({ title = 'Something went wrong', message, action }: ErrorStateProps) {
   return (
-    <section role="alert" className="rounded-xl border border-danger/40 bg-danger-soft p-4 text-danger-soft-foreground">
+    <section role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">
       <div className="flex gap-3">
         <ExclamationTriangleIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
         <div>

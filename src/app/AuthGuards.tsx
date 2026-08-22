@@ -8,7 +8,7 @@ export function RequireAuth() {
   const location = useLocation()
 
   if (isLoading) {
-    return <div role="status" className="p-4 text-base text-muted">Checking session...</div>
+    return <div role="status" className="p-4 text-base text-muted-foreground">Checking session...</div>
   }
 
   if (!isAuthenticated) {
@@ -23,7 +23,7 @@ export function RedirectAuthenticated() {
   const isLoading = useAuthStore((state) => state.isLoading)
 
   if (isLoading) {
-    return <div role="status" className="p-4 text-base text-muted">Checking session...</div>
+    return <div role="status" className="p-4 text-base text-muted-foreground">Checking session...</div>
   }
 
   return isAuthenticated ? <Navigate to="/home" replace /> : <Outlet />

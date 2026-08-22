@@ -36,7 +36,7 @@ export function DeleteFolderDialog({ isOpen, folderName, onClose, onConfirm }: D
       <div className="p-5">
         <ExclamationTriangleIcon aria-hidden="true" className="size-7 text-danger" />
         <h2 id="delete-folder-title" className="mt-3 text-lg font-semibold">Delete “{folderName}”?</h2>
-        <p id="delete-folder-description" className="mt-2 text-base leading-7 text-muted">
+        <p id="delete-folder-description" className="mt-2 text-base leading-7 text-muted-foreground">
           This folder is not empty. Its files and nested folders will also be deleted. This cannot be undone.
         </p>
         <div className="mt-6 flex flex-wrap justify-end gap-2">

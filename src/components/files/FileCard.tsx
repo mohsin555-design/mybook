@@ -29,7 +29,7 @@ export function FileCard({
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium leading-5">{name}</span>
-          <span className="block truncate text-xs leading-4 text-muted">{meta}</span>
+          <span className="block truncate text-xs leading-4 text-muted-foreground">{meta}</span>
         </span>
       </button>
       {action}

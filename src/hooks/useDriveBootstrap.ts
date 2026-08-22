@@ -1,10 +1,21 @@
 import { useEffect, useState } from 'react'
 
-import { backfillLocalFoldersToDrive, ensureMyBookDriveFolder, getDriveFolderStatus } from '../services/googleDrive'
+import { backfillLocalFoldersToDrive, ensureMyBookDriveFolder, getDriveFolderStatus, importDriveFilesToLocal, importDriveFoldersToLocal } from '../services/googleDrive'
 import { useAuthStore } from '../stores/useAuthStore'
 import { folderRepository, processPendingDriveFolderSync, settingsRepository } from '../database/repositories'
 
 const DRIVE_BACKFILL_KEY = 'google-drive.folder-backfill-complete'
+let importDriveBackupsFlight: Promise<void> | null = null
+
+async function importDriveBackupsToLocal() {
+  importDriveBackupsFlight ??= (async () => {
+    await importDriveFoldersToLocal()
+    await importDriveFilesToLocal()
+  })().finally(() => {
+    importDriveBackupsFlight = null
+  })
+  return importDriveBackupsFlight
+}
 
 export function useDriveBootstrap() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
@@ -30,6 +41,12 @@ export function useDriveBootstrap() {
             : result.error)
         }
         await processPendingDriveFolderSync()
+        try {
+          await importDriveBackupsToLocal()
+          if (!cancelled) setStatusMessage('Synced across devices.')
+        } catch (error) {
+          if (!cancelled) setStatusMessage(error instanceof Error ? error.message : 'Sync paused.')
+        }
         const backfillFlag = (await settingsRepository.get(DRIVE_BACKFILL_KEY)).data?.value
         if (backfillFlag !== true) {
           const folders = await folderRepository.list()
@@ -46,7 +63,9 @@ export function useDriveBootstrap() {
       }
     }
     void run()
-    const onlineHandler = () => { void processPendingDriveFolderSync() }
+    const onlineHandler = () => {
+      void processPendingDriveFolderSync().then(() => importDriveBackupsToLocal()).catch(() => undefined)
+    }
     window.addEventListener('online', onlineHandler)
     return () => {
       cancelled = true

@@ -4,12 +4,12 @@ import type { EditorSaveStatus } from '../../types/files'
 
 const config = {
   editing: ['Editing', PencilIcon],
-  'saving-locally': ['Saving locally', ArrowPathIcon],
-  'saved-locally': ['Saved locally', CheckCircleIcon],
-  pending: ['Backup pending', CloudArrowUpIcon],
-  'backing-up': ['Backing up', ArrowPathIcon],
-  'backed-up': ['Backed up', CheckCircleIcon],
-  failed: ['Backup failed', ExclamationCircleIcon],
+  'saving-locally': ['Saving', ArrowPathIcon],
+  'saved-locally': ['Saved', CheckCircleIcon],
+  pending: ['Syncing', CloudArrowUpIcon],
+  'backing-up': ['Syncing', ArrowPathIcon],
+  'backed-up': ['Synced', CheckCircleIcon],
+  failed: ['Sync paused', ExclamationCircleIcon],
   offline: ['Offline', SignalSlashIcon],
 } as const
 

@@ -76,7 +76,7 @@ export function SettingsPage() {
               : 'MyBook folder is not connected yet.'}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {statusMessage ?? 'MyBook stores the folder ID locally and backfills existing folders into Drive after login.'}
+          {statusMessage ?? 'MyBook syncs your files across signed-in devices using Drive backups.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <AppButton
@@ -93,9 +93,9 @@ export function SettingsPage() {
           </AppButton>
         </div>
         <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {([['Local files', backupStats.total], ['Backed up', backupStats.backedUp], ['Pending', backupStats.pending], ['Failed', backupStats.failed]] as const).map(([label, value]) => <div key={label} className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 text-2xl font-semibold">{value}</dd></div>)}
+          {([['Local files', backupStats.total], ['Synced', backupStats.backedUp], ['Syncing', backupStats.pending], ['Sync paused', backupStats.failed]] as const).map(([label, value]) => <div key={label} className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 text-2xl font-semibold">{value}</dd></div>)}
         </dl>
-        {backupStats.failed > 0 ? <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Backup failures</p>{files.filter((file) => file.syncStatus === 'failed').map((file) => <p key={file.id} className="mt-1 text-muted-foreground">{file.name}: {file.syncError ?? 'Backup failed.'}</p>)}</div> : null}
+        {backupStats.failed > 0 ? <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Sync paused</p>{files.filter((file) => file.syncStatus === 'failed').map((file) => <p key={file.id} className="mt-1 text-muted-foreground">{file.name}: {file.syncError ?? 'Sync failed.'}</p>)}</div> : null}
       </section>
       <section aria-labelledby="files-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="files-heading" className="text-base font-semibold leading-6">Files</h2>

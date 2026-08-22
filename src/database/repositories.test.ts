@@ -65,4 +65,83 @@ describe('IndexedDB repositories', () => {
     expect(first.data?.name).toBe('Notes copy')
     expect(second.data?.name).toBe('Notes copy 2')
   })
+
+  it('lists one logical file when local duplicate records exist', async () => {
+    const now = new Date().toISOString()
+    await db.files.bulkAdd([
+      {
+        id: 'local-copy',
+        driveFileId: null,
+        name: 'Project Plan',
+        type: 'document',
+        folderId: null,
+        content: 'local',
+        mimeType: 'application/x-mybook-document',
+        createdAt: now,
+        updatedAt: '2026-08-22T08:00:00.000Z',
+        lastSyncedAt: null,
+        syncStatus: 'pending',
+        isDeleted: false,
+      },
+      {
+        id: 'synced-copy',
+        driveFileId: 'drive-project-plan',
+        name: 'Project Plan',
+        type: 'document',
+        folderId: null,
+        content: 'synced',
+        mimeType: 'application/x-mybook-document',
+        createdAt: now,
+        updatedAt: '2026-08-22T07:00:00.000Z',
+        lastSyncedAt: '2026-08-22T07:00:00.000Z',
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      },
+    ])
+
+    const files = await fileRepository.list()
+
+    expect(files).toHaveLength(1)
+    expect(files[0]).toMatchObject({ id: 'synced-copy', driveFileId: 'drive-project-plan' })
+  })
+
+  it('hides backup file extensions from app-visible names', async () => {
+    const now = new Date().toISOString()
+    await db.files.bulkAdd([
+      {
+        id: 'markdown-backup-name',
+        driveFileId: 'drive-markdown',
+        name: 'Meeting Notes.mybook.md',
+        type: 'document',
+        folderId: null,
+        content: '',
+        mimeType: 'application/x-mybook-document',
+        createdAt: now,
+        updatedAt: now,
+        lastSyncedAt: now,
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      },
+      {
+        id: 'spreadsheet-backup-name',
+        driveFileId: 'drive-sheet',
+        name: 'Budget.xlsx',
+        type: 'spreadsheet',
+        folderId: null,
+        content: '',
+        mimeType: 'application/x-mybook-spreadsheet',
+        createdAt: now,
+        updatedAt: now,
+        lastSyncedAt: now,
+        syncStatus: 'backed-up',
+        isDeleted: false,
+      },
+    ])
+
+    const files = await fileRepository.list()
+    const document = (await fileRepository.get('markdown-backup-name')).data
+
+    expect(files.map((file) => file.name).sort()).toEqual(['Budget', 'Meeting Notes'])
+    expect(document?.name).toBe('Meeting Notes')
+  })
 })

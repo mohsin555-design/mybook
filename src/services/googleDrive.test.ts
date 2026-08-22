@@ -19,9 +19,15 @@ vi.mock('../database/db', () => ({
       toArray: vi.fn(),
       add: vi.fn(),
       update: vi.fn(),
+      get: vi.fn(),
+    },
+    fileVersions: {
+      add: vi.fn(),
     },
     folders: {
       toArray: vi.fn(),
+      add: vi.fn(),
+      update: vi.fn(),
     },
     settings: {
       get: vi.fn(),
@@ -43,7 +49,9 @@ const mockedGetState = vi.mocked(useAuthStore.getState)
 
 describe('googleDrive helpers', () => {
   beforeEach(() => {
-    mockedGetState.mockReturnValue({ getAccessToken: () => 'token' } as never)
+    vi.clearAllMocks()
+    mockedGetState.mockReturnValue({ getAccessToken: () => Promise.resolve('token') } as never)
+    mockedFiles.get.mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { onLine: true })
   })
 
@@ -108,6 +116,40 @@ describe('googleDrive helpers', () => {
     expect(mockedFiles.add).toHaveBeenCalledWith(expect.objectContaining({
       driveFileId: 'doc-1',
       name: 'Drive Note',
+      isDeleted: false,
+    }))
+  })
+
+  it('merges an imported Drive file into an existing local file with the same name', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+    mockedFiles.toArray.mockResolvedValue([{
+      id: 'local-note',
+      driveFileId: null,
+      name: 'Drive Note',
+      type: 'document',
+      folderId: null,
+      content: '',
+      mimeType: 'application/x-mybook-document',
+      createdAt: '2026-08-22T00:00:00.000Z',
+      updatedAt: '2026-08-22T00:00:00.000Z',
+      lastSyncedAt: null,
+      syncStatus: 'pending',
+      isDeleted: false,
+    }])
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'doc-1', name: 'Drive Note.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\ntitle: Drive Note\n---\n\nHello') })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFilesToLocal()
+
+    expect(mockedFiles.add).not.toHaveBeenCalled()
+    expect(mockedFiles.update).toHaveBeenCalledWith('local-note', expect.objectContaining({
+      driveFileId: 'doc-1',
+      name: 'Drive Note',
+      syncStatus: 'backed-up',
       isDeleted: false,
     }))
   })

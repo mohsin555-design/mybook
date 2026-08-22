@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { fileRepository } from '../../database/repositories'
 import { useAutosave } from '../../hooks/useAutosave'
-import { backupDocumentToDrive, copyDriveFileLink, getDriveFileStatus, openDriveFileInBrowser } from '../../services/googleDrive'
+import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
 import { documentToMyBookMarkdown, downloadMyBookMarkdown, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
@@ -106,9 +106,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
   const [docxMessage, setDocxMessage] = useState('')
   const [cloudMessage, setCloudMessage] = useState<string | null>(null)
-  const [driveExists, setDriveExists] = useState<boolean | null>(null)
-  const [isCheckingDrive, setIsCheckingDrive] = useState(false)
-  const [hasCheckedDrive, setHasCheckedDrive] = useState(false)
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null)
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [isFullWidth, setIsFullWidth] = useState(false)
@@ -226,23 +223,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
   useEffect(() => { if (file) setTitle(file.name) }, [file])
   useEffect(() => {
-    if (!file?.driveFileId) { setDriveExists(null); return }
-    void getDriveFileStatus(file.driveFileId).then((result) => setDriveExists(result.exists))
-  }, [file?.driveFileId])
-  const checkDriveChanges = useCallback(async () => {
-    if (!file?.driveFileId || !file.lastSyncedAt) { setHasCheckedDrive(true); return }
-    setIsCheckingDrive(true)
-    try {
-      const result = await getDriveFileStatus(file.driveFileId)
-      setDriveExists(result.exists)
-      if (result.exists) setCloudMessage('Drive backup is available.')
-      else if (result.error) setCloudMessage(result.error)
-    } finally { setIsCheckingDrive(false); setHasCheckedDrive(true) }
-  }, [file?.driveFileId, file?.lastSyncedAt])
-  useEffect(() => {
-    void checkDriveChanges()
-  }, [checkDriveChanges])
-  useEffect(() => {
     if (!editor || !file || !isHydrated) return
     if (loadedId === file.id && content === editorContentRef.current) return
     editor.commands.setContent(parseContent(content), { emitUpdate: false })
@@ -253,22 +233,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (title !== file?.name && file) await fileRepository.update(file.id, { name: title })
   }, [file, title])
   useEffect(() => {
-    if (!file || file.isDeleted || isCheckingDrive || !hasCheckedDrive) return
+    if (!file || file.isDeleted) return
     if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
     if (status !== 'pending' && status !== 'saved-locally') return
     cloudTimerRef.current = window.setTimeout(() => {
       if (cloudFlightRef.current || !file || file.isDeleted || file.type !== 'document') return
       cloudFlightRef.current = true
-      setCloudMessage('Preparing cloud backup…')
+      setCloudMessage('Syncing…')
       void (async () => {
         try {
           const [savedContent] = await Promise.all([save(), saveTitle()])
           if (!savedContent) {
-            setCloudMessage('Local save failed. Cloud backup paused.')
+            setCloudMessage('Save failed. Sync paused.')
             return
           }
           const result = await backupDocumentToDrive({ fileId: file.id, title, content, folderId: file.folderId })
-          if (result.success) setCloudMessage(result.created ? 'Google Drive backup created.' : 'Google Drive backup updated.')
+          if (result.success) setCloudMessage('Synced')
           else setCloudMessage(result.error)
         } finally {
           cloudFlightRef.current = false
@@ -279,7 +259,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
       cloudTimerRef.current = null
     }
-  }, [content, file, hasCheckedDrive, isCheckingDrive, save, saveTitle, status, title])
+  }, [content, file, save, saveTitle, status, title])
 
   if (file === undefined || !editor) return <div role="status" className="p-4 text-muted-foreground">Loading editor…</div>
   if (!file || file.isDeleted) return <EmptyState title="Document not found" description="This document may have been moved to Trash or deleted." />
@@ -290,15 +270,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     await saveAll()
     const latest = (await fileRepository.get(file.id)).data
     if (!latest) return
-    setCloudMessage('Backing up to Google Drive…')
+    setCloudMessage('Syncing…')
     const result = await backupDocumentToDrive({ fileId: latest.id, title: latest.name, content: latest.content, folderId: latest.folderId })
-    setCloudMessage(result.success ? 'Google Drive backup complete.' : result.error ?? 'Google Drive backup failed.')
-    if (result.success) setDriveExists(true)
+    setCloudMessage(result.success ? 'Synced' : result.error ?? 'Sync failed.')
   }
   const copyDriveLink = async () => {
     if (!file.driveFileId) return
     const result = await copyDriveFileLink(file.driveFileId)
-    setCloudMessage(result.success ? 'Drive link copied.' : result.error ?? 'Could not copy the Drive link.')
+    setCloudMessage(result.success ? 'Backup link copied.' : result.error ?? 'Could not copy the backup link.')
   }
   const close = async () => { await saveAll(); navigate(file.folderId ? `/folders/${file.folderId}` : '/home') }
 
@@ -410,7 +389,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     else if (action === 'download-docx') void exportDocx(true)
     else if (action === 'prepare-docx') void exportDocx(false)
     else if (action === 'open-drive' && file.driveFileId) void openDriveFileInBrowser(file.driveFileId)
-    else if (action === 'refresh') void checkDriveChanges()
     else if (action === 'import') importInputRef.current?.click()
     else if (action === 'undo') editor.chain().focus().undo().run()
     else if (action === 'redo') editor.chain().focus().redo().run()
@@ -465,19 +443,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <input id="document-title" value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} className="h-8 w-full truncate rounded-[6px] bg-transparent text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-background" />
             <EditorStatus status={status} />
             {cloudMessage ? <p className="mt-1 text-xs text-muted-foreground">{cloudMessage}</p> : null}
-            {file.driveFileId ? <p className="mt-1 text-xs text-muted-foreground">{driveExists === false ? 'Drive file not found' : 'Drive file exists'}{file.lastSyncedAt ? ` · Last backup ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? ` · ${file.syncError}` : ''}</p> : null}
+            {file.lastSyncedAt || file.syncError ? <p className="mt-1 text-xs text-muted-foreground">{file.lastSyncedAt ? `Synced ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? `${file.lastSyncedAt ? ' · ' : ''}${file.syncError}` : ''}</p> : null}
           </div>
-          <Dropdown><Dropdown.Trigger aria-label="More document actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Document actions" onAction={handleDocumentAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Back up now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId || driveExists === false}>Open in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId || driveExists === false}>Copy Drive link</Dropdown.Item><Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item><Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item><Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item><Dropdown.Item id="import">Import document</Dropdown.Item><Dropdown.Item id="close">Close document</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
+          <Dropdown><Dropdown.Trigger aria-label="More document actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Document actions" onAction={handleDocumentAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Sync now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item><Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item><Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item><Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item><Dropdown.Item id="import">Import document</Dropdown.Item><Dropdown.Item id="close">Close document</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
           <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void saveAll()}>Save</AppButton>
-          <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void backupNow()}>Back up now</AppButton>
-          <AppButton className="hidden sm:flex" variant="secondary" isDisabled={!file.driveFileId || driveExists === false} onPress={() => file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined}>Open in Drive</AppButton>
-          <AppButton className="hidden sm:flex" variant="secondary" isDisabled={isCheckingDrive || !file.driveFileId} onPress={() => void checkDriveChanges()}>Refresh</AppButton>
+          <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void backupNow()}>Sync now</AppButton>
+          <AppButton className="hidden sm:flex" variant="secondary" isDisabled={!file.driveFileId} onPress={() => file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined}>Open backup</AppButton>
         </div>
         <nav aria-label="Desktop document commands" className="hidden min-h-10 items-center gap-1 border-t border-[var(--app-border)] md:flex">
           <DesktopMenu label="Document">
             <Dropdown.Menu aria-label="Document menu" onAction={handleDocumentAction}>
               <Dropdown.Item id="save">Save now</Dropdown.Item>
-              <Dropdown.Item id="backup">Back up now</Dropdown.Item>
+              <Dropdown.Item id="backup">Sync now</Dropdown.Item>
               <Dropdown.Item id="import">Import document</Dropdown.Item>
               <Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item>
               <Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item>
@@ -500,9 +477,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               <Dropdown.Item id="zoom-100">Zoom 100%</Dropdown.Item>
               <Dropdown.Item id="zoom-125">Zoom 125%</Dropdown.Item>
               <Dropdown.Item id="zoom-150">Zoom 150%</Dropdown.Item>
-              <Dropdown.Item id="open-drive" isDisabled={!file.driveFileId || driveExists === false}>Open in Drive</Dropdown.Item>
-              <Dropdown.Item id="copy-link" isDisabled={!file.driveFileId || driveExists === false}>Copy Drive link</Dropdown.Item>
-              <Dropdown.Item id="refresh" isDisabled={isCheckingDrive || !file.driveFileId}>Refresh backup status</Dropdown.Item>
+              <Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item>
+              <Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item>
             </Dropdown.Menu>
           </DesktopMenu>
           <DesktopMenu label="Insert">

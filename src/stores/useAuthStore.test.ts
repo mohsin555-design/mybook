@@ -83,6 +83,7 @@ describe('auth helpers', () => {
       accessToken: 'drive-token',
       error: null,
     })
+    expect(useAuthStore.getState().accessTokenExpiresAt).toBeGreaterThan(Date.now())
   })
 
   it('restores a valid login after the browser session is reopened', async () => {

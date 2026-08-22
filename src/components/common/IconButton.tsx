@@ -1,22 +1,41 @@
-import { Button, type ButtonProps } from '@heroui/react'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 
-interface IconButtonProps extends Omit<ButtonProps, 'children' | 'isIconOnly'> {
+import { cn } from '../../lib/utils'
+import { Button } from '../ui/button'
+
+interface IconButtonProps extends Omit<ComponentProps<typeof Button>, 'children' | 'disabled' | 'onClick' | 'variant'> {
   label: string
   children: ReactNode
+  isDisabled?: boolean
+  onPress?: () => void
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'
 }
+
+const variantMap = {
+  primary: 'default',
+  secondary: 'secondary',
+  ghost: 'ghost',
+  danger: 'destructive',
+  outline: 'outline',
+} as const
 
 export function IconButton({
   label,
   children,
-  className = '',
+  className,
+  isDisabled = false,
+  onPress,
+  variant = 'ghost',
   ...props
 }: IconButtonProps) {
   return (
     <Button
-      isIconOnly
       aria-label={label}
-      className={`size-11 min-h-11 min-w-11 rounded-[var(--radius-control)] ${className}`}
+      className={cn('size-11 min-h-11 min-w-11', className)}
+      disabled={isDisabled}
+      onClick={onPress}
+      size="icon-lg"
+      variant={variantMap[variant]}
       {...props}
     >
       {children}

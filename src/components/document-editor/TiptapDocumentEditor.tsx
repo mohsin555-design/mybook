@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline'
-import { Dropdown } from '@heroui/react'
+import { Dropdown } from '../ui/compat-dropdown'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
@@ -87,7 +87,7 @@ function DesktopMenu({ label, children }: { label: string; children: ReactNode }
   return (
     <Dropdown>
       <Dropdown.Trigger
-        className="h-9 rounded-[8px] px-3 text-sm font-medium text-muted transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+        className="h-9 rounded-[8px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
         aria-label={`${label} menu`}
       >
         {label}
@@ -281,7 +281,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }, [content, file, hasCheckedDrive, isCheckingDrive, save, saveTitle, status, title])
 
-  if (file === undefined || !editor) return <div role="status" className="p-4 text-muted">Loading editor…</div>
+  if (file === undefined || !editor) return <div role="status" className="p-4 text-muted-foreground">Loading editor…</div>
   if (!file || file.isDeleted) return <EmptyState title="Document not found" description="This document may have been moved to Trash or deleted." />
 
   const saveAll = async () => { await Promise.all([save(), saveTitle()]) }
@@ -464,8 +464,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <label htmlFor="document-title" className="sr-only">Document title</label>
             <input id="document-title" value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} className="h-8 w-full truncate rounded-[6px] bg-transparent text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-background" />
             <EditorStatus status={status} />
-            {cloudMessage ? <p className="mt-1 text-xs text-muted">{cloudMessage}</p> : null}
-            {file.driveFileId ? <p className="mt-1 text-xs text-muted">{driveExists === false ? 'Drive file not found' : 'Drive file exists'}{file.lastSyncedAt ? ` · Last backup ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? ` · ${file.syncError}` : ''}</p> : null}
+            {cloudMessage ? <p className="mt-1 text-xs text-muted-foreground">{cloudMessage}</p> : null}
+            {file.driveFileId ? <p className="mt-1 text-xs text-muted-foreground">{driveExists === false ? 'Drive file not found' : 'Drive file exists'}{file.lastSyncedAt ? ` · Last backup ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? ` · ${file.syncError}` : ''}</p> : null}
           </div>
           <Dropdown><Dropdown.Trigger aria-label="More document actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Document actions" onAction={handleDocumentAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Back up now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId || driveExists === false}>Open in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId || driveExists === false}>Copy Drive link</Dropdown.Item><Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item><Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item><Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item><Dropdown.Item id="import">Import document</Dropdown.Item><Dropdown.Item id="close">Close document</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
           <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void saveAll()}>Save</AppButton>
@@ -534,12 +534,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               <Dropdown.Item id="task">Checklist</Dropdown.Item>
             </Dropdown.Menu>
           </DesktopMenu>
-          <div className="ml-auto hidden items-center gap-2 text-sm text-muted lg:flex" role="group" aria-label="Document view controls">
+          <div className="ml-auto hidden items-center gap-2 text-sm text-muted-foreground lg:flex" role="group" aria-label="Document view controls">
             <button
               type="button"
               aria-pressed={!isFullWidth}
               onClick={() => setIsFullWidth(false)}
-              className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${!isFullWidth ? 'bg-accent text-accent-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
+              className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${!isFullWidth ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
             >
               Page
             </button>
@@ -547,7 +547,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               type="button"
               aria-pressed={isFullWidth}
               onClick={() => setIsFullWidth(true)}
-              className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${isFullWidth ? 'bg-accent text-accent-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
+              className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${isFullWidth ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
             >
               Full
             </button>
@@ -571,7 +571,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       <input ref={importInputRef} type="file" accept=".docx,.md,.mybook.md,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" aria-label="Import document file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void importDocumentFile(selectedFile); event.target.value = '' }} />
       <input ref={fileInputRef} type="file" className="sr-only" aria-label="Attach file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertAttachmentFile(selectedFile); event.target.value = '' }} />
       <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" aria-label="Insert image" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertImageFile(selectedFile); event.target.value = '' }} />
-      {docxMessage ? <p role="status" className="mx-auto mt-3 max-w-3xl px-4 text-sm text-muted sm:px-6">{docxMessage}<span className="sr-only">{docxBlob ? ` Export size ${docxBlob.size} bytes.` : ''}</span></p> : null}
+      {docxMessage ? <p role="status" className="mx-auto mt-3 max-w-3xl px-4 text-sm text-muted-foreground sm:px-6">{docxMessage}<span className="sr-only">{docxBlob ? ` Export size ${docxBlob.size} bytes.` : ''}</span></p> : null}
       <div className={`w-full overflow-x-auto px-0 py-0 ${isFullWidth ? 'md:px-0 md:py-0' : 'mybook-document-canvas md:px-8 md:py-8'}`}>
         <div
           className={documentPageClass}

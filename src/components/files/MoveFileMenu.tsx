@@ -1,5 +1,5 @@
 import { ArrowUturnLeftIcon, FolderArrowDownIcon } from '@heroicons/react/24/outline'
-import { Dropdown } from '@heroui/react'
+import { Dropdown } from '../ui/compat-dropdown'
 
 import type { MyBookFolder } from '../../types/files'
 

@@ -27,6 +27,14 @@ Add every origin where MyBook runs, for example:
 
 Use the exact scheme, host, and port.
 
+For local Google sign-in, run the app on the same fixed origin:
+
+```bash
+npm run dev:oauth
+```
+
+If port `5173` is already in use, stop the other local server first. Google OAuth does not treat `127.0.0.1`, `localhost`, or different ports as interchangeable origins.
+
 ## 4. Authorized redirect URIs
 
 For the browser token flow, you normally do not need a redirect URI for the popup/token callback flow.

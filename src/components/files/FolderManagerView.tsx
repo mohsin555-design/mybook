@@ -63,13 +63,13 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
             type="button"
             aria-label="Back to parent folder"
             onClick={() => navigate(currentFolder.parentId ? `/folders/${currentFolder.parentId}` : '/folders')}
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-default"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted"
           >
             <ChevronLeftIcon aria-hidden="true" className="size-4" />
           </button>
         ) : null}
         actions={currentFolder ? (
-          <div className="flex size-10 items-center justify-center rounded-full bg-default">
+          <div className="flex size-10 items-center justify-center rounded-full bg-muted">
             <FolderActionsMenu
               folderName={currentFolder.name}
               folders={folders}

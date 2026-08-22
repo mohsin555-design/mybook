@@ -31,7 +31,7 @@ export function CreateItemDrawer({ folderId, onCreateFolder }: CreateItemDrawerP
       onOpenChange={setIsOpen}
       trigger={<img src="/icons/pencil-to-square.svg" alt="" aria-hidden="true" className="size-4" />}
       triggerLabel="Create new"
-      triggerClassName="fixed bottom-[calc(7.4rem+env(safe-area-inset-bottom))] right-4 z-20 flex !size-10 !min-h-10 !min-w-10 items-center justify-center !rounded-full bg-accent p-0 text-accent-foreground shadow-[0_8px_20px_rgba(17,24,39,0.2)] lg:bottom-8 lg:right-8"
+      triggerClassName="fixed bottom-[calc(7.4rem+env(safe-area-inset-bottom))] right-4 z-20 flex !size-10 !min-h-10 !min-w-10 items-center justify-center !rounded-full bg-primary p-0 text-primary-foreground shadow-[0_8px_20px_rgba(17,24,39,0.2)] lg:bottom-8 lg:right-8"
       title="Create new"
     >
       <div role="menu" aria-label="Create options" className="space-y-1 pb-[env(safe-area-inset-bottom)]">
@@ -55,7 +55,7 @@ function CreateOption({ iconSrc, label, onSelect }: CreateOptionProps) {
       type="button"
       role="menuitem"
       onClick={onSelect}
-      className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium hover:bg-default"
+      className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium hover:bg-muted"
     >
       <img src={iconSrc} alt="" aria-hidden="true" className="size-5" />
       {label}

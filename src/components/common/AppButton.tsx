@@ -1,12 +1,46 @@
-import { Button, type ButtonProps } from '@heroui/react'
+import type { ComponentProps } from 'react'
 
-type AppButtonProps = ButtonProps
+import { cn } from '../../lib/utils'
+import { Button } from '../ui/button'
 
-export function AppButton({ className = '', ...props }: AppButtonProps) {
+type ShadcnButtonProps = ComponentProps<typeof Button>
+
+interface AppButtonProps extends Omit<ShadcnButtonProps, 'disabled' | 'onClick' | 'variant'> {
+  fullWidth?: boolean
+  isDisabled?: boolean
+  isLoading?: boolean
+  onPress?: () => void
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'link'
+}
+
+const variantMap = {
+  primary: 'default',
+  secondary: 'secondary',
+  ghost: 'ghost',
+  danger: 'destructive',
+  outline: 'outline',
+  link: 'link',
+} as const
+
+export function AppButton({
+  children,
+  className,
+  fullWidth = false,
+  isDisabled = false,
+  isLoading = false,
+  onPress,
+  variant = 'primary',
+  ...props
+}: AppButtonProps) {
   return (
     <Button
-      className={`min-h-11 rounded-[var(--radius-control)] px-4 text-base font-medium ${className}`}
+      className={cn('min-h-11 px-4 text-base font-medium', fullWidth && 'w-full', className)}
+      disabled={isDisabled || isLoading}
+      onClick={onPress}
+      variant={variantMap[variant]}
       {...props}
-    />
+    >
+      {isLoading ? 'Loading...' : children}
+    </Button>
   )
 }

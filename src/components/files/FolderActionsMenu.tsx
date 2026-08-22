@@ -1,5 +1,5 @@
 import { EllipsisHorizontalIcon, FolderArrowDownIcon, PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { Dropdown } from '@heroui/react'
+import { Dropdown } from '../ui/compat-dropdown'
 
 import type { MyBookFolder } from '../../types/files'
 
@@ -29,7 +29,7 @@ export function FolderActionsMenu({ folderName, folders, folderId, currentParent
 
   return (
     <Dropdown>
-      <Dropdown.Trigger aria-label={`Actions for ${folderName}`} className="flex size-9 items-center justify-center rounded-full text-muted">
+      <Dropdown.Trigger aria-label={`Actions for ${folderName}`} className="flex size-9 items-center justify-center rounded-full text-muted-foreground">
         <EllipsisHorizontalIcon aria-hidden="true" className="size-4" />
       </Dropdown.Trigger>
       <Dropdown.Popover placement="bottom end">

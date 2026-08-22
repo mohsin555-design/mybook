@@ -32,7 +32,7 @@ export function DesignSystemPage() {
         actions={<AppButton variant="primary"><PlusIcon className="size-5" />New file</AppButton>}
       />
 
-      {message ? <p role="status" className="rounded-xl bg-success-soft px-4 py-3 text-base text-success-soft-foreground">{message}</p> : null}
+      {message ? <p role="status" className="rounded-xl bg-emerald-500/10 px-4 py-3 text-base text-emerald-600-soft-foreground">{message}</p> : null}
 
       <PreviewSection title="Actions">
         <div className="flex flex-wrap gap-2">

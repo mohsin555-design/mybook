@@ -2,6 +2,7 @@ import { RouterProvider } from 'react-router-dom'
 import { useEffect } from 'react'
 
 import { PwaStatus } from '../components/common/PwaStatus'
+import { TooltipProvider } from '../components/ui/tooltip'
 import { useAuthStore } from '../stores/useAuthStore'
 import { router } from './router'
 
@@ -13,7 +14,9 @@ export function App() {
   }, [initializeSession])
 
   return <>
-    <PwaStatus />
-    <RouterProvider router={router} />
+    <TooltipProvider>
+      <PwaStatus />
+      <RouterProvider router={router} />
+    </TooltipProvider>
   </>
 }

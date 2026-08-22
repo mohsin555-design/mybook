@@ -67,7 +67,7 @@ function ToolButton({ label, icon: Icon, active, disabled, onPress }: ToolButton
       disabled={disabled}
       onMouseDown={(event) => event.preventDefault()}
       onClick={runPreservingScroll}
-      className={`flex size-11 min-h-11 min-w-11 items-center justify-center rounded-[10px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-[var(--app-subtle)]'}`}
+      className={`flex size-11 min-h-11 min-w-11 items-center justify-center rounded-[10px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-[var(--app-subtle)]'}`}
     >
       <Icon aria-hidden="true" className="size-5" />
     </button>
@@ -184,7 +184,7 @@ function ToolbarControls({
               if (level === 0) editor.chain().focus().setParagraph().run()
               else editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 }).run()
             }}
-            className={`h-12 min-w-20 rounded-[10px] border-0 px-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${heading !== '0' ? 'bg-accent text-accent-foreground' : 'bg-transparent text-muted hover:bg-[var(--app-subtle)]'}`}
+            className={`h-12 min-w-20 rounded-[10px] border-0 px-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${heading !== '0' ? 'bg-primary text-primary-foreground' : 'bg-transparent text-muted-foreground hover:bg-[var(--app-subtle)]'}`}
           >
             <option value="0">Text</option>
             <option value="1">H1</option>
@@ -202,15 +202,15 @@ function ToolbarControls({
           <MobileBottomSheet
             trigger={<EllipsisHorizontalIcon aria-hidden="true" className="size-6" />}
             triggerLabel="More formatting options"
-            triggerClassName="flex size-12 min-h-12 min-w-12 items-center justify-center rounded-[10px] text-muted transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            triggerClassName="flex size-12 min-h-12 min-w-12 items-center justify-center rounded-[10px] text-muted-foreground transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
             title="More formatting"
           >
             <div className="space-y-5 pb-[env(safe-area-inset-bottom)]">
               <div>
-                <h2 className="mb-2 text-sm font-semibold text-muted">Format</h2>
+                <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Format</h2>
                 <div className="grid grid-cols-2 gap-2" role="group" aria-label="Additional formatting options">
                   {mobileFormatActions.map((action) => (
-                    <button key={action.label} type="button" title={action.label} aria-label={action.label} aria-pressed={action.active} disabled={action.disabled} onClick={action.run} className={`flex min-h-12 items-center gap-3 rounded-[10px] px-3 text-left text-base font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 ${action.active ? 'bg-accent text-accent-foreground' : 'hover:bg-[var(--app-subtle)]'}`}>
+                    <button key={action.label} type="button" title={action.label} aria-label={action.label} aria-pressed={action.active} disabled={action.disabled} onClick={action.run} className={`flex min-h-12 items-center gap-3 rounded-[10px] px-3 text-left text-base font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 ${action.active ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}>
                       <action.icon aria-hidden="true" className="size-5 shrink-0" />
                       {action.label}
                     </button>
@@ -218,10 +218,10 @@ function ToolbarControls({
                 </div>
               </div>
               <div>
-                <h2 className="mb-2 text-sm font-semibold text-muted">Insert</h2>
+                <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Insert</h2>
                 <div className="grid grid-cols-2 gap-2" role="group" aria-label="Insert options">
                   {mobileInsertActions.map((action) => (
-                    <button key={action.label} type="button" title={action.label} aria-label={action.label} aria-pressed={action.active} disabled={action.disabled} onClick={action.run} className={`flex min-h-12 items-center gap-3 rounded-[10px] px-3 text-left text-base font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 ${action.active ? 'bg-accent text-accent-foreground' : 'hover:bg-[var(--app-subtle)]'}`}>
+                    <button key={action.label} type="button" title={action.label} aria-label={action.label} aria-pressed={action.active} disabled={action.disabled} onClick={action.run} className={`flex min-h-12 items-center gap-3 rounded-[10px] px-3 text-left text-base font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 ${action.active ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}>
                       <action.icon aria-hidden="true" className="size-5 shrink-0" />
                       {action.label}
                     </button>
@@ -254,7 +254,7 @@ function ToolbarControls({
             if (level === 0) editor.chain().focus().setParagraph().run()
             else editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 }).run()
           }}
-          className={`h-11 min-w-20 rounded-[10px] border-0 px-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${heading !== '0' ? 'bg-accent text-accent-foreground' : 'bg-transparent text-muted hover:bg-[var(--app-subtle)]'}`}
+          className={`h-11 min-w-20 rounded-[10px] border-0 px-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${heading !== '0' ? 'bg-primary text-primary-foreground' : 'bg-transparent text-muted-foreground hover:bg-[var(--app-subtle)]'}`}
         >
           <option value="0">Text</option>
           <option value="1">H1</option>
@@ -276,12 +276,12 @@ function ToolbarControls({
           <MobileBottomSheet
             trigger={<EllipsisHorizontalIcon aria-hidden="true" className="size-6" />}
             triggerLabel="More formatting options"
-            triggerClassName="flex size-11 min-h-11 min-w-11 items-center justify-center rounded-[10px] text-muted transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            triggerClassName="flex size-11 min-h-11 min-w-11 items-center justify-center rounded-[10px] text-muted-foreground transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
             title="More formatting"
           >
             <div className="grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]" role="group" aria-label="Additional formatting options">
               {moreActions.map((action) => (
-                <button key={action.label} type="button" title={action.label} aria-label={action.label} aria-pressed={action.active} disabled={action.disabled} onClick={action.run} className={`flex min-h-12 items-center gap-3 rounded-[10px] px-3 text-left text-base font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 ${action.active ? 'bg-accent text-accent-foreground' : 'hover:bg-[var(--app-subtle)]'}`}>
+                <button key={action.label} type="button" title={action.label} aria-label={action.label} aria-pressed={action.active} disabled={action.disabled} onClick={action.run} className={`flex min-h-12 items-center gap-3 rounded-[10px] px-3 text-left text-base font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-40 ${action.active ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}>
                   <action.icon aria-hidden="true" className="size-5 shrink-0" />
                   {action.label}
                 </button>

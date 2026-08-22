@@ -17,7 +17,7 @@ export function FolderCard({ name, itemCount, driveStatus, onOpen, action }: Fol
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium leading-5">{name}</span>
-          <span className="block text-xs leading-4 text-muted">{itemCount} {itemCount === 1 ? 'file' : 'files'}</span>
+          <span className="block text-xs leading-4 text-muted-foreground">{itemCount} {itemCount === 1 ? 'file' : 'files'}</span>
           {driveStatus ? <span className="sr-only">{driveStatus}</span> : null}
         </span>
       </button>

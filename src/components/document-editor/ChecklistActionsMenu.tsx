@@ -95,7 +95,7 @@ function ChecklistActionButton({
         if (!disabled) action.run(editor, target)
       }}
       className={`flex size-9 items-center justify-center rounded-[8px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-35 ${
-        active ? 'bg-accent text-accent-foreground' : 'text-muted hover:bg-[var(--app-subtle)] hover:text-foreground'
+        active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground'
       }`}
     >
       {children}
@@ -128,7 +128,7 @@ function SheetActionButton({
         onRun()
       }}
       className={`flex min-h-12 w-full items-center gap-3 rounded-[8px] border border-[var(--app-border)] px-4 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-40 ${
-        active ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-[var(--app-subtle)]'
+        active ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-[var(--app-subtle)]'
       }`}
     >
       <Icon aria-hidden="true" className="size-5 shrink-0" />

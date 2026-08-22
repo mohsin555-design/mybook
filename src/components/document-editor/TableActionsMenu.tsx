@@ -56,7 +56,7 @@ function TableActionButton({
         onRun?.()
       }}
       className={`flex size-9 items-center justify-center rounded-[8px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-35 ${
-        action.destructive ? 'text-red-600 hover:bg-red-50' : 'text-muted hover:bg-[var(--app-subtle)] hover:text-foreground'
+        action.destructive ? 'text-red-600 hover:bg-red-50' : 'text-muted-foreground hover:bg-[var(--app-subtle)] hover:text-foreground'
       }`}
     >
       {children}
@@ -226,7 +226,7 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
         >
           <div className="space-y-5 pb-2">
             <div>
-              <h2 className="mb-2 text-sm font-semibold text-muted">Rows and columns</h2>
+              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Rows and columns</h2>
               <div className="grid grid-cols-1 gap-2">
                 {tableActions.slice(0, 6).map((action) => (
                   <SheetActionButton key={action.label} action={action} editor={editor} onRun={() => setIsMobileSheetOpen(false)} />
@@ -234,7 +234,7 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
               </div>
             </div>
             <div>
-              <h2 className="mb-2 text-sm font-semibold text-muted">Cell actions</h2>
+              <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Cell actions</h2>
               <div className="grid grid-cols-1 gap-2">
                 {tableActions.slice(6).map((action) => (
                   <SheetActionButton key={action.label} action={action} editor={editor} onRun={() => setIsMobileSheetOpen(false)} />

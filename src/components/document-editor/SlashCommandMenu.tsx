@@ -100,14 +100,14 @@ export function SlashCommandMenu({ menu, selectedIndex, onSelectIndex, onRun }: 
               event.preventDefault()
               onRun(command)
             }}
-            className={`flex w-full flex-col rounded-[7px] px-3 py-2 text-left ${isSelected ? 'bg-accent text-accent-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
+            className={`flex w-full flex-col rounded-[7px] px-3 py-2 text-left ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
           >
             <span className="text-sm font-semibold">{command.title}</span>
-            <span className={`text-xs ${isSelected ? 'text-accent-foreground/80' : 'text-muted'}`}>{command.description}</span>
+            <span className={`text-xs ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{command.description}</span>
           </button>
         )
       }) : (
-        <p className="px-3 py-2 text-sm text-muted">No matching blocks</p>
+        <p className="px-3 py-2 text-sm text-muted-foreground">No matching blocks</p>
       )}
     </div>
   )

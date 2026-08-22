@@ -1,7 +1,16 @@
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline'
-import { Modal } from '@heroui/react'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../ui/dialog'
 import { AppButton } from './AppButton'
 
 interface ConfirmationModalProps {
@@ -19,38 +28,32 @@ export function ConfirmationModal({
   confirmLabel = 'Confirm',
   onConfirm,
 }: ConfirmationModalProps) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <Modal>
-      <Modal.Trigger>{trigger}</Modal.Trigger>
-      <Modal.Backdrop>
-        <Modal.Container placement="center" className="px-4">
-          <Modal.Dialog className="w-full max-w-md rounded-[var(--radius-dialog)] border border-[var(--app-border)] bg-[var(--app-surface)]">
-            {({ close }) => (
-              <>
-                <Modal.Header>
-                  <Modal.Icon className="bg-danger-soft text-danger-soft-foreground">
-                    <ExclamationTriangleIcon aria-hidden="true" className="size-6" />
-                  </Modal.Icon>
-                  <Modal.Heading className="text-lg">{title}</Modal.Heading>
-                </Modal.Header>
-                <Modal.Body className="text-base leading-7 text-muted">{description}</Modal.Body>
-                <Modal.Footer className="flex-wrap">
-                  <AppButton variant="secondary" onPress={close}>Cancel</AppButton>
-                  <AppButton
-                    variant="danger"
-                    onPress={() => {
-                      onConfirm()
-                      close()
-                    }}
-                  >
-                    {confirmLabel}
-                  </AppButton>
-                </Modal.Footer>
-              </>
-            )}
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+            <ExclamationTriangleIcon aria-hidden="true" className="size-6" />
+          </div>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <AppButton variant="secondary" onPress={() => setOpen(false)}>Cancel</AppButton>
+          <AppButton
+            variant="danger"
+            onPress={() => {
+              onConfirm()
+              setOpen(false)
+            }}
+          >
+            {confirmLabel}
+          </AppButton>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

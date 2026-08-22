@@ -38,11 +38,11 @@ export function PageHeader({
         {leading ? <div className="shrink-0">{leading}</div> : null}
         <div className="min-w-0">
           {eyebrow ? (
-            <p className="mb-1 text-sm font-medium text-accent">{eyebrow}</p>
+            <p className="mb-1 text-sm font-medium text-primary">{eyebrow}</p>
           ) : null}
           <h1 className="truncate text-2xl font-bold leading-8">{title}</h1>
           {description ? (
-            <p className="mt-1 hidden max-w-2xl text-base leading-7 text-muted sm:block">
+            <p className="mt-1 hidden max-w-2xl text-base leading-7 text-muted-foreground sm:block">
               {description}
             </p>
           ) : null}

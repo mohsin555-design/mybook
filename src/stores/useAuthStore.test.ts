@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getFriendlyGoogleAuthError, isBackendAuthEnabled, isTokenFresh, useAuthStore } from './useAuthStore'
+import { authApiUrl, getFriendlyGoogleAuthError, isBackendAuthEnabled, isTokenFresh, useAuthStore } from './useAuthStore'
 
 const canRunBrowserTokenTest = !isBackendAuthEnabled && Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim())
 
@@ -40,7 +40,7 @@ describe('auth helpers', () => {
     expect(isTokenFresh(null)).toBe(false)
   })
 
-  it('completes Google credential login with a Drive access token', async () => {
+  it.skipIf(isBackendAuthEnabled)('completes Google credential login with a Drive access token', async () => {
     const requestAccessToken = vi.fn((overrides?: { prompt?: string }) => {
       expect(overrides).toEqual({ prompt: '' })
     })
@@ -192,7 +192,7 @@ describe('auth helpers', () => {
     })
 
     await expect(useAuthStore.getState().getAccessToken()).resolves.toBe('backend-token')
-    expect(window.fetch).toHaveBeenCalledWith('/api/auth/token', {
+    expect(window.fetch).toHaveBeenCalledWith(authApiUrl('/token'), {
       method: 'POST',
       credentials: 'include',
     })

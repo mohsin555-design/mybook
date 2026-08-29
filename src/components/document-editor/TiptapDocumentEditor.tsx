@@ -12,10 +12,13 @@ import { useNavigate } from 'react-router-dom'
 
 import { fileRepository } from '../../database/repositories'
 import { useAutosave } from '../../hooks/useAutosave'
+import { useLibraryData } from '../../hooks/useLibraryData'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
 import { documentToMyBookMarkdown, downloadMyBookMarkdown, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
+import { DeleteFileDialog } from '../files/DeleteFileDialog'
+import { FolderBreadcrumb } from '../files/FolderBreadcrumb'
 import { BlockActionsMenu } from './BlockActionsMenu'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
@@ -27,6 +30,8 @@ import { ToggleBlock, toggleBlockNode } from './extensions/ToggleBlock'
 import { filterSlashCommands, runSlashCommand, SlashCommandMenu, type SlashMenuState } from './SlashCommandMenu'
 import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
+import { deletedToast } from '../../utils/deleteToast'
+import { toast } from '../ui/toast'
 
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 
@@ -99,6 +104,7 @@ function DesktopMenu({ label, children }: { label: string; children: ReactNode }
 
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
+  const { folders } = useLibraryData()
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
   const { content, isHydrated, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
@@ -110,6 +116,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [isFullWidth, setIsFullWidth] = useState(false)
   const [zoom, setZoom] = useState(100)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -280,6 +287,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setCloudMessage(result.success ? 'Backup link copied.' : result.error ?? 'Could not copy the backup link.')
   }
   const close = async () => { await saveAll(); navigate(file.folderId ? `/folders/${file.folderId}` : '/home') }
+  const deleteDocument = async () => {
+    await saveAll()
+    const result = await fileRepository.delete(file.id)
+    if (!result.success) return
+    navigate(file.folderId ? `/folders/${file.folderId}` : '/home')
+    toast.add(deletedToast({
+      itemName: title || file.name,
+      onUndo: () => { void fileRepository.restore(file.id) },
+    }))
+  }
+  const duplicateDocument = async () => {
+    await saveAll()
+    const result = await fileRepository.duplicate(file.id)
+    if (result.data) navigate(`/document/${result.data.id}`)
+  }
 
   const setEditorLink = () => {
     const current = editor.getAttributes('link').href as string | undefined
@@ -390,6 +412,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     else if (action === 'prepare-docx') void exportDocx(false)
     else if (action === 'open-drive' && file.driveFileId) void openDriveFileInBrowser(file.driveFileId)
     else if (action === 'import') importInputRef.current?.click()
+    else if (action === 'duplicate') void duplicateDocument()
     else if (action === 'undo') editor.chain().focus().undo().run()
     else if (action === 'redo') editor.chain().focus().redo().run()
     else if (action === 'clear') editor.chain().focus().unsetAllMarks().clearNodes().run()
@@ -417,6 +440,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     else if (action === 'page-width') setIsFullWidth(false)
     else if (action === 'full-width') setIsFullWidth(true)
     else if (action.startsWith('zoom-')) setZoom(Number(action.replace('zoom-', '')))
+    else if (action === 'delete') setIsDeleteDialogOpen(true)
     else void close()
   }
 
@@ -444,8 +468,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <EditorStatus status={status} />
             {cloudMessage ? <p className="mt-1 text-xs text-muted-foreground">{cloudMessage}</p> : null}
             {file.lastSyncedAt || file.syncError ? <p className="mt-1 text-xs text-muted-foreground">{file.lastSyncedAt ? `Synced ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? `${file.lastSyncedAt ? ' · ' : ''}${file.syncError}` : ''}</p> : null}
+            <div className="mt-1">
+              <FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={title} onNavigate={navigate} />
+            </div>
           </div>
-          <Dropdown><Dropdown.Trigger aria-label="More document actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Document actions" onAction={handleDocumentAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Sync now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item><Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item><Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item><Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item><Dropdown.Item id="import">Import document</Dropdown.Item><Dropdown.Item id="close">Close document</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
+          <Dropdown><Dropdown.Trigger aria-label="More document actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Document actions" onAction={handleDocumentAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Sync now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item><Dropdown.Item id="duplicate">Duplicate</Dropdown.Item><Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item><Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item><Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item><Dropdown.Item id="import">Import document</Dropdown.Item><Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item><Dropdown.Item id="close">Close document</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
           <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void saveAll()}>Save</AppButton>
           <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void backupNow()}>Sync now</AppButton>
           <AppButton className="hidden sm:flex" variant="secondary" isDisabled={!file.driveFileId} onPress={() => file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined}>Open backup</AppButton>
@@ -456,9 +483,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               <Dropdown.Item id="save">Save now</Dropdown.Item>
               <Dropdown.Item id="backup">Sync now</Dropdown.Item>
               <Dropdown.Item id="import">Import document</Dropdown.Item>
+              <Dropdown.Item id="duplicate">Duplicate</Dropdown.Item>
               <Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item>
               <Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item>
               <Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item>
+              <Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item>
               <Dropdown.Item id="close">Close document</Dropdown.Item>
             </Dropdown.Menu>
           </DesktopMenu>
@@ -584,6 +613,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       <ChecklistActionsMenu editor={editor} />
       <BlockActionsMenu editor={editor} />
       <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} variant="mobile" />
+      <DeleteFileDialog
+        isOpen={isDeleteDialogOpen}
+        fileName={title || file.name}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={() => { void deleteDocument() }}
+      />
     </section>
   )
 }

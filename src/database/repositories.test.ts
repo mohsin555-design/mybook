@@ -32,6 +32,26 @@ describe('IndexedDB repositories', () => {
     expect((await fileRepository.get(id)).data).toMatchObject({ name: 'Meeting Notes', content: 'local content', isDeleted: false })
   })
 
+  it('creates files with unique default names in the same folder', async () => {
+    const firstDocument = await fileRepository.create('document')
+    const secondDocument = await fileRepository.create('document')
+    const firstSpreadsheet = await fileRepository.create('spreadsheet')
+    const secondSpreadsheet = await fileRepository.create('spreadsheet')
+
+    expect(firstDocument.data?.name).toBe('Untitled Document')
+    expect(secondDocument.data?.name).toBe('Untitled Document 2')
+    expect(firstSpreadsheet.data?.name).toBe('Untitled Spreadsheet')
+    expect(secondSpreadsheet.data?.name).toBe('Untitled Spreadsheet 2')
+
+    const files = await fileRepository.list()
+    expect(files.map((file) => file.name).sort()).toEqual([
+      'Untitled Document',
+      'Untitled Document 2',
+      'Untitled Spreadsheet',
+      'Untitled Spreadsheet 2',
+    ])
+  })
+
   it('creates nested folders and queues offline Drive work', async () => {
     const parent = await folderRepository.create('Projects')
     const child = await folderRepository.create('2026', parent.data!.id)

@@ -5,13 +5,18 @@ import { useNavigate } from 'react-router-dom'
 import { fileRepository, folderRepository } from '../../database/repositories'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import type { MyBookFile, MyBookFolder } from '../../types/files'
+import { formatUpdatedAt } from '../../utils/dateFormat'
+import { deletedToast } from '../../utils/deleteToast'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
 import { PageHeader } from '../common/PageHeader'
-import { DeleteFolderDialog } from './DeleteFolderDialog'
+import { toast } from '../ui/toast'
 import { CreateItemDrawer } from './CreateItemDrawer'
+import { DeleteFileDialog } from './DeleteFileDialog'
+import { DeleteFolderDialog } from './DeleteFolderDialog'
 import { FileCard } from './FileCard'
 import { FileActionsMenu } from './FileActionsMenu'
+import { FolderBreadcrumb } from './FolderBreadcrumb'
 import { FileNameDialog } from './FileNameDialog'
 import { FolderActionsMenu } from './FolderActionsMenu'
 import { FolderCard } from './FolderCard'
@@ -28,9 +33,11 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const [renameTarget, setRenameTarget] = useState<MyBookFolder | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MyBookFolder | null>(null)
   const [fileRenameTarget, setFileRenameTarget] = useState<MyBookFile | null>(null)
+  const [fileDeleteTarget, setFileDeleteTarget] = useState<MyBookFile | null>(null)
   const currentFolder = folderId ? folders.find((folder) => folder.id === folderId) : null
   const childFolders = folders.filter((folder) => folder.parentId === folderId)
   const childFiles = files.filter((file) => file.folderId === folderId)
+  const childFolderNames = childFolders.map((folder) => folder.name)
 
   if (folderId && !currentFolder) {
     return (
@@ -45,13 +52,27 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const itemCount = (targetId: string) =>
     folders.filter((folder) => folder.parentId === targetId).length +
     files.filter((file) => file.folderId === targetId).length
+  const folderCount = (targetId: string) => folders.filter((folder) => folder.parentId === targetId).length
+  const fileCount = (targetId: string) => files.filter((file) => file.folderId === targetId).length
 
-  const requestDelete = (folder: MyBookFolder) => {
-    if (itemCount(folder.id) > 0) setDeleteTarget(folder)
-    else {
-      void folderRepository.delete(folder.id)
-      if (folder.id === folderId) navigate(folder.parentId ? `/folders/${folder.parentId}` : '/folders')
-    }
+  const deleteFile = (file: MyBookFile) => {
+    void fileRepository.delete(file.id).then((result) => {
+      if (!result.success) return
+      toast.add(deletedToast({
+        itemName: file.name,
+        onUndo: () => { void fileRepository.restore(file.id) },
+      }))
+    })
+  }
+
+  const deleteFolder = (folder: MyBookFolder) => {
+    void folderRepository.delete(folder.id).then((result) => {
+      if (!result.success) return
+      toast.add(deletedToast({
+        itemName: folder.name,
+        onUndo: () => { void folderRepository.restore(folder.id) },
+      }))
+    })
   }
 
   return (
@@ -77,7 +98,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
               currentParentId={currentFolder.parentId}
               onRename={() => setRenameTarget(currentFolder)}
               onMove={(destination) => void folderRepository.update(currentFolder.id, { parentId: destination })}
-              onDelete={() => requestDelete(currentFolder)}
+              onDelete={() => setDeleteTarget(currentFolder)}
             />
           </div>
         ) : (
@@ -92,12 +113,18 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
         )}
       />
 
+      {currentFolder ? (
+        <div className="mt-2 -mx-1 px-1">
+          <FolderBreadcrumb currentFolderId={currentFolder.id} folders={folders} onNavigate={navigate} />
+        </div>
+      ) : null}
+
       <div className="-mx-4 mt-4 px-1">
         {childFiles.map((file) => (
           <FileCard
             key={file.id}
             name={file.name}
-            meta={`Updated ${new Date(file.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}`}
+            meta={`Updated ${formatUpdatedAt(file.updatedAt)}`}
             type={file.type}
             syncStatus={file.syncStatus}
             folderName={currentFolder?.name ?? 'MyBook'}
@@ -110,7 +137,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
                 onRename={() => setFileRenameTarget(file)}
                 onDuplicate={() => void fileRepository.duplicate(file.id)}
                 onMove={(destination) => void fileRepository.update(file.id, { folderId: destination })}
-                onDelete={() => void fileRepository.delete(file.id)}
+                onDelete={() => setFileDeleteTarget(file)}
               />
             }
           />
@@ -119,7 +146,8 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
           <FolderCard
             key={folder.id}
             name={folder.name}
-            itemCount={itemCount(folder.id)}
+            fileCount={fileCount(folder.id)}
+            folderCount={folderCount(folder.id)}
             driveStatus={folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
             onOpen={() => navigate(`/folders/${folder.id}`)}
             action={
@@ -130,7 +158,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
                 currentParentId={folder.parentId}
                 onRename={() => setRenameTarget(folder)}
                 onMove={(destination) => void folderRepository.update(folder.id, { parentId: destination })}
-                onDelete={() => requestDelete(folder)}
+                onDelete={() => setDeleteTarget(folder)}
               />
             }
           />
@@ -153,7 +181,14 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
         title="Create folder"
         submitLabel="Create"
         onClose={() => setIsCreating(false)}
+        existingFolderNames={childFolderNames}
         onSubmit={(name) => folderRepository.create(name, folderId)}
+        onSuccess={(result) => {
+          if (result.data) {
+            navigate(`/folders/${result.data.id}`)
+            toast.add({ title: `"${result.data.name}" created`, type: 'success', priority: 'low' })
+          }
+        }}
       />
       <FolderNameDialog
         isOpen={Boolean(renameTarget)}
@@ -161,18 +196,31 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
         submitLabel="Save"
         initialName={renameTarget?.name}
         onClose={() => setRenameTarget(null)}
+        existingFolderNames={folders
+          .filter((folder) => folder.parentId === renameTarget?.parentId && folder.id !== renameTarget?.id)
+          .map((folder) => folder.name)}
         onSubmit={(name) => renameTarget ? folderRepository.update(renameTarget.id, { name }) : Promise.resolve({ success: false })}
       />
       <DeleteFolderDialog
         isOpen={Boolean(deleteTarget)}
         folderName={deleteTarget?.name ?? ''}
+        hasContents={deleteTarget ? itemCount(deleteTarget.id) > 0 : false}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (!deleteTarget) return
           const deletingCurrent = deleteTarget.id === folderId
           const destination = deleteTarget.parentId
-          void folderRepository.delete(deleteTarget.id)
+          deleteFolder(deleteTarget)
           if (deletingCurrent) navigate(destination ? `/folders/${destination}` : '/folders')
+        }}
+      />
+      <DeleteFileDialog
+        isOpen={Boolean(fileDeleteTarget)}
+        fileName={fileDeleteTarget?.name ?? ''}
+        onClose={() => setFileDeleteTarget(null)}
+        onConfirm={() => {
+          if (!fileDeleteTarget) return
+          deleteFile(fileDeleteTarget)
         }}
       />
       <FileNameDialog fileName={fileRenameTarget?.name ?? ''} isOpen={Boolean(fileRenameTarget)} onClose={() => setFileRenameTarget(null)} onSubmit={(name) => fileRenameTarget ? fileRepository.update(fileRenameTarget.id, { name }) : Promise.resolve({ success: false })} />

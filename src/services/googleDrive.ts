@@ -91,6 +91,25 @@ async function listChildFiles(parentId: string): Promise<DriveFile[]> {
   return data.files ?? []
 }
 
+async function parentMoveParams(fileId: string, targetParentId: string, accessToken: string) {
+  const params = new URLSearchParams()
+  const currentResponse = await fetch(`${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}?fields=parents`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!currentResponse.ok) {
+    const body = await currentResponse.json().catch(() => null) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? 'Could not read the Google Drive file location.')
+  }
+  const current = await currentResponse.json().catch(() => null) as { parents?: string[] } | null
+  const currentParents = current?.parents ?? []
+  const parentsToRemove = currentParents.filter((parentId) => parentId !== targetParentId)
+
+  if (!currentParents.includes(targetParentId)) params.set('addParents', targetParentId)
+  if (parentsToRemove.length) params.set('removeParents', parentsToRemove.join(','))
+
+  return params
+}
+
 async function getDriveFileContent(fileId: string) {
   const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
@@ -169,12 +188,8 @@ export async function updateDriveFolder(folderId: string, changes: { name?: stri
   if (changes.name !== undefined) metadata.name = changes.name
   const params = new URLSearchParams({ fields: 'id,name,mimeType,webViewLink' })
   if (changes.parentId) {
-    const currentResponse = await fetch(`${DRIVE_API_BASE}/files/${folderId}?fields=parents`, { headers: { Authorization: `Bearer ${accessToken}` } })
-    const current = await currentResponse.json().catch(() => null) as { parents?: string[] } | null
-    if (!current?.parents?.includes(changes.parentId)) {
-      params.set('addParents', changes.parentId)
-      if (current?.parents?.length) params.set('removeParents', current.parents.join(','))
-    }
+    const moveParams = await parentMoveParams(folderId, changes.parentId, accessToken)
+    moveParams.forEach((value, key) => params.set(key, value))
   }
   const response = await fetch(`${DRIVE_API_BASE}/files/${folderId}?${params.toString()}`, {
     method: 'PATCH',
@@ -249,12 +264,9 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
 
   const parentParams = new URLSearchParams()
   if (changes.parentId !== undefined) {
-    const currentResult = await driveFetch(`/files/${encodeURIComponent(fileId)}?fields=parents`)
-    if (!currentResult.success) throw new Error(currentResult.error)
-    const current = await currentResult.response.json() as { parents?: string[] }
-    if (changes.parentId && !current.parents?.includes(changes.parentId)) {
-      parentParams.set('addParents', changes.parentId)
-      if (current.parents?.length) parentParams.set('removeParents', current.parents.join(','))
+    if (changes.parentId) {
+      const moveParams = await parentMoveParams(fileId, changes.parentId, accessToken)
+      moveParams.forEach((value, key) => parentParams.set(key, value))
     }
   }
 
@@ -365,8 +377,13 @@ async function uploadMarkdownFile(title: string, content: string, parentId: stri
     mimeType: MYBOOK_MARKDOWN_MIME,
   }
   const method = fileId ? 'PATCH' : 'POST'
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,modifiedTime' })
+  if (fileId) {
+    const moveParams = await parentMoveParams(fileId, parentId, accessToken)
+    moveParams.forEach((value, key) => query.set(key, value))
+  }
   const endpoint = fileId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id,name,webViewLink,modifiedTime`
+    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?${query.toString()}`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime'
   const response = await fetch(endpoint, {
     method,
@@ -439,8 +456,13 @@ async function uploadXlsxBlob(name: string, blob: Blob, parentId: string, fileId
   }
   const boundary = 'mybook-xlsx-boundary'
   const method = fileId ? 'PATCH' : 'POST'
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,modifiedTime' })
+  if (fileId) {
+    const moveParams = await parentMoveParams(fileId, parentId, accessToken)
+    moveParams.forEach((value, key) => query.set(key, value))
+  }
   const endpoint = fileId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id,name,webViewLink,modifiedTime`
+    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?${query.toString()}`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime'
   const response = await fetch(endpoint, {
     method,
@@ -825,17 +847,27 @@ export async function importDriveFilesToLocal() {
         content = ''
       }
       if (existing) {
+        const name = localFileName(driveFile.name, fileType)
+        const type = existing.type ?? fileType
+        const mimeType = driveFile.mimeType || existing.mimeType
         const driveIsNewer = !existing.lastSyncedAt || new Date(driveModifiedTime).getTime() > new Date(existing.lastSyncedAt).getTime()
         const nextContent = driveIsNewer && content && content !== existing.content ? content : existing.content
         if (nextContent !== existing.content) await saveVersionBeforeDriveUpdate(existing.id, driveModifiedTime)
+        const userVisibleChanged =
+          name !== existing.name ||
+          parentLocalId !== existing.folderId ||
+          type !== existing.type ||
+          mimeType !== existing.mimeType ||
+          nextContent !== existing.content ||
+          existing.isDeleted
         await db.files.update(existing.id, {
-          name: localFileName(driveFile.name, fileType),
+          name,
           folderId: parentLocalId,
           driveFileId: driveFile.id,
-          type: existing.type ?? fileType,
-          mimeType: driveFile.mimeType || existing.mimeType,
+          type,
+          mimeType,
           content: nextContent,
-          updatedAt: now,
+          updatedAt: userVisibleChanged ? now : existing.updatedAt,
           lastSyncedAt: driveModifiedTime,
           syncStatus: 'backed-up',
           syncError: null,

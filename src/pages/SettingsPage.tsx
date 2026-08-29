@@ -42,6 +42,11 @@ export function SettingsPage() {
     void db.open().then(() => setDatabaseStatus('ready')).catch(() => setDatabaseStatus('failed'))
   }, [])
 
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login', { replace: true, state: null })
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4">
       <PageHeader
@@ -61,7 +66,7 @@ export function SettingsPage() {
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
           {email ? `Signed in as ${email}.` : 'Your Google session will appear here after sign-in.'}
         </p>
-        <AppButton className="mt-4" variant="secondary" onPress={() => void logout()}>
+        <AppButton className="mt-4" variant="secondary" onPress={() => void handleLogout()}>
           <ArrowRightStartOnRectangleIcon aria-hidden="true" className="size-5" />
           Log out
         </AppButton>

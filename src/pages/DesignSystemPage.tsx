@@ -54,8 +54,8 @@ export function DesignSystemPage() {
 
       <PreviewSection title="Files and folders">
         <div className="grid gap-3 sm:grid-cols-2">
-          <FolderCard name="Project notes" itemCount={8} />
-          <FolderCard name="Reading list" itemCount={1} />
+          <FolderCard name="Project notes" fileCount={8} folderCount={2} />
+          <FolderCard name="Reading list" fileCount={1} folderCount={0} />
           <FileCard name="Product brief" meta="Edited 12 minutes ago" action={<IconButton label="More actions for Product brief" variant="ghost"><EllipsisHorizontalIcon className="size-5" /></IconButton>} />
           <FileCard name="Research notes" meta="Document · 3 pages" />
         </div>

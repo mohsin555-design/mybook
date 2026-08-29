@@ -3,16 +3,23 @@ import { useEffect, useRef } from 'react'
 
 import { AppButton } from '../common/AppButton'
 
-interface DeleteFolderDialogProps {
+interface DeleteFileDialogProps {
   isOpen: boolean
-  folderName: string
-  hasContents?: boolean
+  fileName: string
+  mode?: 'trash' | 'permanent'
   onClose: () => void
   onConfirm: () => void
 }
 
-export function DeleteFolderDialog({ isOpen, folderName, hasContents = false, onClose, onConfirm }: DeleteFolderDialogProps) {
+export function DeleteFileDialog({
+  isOpen,
+  fileName,
+  mode = 'trash',
+  onClose,
+  onConfirm,
+}: DeleteFileDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const isPermanent = mode === 'permanent'
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -28,23 +35,27 @@ export function DeleteFolderDialog({ isOpen, folderName, hasContents = false, on
   return (
     <dialog
       ref={dialogRef}
-      aria-labelledby="delete-folder-title"
-      aria-describedby="delete-folder-description"
+      aria-labelledby="delete-file-title"
+      aria-describedby="delete-file-description"
       onCancel={(event) => { event.preventDefault(); close() }}
       onClose={onClose}
       className="m-auto w-[calc(100%-2rem)] max-w-md rounded-[14px] border border-[var(--app-border)] bg-[var(--app-surface)] p-0 text-foreground backdrop:bg-black/50"
     >
       <div className="p-5">
         <ExclamationTriangleIcon aria-hidden="true" className="size-7 text-danger" />
-        <h2 id="delete-folder-title" className="mt-3 text-lg font-semibold">Move "{folderName}" to Trash?</h2>
-        <p id="delete-folder-description" className="mt-2 text-base leading-7 text-muted-foreground">
-          {hasContents
-            ? 'This folder is not empty. Its files and nested folders will also be moved to Trash.'
-            : 'This folder will move to Trash. You can restore it later from Trash.'}
+        <h2 id="delete-file-title" className="mt-3 text-lg font-semibold">
+          {isPermanent ? `Delete "${fileName}" permanently?` : `Move "${fileName}" to Trash?`}
+        </h2>
+        <p id="delete-file-description" className="mt-2 text-base leading-7 text-muted-foreground">
+          {isPermanent
+            ? 'This file will be permanently deleted and cannot be restored.'
+            : 'This file will move to Trash, where you can restore it later.'}
         </p>
         <div className="mt-6 flex flex-wrap justify-end gap-2">
           <AppButton variant="secondary" onPress={close}>Cancel</AppButton>
-          <AppButton variant="danger" onPress={() => { onConfirm(); close() }}>Move to Trash</AppButton>
+          <AppButton variant="danger" onPress={() => { onConfirm(); close() }}>
+            {isPermanent ? 'Delete permanently' : 'Move to Trash'}
+          </AppButton>
         </div>
       </div>
     </dialog>

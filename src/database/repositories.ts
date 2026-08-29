@@ -142,6 +142,17 @@ async function uniqueFileName(name: string, folderId: string | null, excludedId?
   return !files.some((file) => file.id !== excludedId && !file.isDeleted && file.folderId === folderId && appFileName(file.name, file.type).toLocaleLowerCase() === name.toLocaleLowerCase())
 }
 
+async function nextFileName(baseName: string, folderId: string | null) {
+  if (await uniqueFileName(baseName, folderId)) return baseName
+  let suffix = 2
+  let name = `${baseName} ${suffix}`
+  while (!(await uniqueFileName(name, folderId))) {
+    suffix += 1
+    name = `${baseName} ${suffix}`
+  }
+  return name
+}
+
 function logicalFileKeys(file: MyBookFile) {
   const nameKey = `${file.folderId ?? 'root'}:${file.type}:${appFileName(file.name, file.type).toLocaleLowerCase()}`
   return file.driveFileId ? [`drive:${file.driveFileId}`, `name:${nameKey}`] : [`name:${nameKey}`]
@@ -172,7 +183,8 @@ export const fileRepository = {
   async create(type: FileType, folderId: string | null = null): Promise<RepositoryResult<MyBookFile>> {
     try {
       const now = new Date().toISOString()
-      const file: MyBookFile = { id: crypto.randomUUID(), driveFileId: null, name: type === 'document' ? 'Untitled document' : 'Untitled spreadsheet', type, folderId, content: '', mimeType: type === 'document' ? 'application/x-mybook-document' : 'application/x-mybook-spreadsheet', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'pending', isDeleted: false }
+      const name = await nextFileName(type === 'document' ? 'Untitled Document' : 'Untitled Spreadsheet', folderId)
+      const file: MyBookFile = { id: crypto.randomUUID(), driveFileId: null, name, type, folderId, content: '', mimeType: type === 'document' ? 'application/x-mybook-document' : 'application/x-mybook-spreadsheet', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'pending', isDeleted: false }
       await db.files.add(file)
       await queueFileSync(file.id, 'create', navigator.onLine ? null : 'Offline. File will sync when you reconnect.')
       if (navigator.onLine) await processPendingDriveSync()
@@ -266,7 +278,7 @@ export const folderRepository = {
       const normalized = cleanName(name)
       if (!normalized) return { success: false, error: 'Folder name cannot be empty.' }
       const siblings = await db.folders.filter((folder) => !folder.isDeleted && folder.parentId === parentId).toArray()
-      if (siblings.some((folder) => folder.name.toLocaleLowerCase() === normalized.toLocaleLowerCase())) return { success: false, error: 'A folder with this name already exists here.' }
+      if (siblings.some((folder) => folder.name.toLocaleLowerCase() === normalized.toLocaleLowerCase())) return { success: false, error: `"${normalized}" already exists. Use a different name.` }
       let depth = 1
       let ancestorId = parentId
       while (ancestorId) {
@@ -317,7 +329,7 @@ export const folderRepository = {
       if (changes.name !== undefined) { const name = cleanName(changes.name); if (!name) return { success: false, error: 'Folder name cannot be empty.' }; changes = { ...changes, name } }
       const nextName = changes.name ?? folder.name
       const siblings = await db.folders.filter((item) => !item.isDeleted && item.id !== id && item.parentId === targetParentId).toArray()
-      if (siblings.some((item) => item.name.toLocaleLowerCase() === nextName.toLocaleLowerCase())) return { success: false, error: 'A folder with this name already exists here.' }
+      if (siblings.some((item) => item.name.toLocaleLowerCase() === nextName.toLocaleLowerCase())) return { success: false, error: `"${nextName}" already exists. Use a different name.` }
       const next = { ...changes, updatedAt: new Date().toISOString() }
       await db.folders.update(id, next)
       if (changes.name !== undefined || changes.parentId !== undefined) {
@@ -345,13 +357,47 @@ export const folderRepository = {
     } catch (error) { return failure(error, 'Could not delete folder.') }
   },
   async restore(id: string) {
-    const result = await this.update(id, { isDeleted: false })
-    const folder = await db.folders.get(id)
-    if (result.success && folder) {
-      await queueFolderSync(id, folder.driveFolderId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. Folder restore will sync when you reconnect.')
-      if (navigator.onLine) await processPendingDriveFolderSync()
+    try {
+      let restoredFolderIds: string[] = []
+      let restoredFileIds: string[] = []
+      await db.transaction('rw', db.folders, db.files, async () => {
+        const folder = await db.folders.get(id)
+        if (!folder) throw new Error('Folder could not be found.')
+        const allFolders = await db.folders.toArray()
+        const ids = new Set([id])
+        let changed = true
+        while (changed) {
+          changed = false
+          allFolders.forEach((candidate) => {
+            if (candidate.parentId && ids.has(candidate.parentId) && !ids.has(candidate.id)) {
+              ids.add(candidate.id)
+              changed = true
+            }
+          })
+        }
+        restoredFolderIds = [...ids]
+        const now = new Date().toISOString()
+        await Promise.all(restoredFolderIds.map((folderId) => db.folders.update(folderId, { isDeleted: false, updatedAt: now })))
+        const nestedFiles = await db.files.filter((file) => Boolean(file.folderId && ids.has(file.folderId))).toArray()
+        restoredFileIds = nestedFiles.map((file) => file.id)
+        await Promise.all(restoredFileIds.map((fileId) => db.files.update(fileId, { isDeleted: false, updatedAt: now })))
+      })
+      const restoredFolders = await db.folders.bulkGet(restoredFolderIds)
+      await Promise.all(restoredFolders
+        .filter((folder): folder is MyBookFolder => Boolean(folder))
+        .map((folder) => queueFolderSync(folder.id, folder.driveFolderId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. Folder restore will sync when you reconnect.')))
+      const restoredFiles = await db.files.bulkGet(restoredFileIds)
+      await Promise.all(restoredFiles
+        .filter((file): file is MyBookFile => Boolean(file))
+        .map((file) => queueFileSync(file.id, file.driveFileId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. File restore will sync when you reconnect.')))
+      if (navigator.onLine) {
+        await processPendingDriveFolderSync()
+        await processPendingDriveSync()
+      }
+      return { success: true }
+    } catch (error) {
+      return failure(error, 'Could not restore folder.')
     }
-    return result
   },
   async list(): Promise<MyBookFolder[]> { try { return await db.folders.filter((folder) => !folder.isDeleted).toArray() } catch (error) { devLog('error', 'Could not list folders.', error); return [] } },
   async search(query: string): Promise<MyBookFolder[]> { try { const value = query.trim().toLocaleLowerCase(); return await db.folders.filter((folder) => !folder.isDeleted && folder.name.toLocaleLowerCase().includes(value)).toArray() } catch (error) { devLog('error', 'Could not search folders.', error); return [] } },

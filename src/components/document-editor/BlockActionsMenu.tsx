@@ -10,7 +10,16 @@ import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeSelection } from '@tiptap/pm/state'
 import { useEffect, useState, type ReactNode } from 'react'
+import { AppButton } from '../common/AppButton'
 import { MobileBottomSheet } from '../common/MobileBottomSheet'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog'
 
 const actionableBlocks = new Set(['callout', 'toggleBlock', 'imageBlock', 'fileAttachment', 'table', 'blockquote', 'codeBlock'])
 
@@ -147,6 +156,7 @@ function SheetActionButton({
 
 export function BlockActionsMenu({ editor }: { editor: Editor }) {
   const [target, setTarget] = useState<BlockTarget | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BlockTarget | null>(null)
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false)
 
   useEffect(() => {
@@ -168,40 +178,48 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
     }
   }, [editor])
 
-  if (!target) return null
+  if (!target && !deleteTarget) return null
 
-  const previous = editor.state.doc.resolve(target.pos).nodeBefore
-  const next = editor.state.doc.resolve(target.pos + target.node.nodeSize).nodeAfter
-  const top = Math.max(88, target.rect.top)
-  const left = Math.max(8, Math.min(target.rect.left - 52, window.innerWidth - 188))
+  const previous = target ? editor.state.doc.resolve(target.pos).nodeBefore : null
+  const next = target ? editor.state.doc.resolve(target.pos + target.node.nodeSize).nodeAfter : null
+  const top = target ? Math.max(88, target.rect.top) : 88
+  const left = target ? Math.max(8, Math.min(target.rect.left - 52, window.innerWidth - 188)) : 8
 
   const runMobileAction = (action: () => void) => {
     action()
     setIsMobileSheetOpen(false)
   }
 
+  const requestDeleteBlock = (blockTarget: BlockTarget) => {
+    setDeleteTarget(blockTarget)
+    setIsMobileSheetOpen(false)
+  }
+
   return (
     <>
-      <div
-        className="fixed z-40 hidden gap-1 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.12)] md:flex"
-        style={{ top, left }}
-        role="toolbar"
-        aria-label="Block actions"
-      >
-        <ActionButton label="Move block up" disabled={!previous} onClick={() => moveBlockUp(editor, target)}>
-          <ArrowUpIcon aria-hidden="true" className="size-4" />
-        </ActionButton>
-        <ActionButton label="Move block down" disabled={!next} onClick={() => moveBlockDown(editor, target)}>
-          <ArrowDownIcon aria-hidden="true" className="size-4" />
-        </ActionButton>
-        <ActionButton label="Duplicate block" onClick={() => duplicateBlock(editor, target)}>
-          <DocumentDuplicateIcon aria-hidden="true" className="size-4" />
-        </ActionButton>
-        <ActionButton label="Delete block" onClick={() => deleteBlock(editor, target)}>
-          <TrashIcon aria-hidden="true" className="size-4" />
-        </ActionButton>
-      </div>
+      {target ? (
+        <div
+          className="fixed z-40 hidden gap-1 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.12)] md:flex"
+          style={{ top, left }}
+          role="toolbar"
+          aria-label="Block actions"
+        >
+          <ActionButton label="Move block up" disabled={!previous} onClick={() => moveBlockUp(editor, target)}>
+            <ArrowUpIcon aria-hidden="true" className="size-4" />
+          </ActionButton>
+          <ActionButton label="Move block down" disabled={!next} onClick={() => moveBlockDown(editor, target)}>
+            <ArrowDownIcon aria-hidden="true" className="size-4" />
+          </ActionButton>
+          <ActionButton label="Duplicate block" onClick={() => duplicateBlock(editor, target)}>
+            <DocumentDuplicateIcon aria-hidden="true" className="size-4" />
+          </ActionButton>
+          <ActionButton label="Delete block" onClick={() => requestDeleteBlock(target)}>
+            <TrashIcon aria-hidden="true" className="size-4" />
+          </ActionButton>
+        </div>
+      ) : null}
 
+      {target ? (
       <div className="fixed right-4 z-40 md:hidden" style={{ bottom: 'calc(var(--mybook-keyboard-offset, 0px) + 5.5rem + env(safe-area-inset-bottom))' }}>
         <MobileBottomSheet
           title="Block actions"
@@ -225,12 +243,39 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
             <SheetActionButton label="Duplicate block" onClick={() => runMobileAction(() => duplicateBlock(editor, target))}>
               <DocumentDuplicateIcon aria-hidden="true" className="size-5 shrink-0" />
             </SheetActionButton>
-            <SheetActionButton label="Delete block" destructive onClick={() => runMobileAction(() => deleteBlock(editor, target))}>
+            <SheetActionButton label="Delete block" destructive onClick={() => requestDeleteBlock(target)}>
               <TrashIcon aria-hidden="true" className="size-5 shrink-0" />
             </SheetActionButton>
           </div>
         </MobileBottomSheet>
       </div>
+      ) : null}
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+              <TrashIcon aria-hidden="true" className="size-6" />
+            </div>
+            <DialogTitle>Delete this block?</DialogTitle>
+            <DialogDescription>
+              This content will be removed from the document.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <AppButton variant="secondary" onPress={() => setDeleteTarget(null)}>Cancel</AppButton>
+            <AppButton
+              variant="danger"
+              onPress={() => {
+                if (deleteTarget) deleteBlock(editor, deleteTarget)
+                setDeleteTarget(null)
+              }}
+            >
+              Delete block
+            </AppButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

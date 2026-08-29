@@ -2,6 +2,7 @@ import { RouterProvider } from 'react-router-dom'
 import { useEffect } from 'react'
 
 import { PwaStatus } from '../components/common/PwaStatus'
+import { Toaster } from '../components/ui/toast'
 import { TooltipProvider } from '../components/ui/tooltip'
 import { useAuthStore } from '../stores/useAuthStore'
 import { router } from './router'
@@ -17,6 +18,7 @@ export function App() {
     <TooltipProvider>
       <PwaStatus />
       <RouterProvider router={router} />
+      <Toaster />
     </TooltipProvider>
   </>
 }

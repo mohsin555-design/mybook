@@ -9,6 +9,7 @@ interface AppButtonProps extends Omit<ShadcnButtonProps, 'disabled' | 'onClick' 
   fullWidth?: boolean
   isDisabled?: boolean
   isLoading?: boolean
+  loadingLabel?: string
   onPress?: () => void
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'link'
 }
@@ -28,6 +29,7 @@ export function AppButton({
   fullWidth = false,
   isDisabled = false,
   isLoading = false,
+  loadingLabel = 'Loading...',
   onPress,
   variant = 'primary',
   ...props
@@ -40,7 +42,7 @@ export function AppButton({
       variant={variantMap[variant]}
       {...props}
     >
-      {isLoading ? 'Loading...' : children}
+      {isLoading ? loadingLabel : children}
     </Button>
   )
 }

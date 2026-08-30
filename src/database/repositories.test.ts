@@ -2,8 +2,9 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from './db'
-import { fileRepository, folderRepository, processPendingDriveFolderSync } from './repositories'
+import { fileRepository, folderRepository, processPendingDriveFolderSync, queueLocalItemsForDriveBackup } from './repositories'
 import { ensureMyBookDriveFolder, ensureVisibleFolderInParent } from '../services/googleDrive'
+import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
 vi.mock('../services/googleDrive', () => ({
   backupDocumentToDrive: vi.fn().mockResolvedValue({ success: true, folderId: 'mybook-root', folderName: 'MyBook', created: true }),
@@ -16,9 +17,13 @@ vi.mock('../services/googleDrive', () => ({
 
 describe('IndexedDB repositories', () => {
   beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.mocked(ensureMyBookDriveFolder).mockResolvedValue({ success: false, error: 'offline' })
+    vi.mocked(ensureVisibleFolderInParent).mockReset()
     await db.delete()
     await db.open()
     vi.stubGlobal('navigator', { onLine: false })
+    useWorkspaceStore.setState({ mode: null })
   })
 
   it('creates, renames, deletes, and restores a file locally', async () => {
@@ -60,6 +65,88 @@ describe('IndexedDB repositories', () => {
     expect(queue).toHaveLength(2)
     await processPendingDriveFolderSync()
     expect((await db.syncQueue.toArray())[0]?.status).toBe('pending')
+  })
+
+  it('does not queue Drive work for a local workspace', async () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+
+    const file = await fileRepository.create('document')
+    const folder = await folderRepository.create('Local folder')
+    await fileRepository.update(file.data!.id, { content: '{"type":"doc","content":[{"type":"paragraph"}]}', folderId: folder.data!.id })
+
+    expect(file.data?.syncStatus).toBe('local')
+    expect((await db.files.get(file.data!.id))?.syncStatus).toBe('local')
+    expect(await db.syncQueue.toArray()).toHaveLength(0)
+    expect(ensureMyBookDriveFolder).not.toHaveBeenCalled()
+  })
+
+  it('hides cached Drive files and folders in local workspace mode', async () => {
+    const now = new Date().toISOString()
+    await db.folders.bulkAdd([
+      { id: 'drive-folder', driveFolderId: 'drive-folder-id', name: 'Drive folder', parentId: null, createdAt: now, updatedAt: now, isDeleted: false },
+      { id: 'local-folder', driveFolderId: null, workspaceType: 'local', name: 'Local folder', parentId: null, createdAt: now, updatedAt: now, isDeleted: false },
+    ])
+    await db.files.bulkAdd([
+      { id: 'drive-file', driveFileId: 'drive-file-id', name: 'Drive file', type: 'document', folderId: null, content: '', mimeType: 'application/x-mybook-document', createdAt: now, updatedAt: now, lastSyncedAt: now, syncStatus: 'backed-up', isDeleted: false },
+      { id: 'local-file', driveFileId: null, workspaceType: 'local', name: 'Local file', type: 'document', folderId: null, content: '', mimeType: 'application/x-mybook-document', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'local', isDeleted: false },
+    ])
+
+    useWorkspaceStore.setState({ mode: 'local' })
+
+    expect((await fileRepository.list()).map((file) => file.id)).toEqual(['local-file'])
+    expect((await folderRepository.list()).map((folder) => folder.id)).toEqual(['local-folder'])
+    expect((await fileRepository.get('drive-file')).data).toBeUndefined()
+    expect((await folderRepository.get('drive-folder')).data).toBeUndefined()
+  })
+
+  it('treats legacy unmarked rows as Drive workspace items', async () => {
+    const now = new Date().toISOString()
+    await db.files.add({ id: 'legacy-drive-file', driveFileId: 'drive-file-id', name: 'Drive file', type: 'document', folderId: null, content: '', mimeType: 'application/x-mybook-document', createdAt: now, updatedAt: now, lastSyncedAt: now, syncStatus: 'backed-up', isDeleted: false })
+
+    useWorkspaceStore.setState({ mode: 'drive' })
+
+    expect((await fileRepository.list()).map((file) => file.id)).toEqual(['legacy-drive-file'])
+  })
+
+  it('does not wait for Drive sync before completing a local content update', async () => {
+    vi.stubGlobal('navigator', { onLine: true })
+    vi.mocked(ensureMyBookDriveFolder).mockImplementation(() => new Promise(() => undefined))
+    const now = new Date().toISOString()
+    await db.files.add({
+      id: 'drive-file',
+      driveFileId: null,
+      workspaceType: 'drive',
+      name: 'Drive file',
+      type: 'document',
+      folderId: null,
+      content: '',
+      mimeType: 'application/x-mybook-document',
+      createdAt: now,
+      updatedAt: now,
+      lastSyncedAt: null,
+      syncStatus: 'pending',
+      isDeleted: false,
+    })
+
+    await expect(fileRepository.update('drive-file', { content: 'changed', syncStatus: 'pending' })).resolves.toEqual({ success: true })
+    expect((await db.files.get('drive-file'))?.content).toBe('changed')
+    expect((await db.syncQueue.toArray())).toHaveLength(1)
+  })
+
+  it('queues local workspace files when switching to Drive backup', async () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+    const file = await fileRepository.create('document')
+    const folder = await folderRepository.create('Local folder')
+    expect(await db.syncQueue.toArray()).toHaveLength(0)
+
+    useWorkspaceStore.setState({ mode: 'drive' })
+    await queueLocalItemsForDriveBackup()
+
+    expect((await db.files.get(file.data!.id))?.syncStatus).toBe('pending')
+    expect((await db.syncQueue.toArray()).map((item) => `${item.entityType}:${item.entityId}`).sort()).toEqual([
+      `file:${file.data!.id}`,
+      `folder:${folder.data!.id}`,
+    ])
   })
 
   it('creates a nested Drive folder under its synced parent', async () => {

@@ -1,9 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { fileRepository, folderRepository } from '../database/repositories'
+import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
 export function useLibraryData(includeDeleted = false) {
-  const files = useLiveQuery(() => fileRepository.list(includeDeleted), [includeDeleted], [])
-  const folders = useLiveQuery(() => folderRepository.list(), [], [])
+  const workspaceMode = useWorkspaceStore((state) => state.mode)
+  const files = useLiveQuery(() => fileRepository.list(includeDeleted), [includeDeleted, workspaceMode], [])
+  const folders = useLiveQuery(() => folderRepository.list(), [workspaceMode], [])
   return { files, folders, isLoading: files === undefined || folders === undefined }
 }

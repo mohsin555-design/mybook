@@ -43,7 +43,6 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   const [xlsxMessage, setXlsxMessage] = useState<string | null>(null)
   const [xlsxWarnings, setXlsxWarnings] = useState<string[]>([])
   const [isConverting, setIsConverting] = useState(false)
-  const [cloudMessage, setCloudMessage] = useState<string | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const cloudTimerRef = useRef<number | null>(null)
   const cloudFlightRef = useRef(false)
@@ -109,16 +108,15 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     cloudTimerRef.current = window.setTimeout(() => {
       if (cloudFlightRef.current || !file || file.isDeleted) return
       cloudFlightRef.current = true
-      setCloudMessage('Syncing…')
       void (async () => {
         try {
           const saved = await save()
-          if (!saved) { setCloudMessage('Save failed. Sync paused.'); return }
+          if (!saved) return
           const latest = await fileRepository.get(file.id)
           const latestFile = latest.data
-          if (!latestFile) { setCloudMessage('Spreadsheet could not be found.'); return }
+          if (!latestFile) return
           const result = await backupSpreadsheetToDrive({ fileId: file.id, title: latestFile.name, content: latestFile.content, folderId: latestFile.folderId })
-          setCloudMessage(result.success ? 'Synced' : result.error)
+          if (!result.success) toast.add({ title: "Couldn't sync", description: result.error, type: 'error', priority: 'low' })
         } finally {
           cloudFlightRef.current = false
         }
@@ -196,20 +194,24 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   const backupNow = async () => {
     if (!file) return
     const snapshot = workbookRef.current?.save() as UniverWorkbookSnapshot | undefined
-    if (!snapshot) { setCloudMessage('The spreadsheet is not ready yet.'); return }
+    if (!snapshot) { toast.add({ title: 'Spreadsheet is not ready yet', type: 'warning', priority: 'low' }); return }
     setContent(JSON.stringify(snapshot))
     await save()
     const latest = (await fileRepository.get(file.id)).data
     if (!latest) return
-    setCloudMessage('Syncing…')
     const result = await backupSpreadsheetToDrive({ fileId: latest.id, title: latest.name, content: latest.content, folderId: latest.folderId })
-    setCloudMessage(result.success ? 'Synced' : result.error ?? 'Sync failed.')
+    if (!result.success) toast.add({ title: "Couldn't sync", description: result.error ?? 'Sync failed.', type: 'error', priority: 'low' })
   }
 
   const copyDriveLink = async () => {
     if (!file.driveFileId) return
     const result = await copyDriveFileLink(file.driveFileId)
-    setCloudMessage(result.success ? 'Backup link copied.' : result.error ?? 'Could not copy the backup link.')
+    toast.add({
+      title: result.success ? 'Backup link copied' : 'Could not copy the backup link',
+      description: result.success ? undefined : result.error,
+      type: result.success ? 'success' : 'error',
+      priority: 'low',
+    })
   }
   const handleMenuAction = (key: Key) => {
     if (key === 'save') void save()
@@ -224,12 +226,13 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     if (key === 'delete') setIsDeleteDialogOpen(true)
     if (key === 'close') void close()
   }
+  const editorStatus = file.syncStatus === 'failed' && status !== 'editing' && status !== 'saving-locally' && status !== 'saved-locally' ? 'failed' : status
 
   return (
     <section className="-mx-4 -my-6 flex min-h-0 flex-col sm:-mx-6 lg:-mx-8" style={{ height: editorHeight }}>
       <header className="z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-[var(--app-border)] bg-background px-2 sm:px-4">
         <button type="button" onClick={() => void close()} aria-label="Close spreadsheet" className="flex size-11 shrink-0 items-center justify-center rounded-[10px]"><ArrowLeftIcon aria-hidden="true" className="size-5" /></button>
-        <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">{file.name}</h1><EditorStatus status={status} />{cloudMessage ? <p className="mt-1 text-xs text-muted-foreground">{cloudMessage}</p> : null}{file.lastSyncedAt || file.syncError ? <p className="mt-1 text-xs text-muted-foreground">{file.lastSyncedAt ? `Synced ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? `${file.lastSyncedAt ? ' · ' : ''}${file.syncError}` : ''}</p> : null}<div className="mt-1"><FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={file.name} onNavigate={navigate} /></div></div>
+        <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">{file.name}</h1><EditorStatus status={editorStatus} onRetry={() => void backupNow()} /><div className="mt-1"><FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={file.name} onNavigate={navigate} /></div></div>
         <Dropdown><Dropdown.Trigger aria-label="More spreadsheet actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Spreadsheet actions" onAction={handleMenuAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Sync now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item><Dropdown.Item id="duplicate">Duplicate</Dropdown.Item><Dropdown.Item id="download-local">Download local copy</Dropdown.Item><Dropdown.Item id="import"><span className="flex items-center gap-2"><ArrowUpTrayIcon aria-hidden="true" className="size-5" />Import XLSX</span></Dropdown.Item><Dropdown.Item id="export">Export XLSX</Dropdown.Item><Dropdown.Item id="download"><span className="flex items-center gap-2"><ArrowDownTrayIcon aria-hidden="true" className="size-5" />Download XLSX</span></Dropdown.Item><Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item><Dropdown.Item id="close">Close spreadsheet</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
         <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void save()}>Save</AppButton>
         <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void backupNow()}>Sync now</AppButton>

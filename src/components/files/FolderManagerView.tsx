@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { fileRepository, folderRepository } from '../../database/repositories'
 import { useLibraryData } from '../../hooks/useLibraryData'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import type { MyBookFile, MyBookFolder } from '../../types/files'
 import { formatUpdatedAt } from '../../utils/dateFormat'
 import { deletedToast } from '../../utils/deleteToast'
@@ -29,6 +30,7 @@ interface FolderManagerViewProps {
 export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const navigate = useNavigate()
   const { files, folders } = useLibraryData()
+  const workspaceMode = useWorkspaceStore((state) => state.mode)
   const [isCreating, setIsCreating] = useState(false)
   const [renameTarget, setRenameTarget] = useState<MyBookFolder | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MyBookFolder | null>(null)
@@ -148,7 +150,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
             name={folder.name}
             fileCount={fileCount(folder.id)}
             folderCount={folderCount(folder.id)}
-            driveStatus={folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
+            driveStatus={workspaceMode === 'local' ? 'Stored locally' : folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
             onOpen={() => navigate(`/folders/${folder.id}`)}
             action={
               <FolderActionsMenu

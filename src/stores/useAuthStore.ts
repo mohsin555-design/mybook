@@ -204,14 +204,14 @@ export const useAuthStore = create<AuthState>()(
         try {
           const session = await readBackendSession()
           set({
-            isAuthenticated: session.authenticated || Boolean(get().email),
+            isAuthenticated: session.authenticated,
             isLoading: false,
             error: null,
             email: session.email ?? get().email,
           })
         } catch (error) {
           set({
-            isAuthenticated: Boolean(get().email),
+            isAuthenticated: false,
             isLoading: false,
             error: error instanceof Error ? error.message : 'Could not check your sign-in session.',
           })
@@ -262,7 +262,7 @@ export const useAuthStore = create<AuthState>()(
             })
             .catch((error) => {
               set({
-                isAuthenticated: Boolean(get().email),
+                isAuthenticated: false,
                 accessToken: null,
                 accessTokenExpiresAt: null,
                 error: getFriendlyGoogleAuthError(error) || 'Google Drive needs to reconnect.',
@@ -297,7 +297,7 @@ export const useAuthStore = create<AuthState>()(
           })
           .catch((error) => {
             set({
-              isAuthenticated: true,
+              isAuthenticated: false,
               accessToken: null,
               accessTokenExpiresAt: null,
               error: getFriendlyGoogleAuthError(error) || 'Google Drive needs to reconnect.',
@@ -360,7 +360,7 @@ export const useAuthStore = create<AuthState>()(
           return true
         } catch (error) {
           set({
-            isAuthenticated: Boolean(get().email),
+            isAuthenticated: false,
             isLoading: false,
             error: getFriendlyGoogleAuthError(error) || 'We could not reconnect your Google session.',
           })
@@ -396,7 +396,7 @@ export const useAuthStore = create<AuthState>()(
         if (!isTokenFresh(state.accessTokenExpiresAt)) {
           state.accessToken = null
           state.accessTokenExpiresAt = null
-          state.isAuthenticated = Boolean(state.email)
+          state.isAuthenticated = false
         } else {
           state.isAuthenticated = true
           scheduleExpiry(

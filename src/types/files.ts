@@ -1,5 +1,6 @@
 export type FileType = 'document' | 'spreadsheet'
-export type SyncStatus = 'pending' | 'backing-up' | 'backed-up' | 'failed' | 'offline'
+export type WorkspaceType = 'local' | 'drive'
+export type SyncStatus = 'local' | 'pending' | 'backing-up' | 'backed-up' | 'failed' | 'offline'
 export type EditorSaveStatus = 'editing' | 'saving-locally' | 'saved-locally' | SyncStatus
 export type FileSort = 'recent' | 'name-asc' | 'name-desc' | 'type' | 'oldest'
 export type FileFilter = 'all' | 'document' | 'spreadsheet'
@@ -7,6 +8,7 @@ export type FileFilter = 'all' | 'document' | 'spreadsheet'
 export interface MyBookFile {
   id: string
   driveFileId: string | null
+  workspaceType?: WorkspaceType
   name: string
   type: FileType
   folderId: string | null
@@ -38,6 +40,7 @@ export interface MyBookFileVersion {
 export interface MyBookFolder {
   id: string
   driveFolderId: string | null
+  workspaceType?: WorkspaceType
   name: string
   parentId: string | null
   createdAt: string

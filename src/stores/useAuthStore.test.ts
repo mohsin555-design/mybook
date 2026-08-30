@@ -112,7 +112,7 @@ describe('auth helpers', () => {
     })
   })
 
-  it('keeps the user signed in when the stored Drive token is expired', async () => {
+  it('requires reconnect when the stored Drive token is expired', async () => {
     localStorage.setItem('mybook-auth', JSON.stringify({
       state: {
         email: 'reader@example.com',
@@ -125,7 +125,46 @@ describe('auth helpers', () => {
     await useAuthStore.persist.rehydrate()
 
     expect(useAuthStore.getState()).toMatchObject({
+      isAuthenticated: false,
+      email: 'reader@example.com',
+      accessToken: null,
+      accessTokenExpiresAt: null,
+    })
+  })
+
+  it.skipIf(isBackendAuthEnabled)('marks Drive auth as disconnected when silent token renewal fails', async () => {
+    Object.defineProperty(window, 'google', {
+      configurable: true,
+      value: {
+        accounts: {
+          oauth2: {
+            initTokenClient: vi.fn((config: { callback: (response: { error?: string; error_description?: string }) => void }) => ({
+              requestAccessToken: vi.fn(() => {
+                config.callback({ error: 'access_denied', error_description: 'Google session expired.' })
+              }),
+            })),
+            revoke: vi.fn(),
+          },
+          id: {
+            disableAutoSelect: vi.fn(),
+            initialize: vi.fn(),
+            prompt: vi.fn(),
+            renderButton: vi.fn(),
+          },
+        },
+      },
+    })
+
+    useAuthStore.setState({
       isAuthenticated: true,
+      email: 'reader@example.com',
+      accessToken: null,
+      accessTokenExpiresAt: null,
+    })
+
+    await expect(useAuthStore.getState().getAccessToken()).resolves.toBeNull()
+    expect(useAuthStore.getState()).toMatchObject({
+      isAuthenticated: false,
       email: 'reader@example.com',
       accessToken: null,
       accessTokenExpiresAt: null,

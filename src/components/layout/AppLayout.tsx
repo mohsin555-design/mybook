@@ -8,6 +8,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { useAppStore } from '../../stores/useAppStore'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { navigationItems } from '../../utils/navigation'
 import { IconButton } from '../common/IconButton'
@@ -30,6 +31,7 @@ import { MobileBottomNavigation } from './MobileBottomNavigation'
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
   const { email, isAuthenticated } = useAuthStore()
+  const workspaceMode = useWorkspaceStore((state) => state.mode)
   useDriveBootstrap()
   const { pathname } = useLocation()
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
@@ -104,8 +106,8 @@ export function AppLayout() {
         <header className="sticky top-0 z-30 hidden shrink-0 border-b bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur md:block">
           <div className="flex h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-8">
             <div className="ml-auto flex items-center gap-2">
-              <span className={`hidden max-w-[16rem] rounded-full px-3 py-1 text-xs font-medium sm:inline-flex ${isAuthenticated ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
-                {isAuthenticated ? `Signed in${email ? ` as ${email}` : ''}` : 'Not signed in'}
+              <span className={`hidden max-w-[16rem] rounded-full px-3 py-1 text-xs font-medium sm:inline-flex ${isAuthenticated || workspaceMode === 'local' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+                {isAuthenticated ? `Signed in${email ? ` as ${email}` : ''}` : workspaceMode === 'local' ? 'Local workspace' : 'Not signed in'}
               </span>
               <IconButton
                 label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}

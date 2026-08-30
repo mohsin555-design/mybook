@@ -14,6 +14,7 @@ import { FolderCard } from '../components/files/FolderCard'
 import { FolderNameDialog } from '../components/files/FolderNameDialog'
 import { fileRepository, folderRepository } from '../database/repositories'
 import { useLibraryData } from '../hooks/useLibraryData'
+import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import type { MyBookFile, MyBookFolder } from '../types/files'
 import { formatUpdatedAt } from '../utils/dateFormat'
 import { deletedToast } from '../utils/deleteToast'
@@ -26,6 +27,7 @@ type SearchResult =
 export function SearchPage() {
   const navigate = useNavigate()
   const { files, folders } = useLibraryData()
+  const workspaceMode = useWorkspaceStore((state) => state.mode)
   const [query, setQuery] = useState('')
   const [renameTarget, setRenameTarget] = useState<MyBookFile | null>(null)
   const [folderRenameTarget, setFolderRenameTarget] = useState<MyBookFolder | null>(null)
@@ -95,7 +97,7 @@ export function SearchPage() {
                   name={folder.name}
                   fileCount={fileCount(folder.id)}
                   folderCount={folderCount(folder.id)}
-                  driveStatus={folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
+                  driveStatus={workspaceMode === 'local' ? 'Stored locally' : folder.driveFolderId ? 'Synced to Drive' : 'Drive folder pending'}
                   onOpen={() => navigate(`/folders/${folder.id}`)}
                   action={
                     <FolderActionsMenu

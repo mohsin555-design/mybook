@@ -4,8 +4,8 @@ import { navigationItems } from '../../utils/navigation'
 
 export function MobileBottomNavigation() {
   return (
-    <nav aria-label="Primary navigation" className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4 md:hidden">
-      <div className="pointer-events-auto mx-auto grid max-w-[22rem] grid-cols-4 gap-0.5 rounded-full bg-muted p-1">
+    <nav aria-label="Primary navigation" className="shrink-0 bg-background px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4 md:hidden">
+      <div className="mx-auto grid max-w-[22rem] grid-cols-4 gap-0.5 rounded-full bg-muted p-1">
         {navigationItems.map((item) => (
           <NavLink
             key={item.path}

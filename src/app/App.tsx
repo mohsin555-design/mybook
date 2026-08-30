@@ -14,11 +14,15 @@ export function App() {
     void initializeSession()
   }, [initializeSession])
 
-  return <>
-    <TooltipProvider>
+  return (
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
+      <TooltipProvider>
       <PwaStatus />
-      <RouterProvider router={router} />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <RouterProvider router={router} />
+      </div>
       <Toaster />
-    </TooltipProvider>
-  </>
+      </TooltipProvider>
+    </div>
+  )
 }

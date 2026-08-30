@@ -867,7 +867,7 @@ export async function importDriveFilesToLocal() {
           type,
           mimeType,
           content: nextContent,
-          updatedAt: userVisibleChanged ? now : existing.updatedAt,
+          updatedAt: userVisibleChanged ? driveModifiedTime : existing.updatedAt,
           lastSyncedAt: driveModifiedTime,
           syncStatus: 'backed-up',
           syncError: null,
@@ -883,7 +883,7 @@ export async function importDriveFilesToLocal() {
           content,
           mimeType: driveFile.mimeType,
           createdAt: now,
-          updatedAt: now,
+          updatedAt: driveModifiedTime,
           lastSyncedAt: driveModifiedTime,
           syncStatus: 'backed-up',
           isDeleted: false,
@@ -940,7 +940,7 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
       lastSyncedAt: driveModifiedTime,
       syncStatus: 'backed-up',
       syncError: null,
-      updatedAt: new Date().toISOString(),
+      updatedAt: driveModifiedTime,
     })
     return { updated: true, modifiedTime: driveModifiedTime }
   } catch (error) {

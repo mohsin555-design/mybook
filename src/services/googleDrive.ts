@@ -415,7 +415,7 @@ export async function backupDocumentToDrive(input: {
     const parentFolder = input.folderId ? await db.folders.get(input.folderId) : null
     const driveParentId = parentFolder?.driveFolderId ?? driveBootstrap.folderId
     try {
-      await db.files.update(file.id, { syncStatus: 'backing-up', syncError: null })
+      await db.files.update(file.id, { workspaceType: 'drive', syncStatus: 'backing-up', syncError: null })
       const latest = await db.files.get(input.fileId)
       const content = latest?.content ?? input.content
       const title = latest?.name ?? input.title
@@ -427,6 +427,7 @@ export async function backupDocumentToDrive(input: {
       const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId))
       await db.files.update(file.id, {
         driveFileId: result.id,
+        workspaceType: 'drive',
         mimeType: 'application/x-mybook-document',
         syncStatus: 'backed-up',
         lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString(),
@@ -495,14 +496,14 @@ export async function backupSpreadsheetToDrive(input: {
     const parentFolder = input.folderId ? await db.folders.get(input.folderId) : null
     const driveParentId = parentFolder?.driveFolderId ?? driveBootstrap.folderId
     try {
-      await db.files.update(file.id, { syncStatus: 'backing-up', syncError: null })
+      await db.files.update(file.id, { workspaceType: 'drive', syncStatus: 'backing-up', syncError: null })
       const latest = await db.files.get(input.fileId)
       const { exportWorkbookToXlsx } = await import('../utils/xlsx')
       const snapshot = JSON.parse((latest?.content ?? input.content) || '{}')
       const exported = await exportWorkbookToXlsx(snapshot)
       if (!exported.success || !exported.data) throw new Error(exported.error ?? 'Could not convert the spreadsheet to XLSX.')
       const result = await retryWithBackoff(() => uploadXlsxBlob(latest?.name ?? input.title, exported.data as Blob, driveParentId, latest?.driveFileId ?? file.driveFileId, latest?.mimeType === GOOGLE_SHEET_MIME ? GOOGLE_SHEET_MIME : undefined))
-      await db.files.update(file.id, { driveFileId: result.id, syncStatus: 'backed-up', lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
+      await db.files.update(file.id, { driveFileId: result.id, workspaceType: 'drive', syncStatus: 'backed-up', lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
       return { success: true, folderId: driveParentId, folderName: 'MyBook', created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not back up the spreadsheet to Google Drive.'
@@ -557,7 +558,7 @@ export async function backfillLocalFoldersToDrive(folders: Array<{ id: string; n
           ? { id: folder.driveFolderId }
           : await ensureVisibleFolderInParent(folder.name, parentDriveId)
         resolved.set(id, driveFolder.id)
-        await db.folders.update(id, { driveFolderId: driveFolder.id, updatedAt: new Date().toISOString() })
+        await db.folders.update(id, { driveFolderId: driveFolder.id, workspaceType: 'drive', updatedAt: new Date().toISOString() })
         results.push({ success: true, driveFolderId: driveFolder.id, created: !folder.driveFolderId })
         pending.delete(id)
         progressed = true
@@ -595,14 +596,14 @@ export async function importDriveFoldersToLocal(
       if (localMatch) {
         matchedLocalId = localMatch.id
         if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted) {
-          await db.folders.update(localMatch.id, { name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, updatedAt: new Date().toISOString(), isDeleted: false })
+          await db.folders.update(localMatch.id, { name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', updatedAt: new Date().toISOString(), isDeleted: false })
         }
       } else {
         const now = new Date().toISOString()
         const id = crypto.randomUUID()
         matchedLocalId = id
-        await db.folders.add({ id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, createdAt: now, updatedAt: now, isDeleted: false })
-        byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, { id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, createdAt: now, updatedAt: now, isDeleted: false })
+        await db.folders.add({ id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', createdAt: now, updatedAt: now, isDeleted: false })
+        byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, { id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', createdAt: now, updatedAt: now, isDeleted: false })
       }
       await syncChildren(driveFolder.id, matchedLocalId)
     }
@@ -864,6 +865,7 @@ export async function importDriveFilesToLocal() {
           name,
           folderId: parentLocalId,
           driveFileId: driveFile.id,
+          workspaceType: 'drive',
           type,
           mimeType,
           content: nextContent,
@@ -877,6 +879,7 @@ export async function importDriveFilesToLocal() {
         await db.files.add({
           id: localId,
           driveFileId: driveFile.id,
+          workspaceType: 'drive',
           name: localFileName(driveFile.name, fileType),
           type: fileType,
           folderId: parentLocalId,
@@ -931,12 +934,13 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
     }
     const content = await readDriveFileAsLocalContent(driveFile, local.id)
     if (!content || content === local.content) {
-      await db.files.update(local.id, { lastSyncedAt: driveModifiedTime, syncStatus: 'backed-up', syncError: null })
+      await db.files.update(local.id, { workspaceType: 'drive', lastSyncedAt: driveModifiedTime, syncStatus: 'backed-up', syncError: null })
       return { updated: false, modifiedTime: driveModifiedTime }
     }
     await saveVersionBeforeDriveUpdate(local.id, driveModifiedTime)
     await db.files.update(local.id, {
       content,
+      workspaceType: 'drive',
       lastSyncedAt: driveModifiedTime,
       syncStatus: 'backed-up',
       syncError: null,

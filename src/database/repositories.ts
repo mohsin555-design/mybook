@@ -1,6 +1,8 @@
 import { db } from './db'
-import type { AppSetting, FileType, FileVersionSource, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem } from '../types/files'
+import type { AppSetting, FileType, FileVersionSource, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem, WorkspaceType } from '../types/files'
 import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, restoreDriveFile, restoreDriveFolder, trashDriveFile, trashDriveFolder, updateDriveFolder } from '../services/googleDrive'
+import { deleteLocalWorkspaceFile, readLocalWorkspaceFile, writeLocalWorkspaceFile } from '../services/localWorkspace'
+import { isLocalWorkspace, shouldSyncWithDrive } from '../stores/useWorkspaceStore'
 import { devLog } from '../utils/safeLog'
 
 export interface RepositoryResult<T = void> {
@@ -46,6 +48,67 @@ async function queueFileSync(fileId: string, operation: SyncOperation, errorMess
     return
   }
   await db.syncQueue.add({ id: crypto.randomUUID(), entityId: fileId, entityType: 'file', operation, status: 'pending', retryCount: 0, createdAt: now, updatedAt: now, errorMessage })
+}
+
+async function maybeQueueFolderSync(folderId: string, operation: SyncOperation, errorMessage: string | null = null) {
+  if (!shouldSyncWithDrive()) return
+  await queueFolderSync(folderId, operation, errorMessage)
+}
+
+async function maybeQueueFileSync(fileId: string, operation: SyncOperation, errorMessage: string | null = null) {
+  if (!shouldSyncWithDrive()) return
+  await queueFileSync(fileId, operation, errorMessage)
+}
+
+async function maybeProcessPendingDriveSync() {
+  if (shouldSyncWithDrive() && navigator.onLine) await processPendingDriveSync()
+}
+
+function processPendingDriveSyncInBackground() {
+  void maybeProcessPendingDriveSync().catch((error) => {
+    devLog('warn', 'Could not process pending Drive sync in the background.', error)
+  })
+}
+
+function initialSyncStatus() {
+  return isLocalWorkspace() ? 'local' as const : 'pending' as const
+}
+
+function pendingSyncStatus() {
+  return isLocalWorkspace() ? 'local' as const : 'pending' as const
+}
+
+function activeWorkspaceType(): WorkspaceType {
+  return isLocalWorkspace() ? 'local' : 'drive'
+}
+
+function fileBelongsToActiveWorkspace(file: MyBookFile) {
+  if (isLocalWorkspace()) {
+    return file.workspaceType === 'local' || (!file.workspaceType && file.syncStatus === 'local' && !file.driveFileId)
+  }
+  return file.workspaceType !== 'local'
+}
+
+function folderBelongsToActiveWorkspace(folder: MyBookFolder) {
+  if (isLocalWorkspace()) return folder.workspaceType === 'local'
+  return folder.workspaceType !== 'local'
+}
+
+async function persistLocalFile(file: MyBookFile | undefined) {
+  if (isLocalWorkspace() && file) await writeLocalWorkspaceFile(file)
+}
+
+async function hydrateLocalFile(file: MyBookFile | undefined) {
+  if (!file || !fileBelongsToActiveWorkspace(file)) return undefined
+  if (!isLocalWorkspace()) return file
+  const localContent = await readLocalWorkspaceFile(file)
+  return localContent === null ? file : { ...file, content: localContent }
+}
+
+async function folderIsInActiveWorkspace(folderId: string | null) {
+  if (!folderId) return true
+  const folder = await db.folders.get(folderId)
+  return Boolean(folder && folderBelongsToActiveWorkspace(folder) && !folder.isDeleted)
 }
 
 async function ensureLocalFolderOnDrive(folderId: string | null, visiting = new Set<string>()): Promise<string> {
@@ -102,6 +165,7 @@ async function syncFileItem(item: SyncQueueItem) {
 }
 
 export async function processPendingDriveSync() {
+  if (!shouldSyncWithDrive()) return
   if (!navigator.onLine) return
   const queue = await db.syncQueue.filter((item) => item.status !== 'completed').sortBy('createdAt')
   for (const item of queue) {
@@ -137,8 +201,22 @@ export async function processPendingDriveSync() {
 
 export const processPendingDriveFolderSync = processPendingDriveSync
 
+export async function queueLocalItemsForDriveBackup() {
+  if (!shouldSyncWithDrive()) return
+  const folders = await db.folders.filter((folder) => !folder.isDeleted && folder.workspaceType === 'local').toArray()
+  const files = await db.files.filter((file) => !file.isDeleted && file.workspaceType === 'local').toArray()
+  await Promise.all(folders.map(async (folder) => {
+    await db.folders.update(folder.id, { workspaceType: 'drive' })
+    await queueFolderSync(folder.id, 'create')
+  }))
+  await Promise.all(files.map(async (file) => {
+    await db.files.update(file.id, { workspaceType: 'drive', syncStatus: 'pending', syncError: null })
+    await queueFileSync(file.id, 'create')
+  }))
+}
+
 async function uniqueFileName(name: string, folderId: string | null, excludedId?: string) {
-  const files = await db.files.filter((file) => file.folderId === folderId).toArray()
+  const files = await db.files.filter((file) => file.folderId === folderId && fileBelongsToActiveWorkspace(file)).toArray()
   return !files.some((file) => file.id !== excludedId && !file.isDeleted && file.folderId === folderId && appFileName(file.name, file.type).toLocaleLowerCase() === name.toLocaleLowerCase())
 }
 
@@ -183,18 +261,20 @@ export const fileRepository = {
   async create(type: FileType, folderId: string | null = null): Promise<RepositoryResult<MyBookFile>> {
     try {
       const now = new Date().toISOString()
+      if (!(await folderIsInActiveWorkspace(folderId))) return { success: false, error: 'Folder could not be found in this workspace.' }
       const name = await nextFileName(type === 'document' ? 'Untitled Document' : 'Untitled Spreadsheet', folderId)
-      const file: MyBookFile = { id: crypto.randomUUID(), driveFileId: null, name, type, folderId, content: '', mimeType: type === 'document' ? 'application/x-mybook-document' : 'application/x-mybook-spreadsheet', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'pending', isDeleted: false }
+      const file: MyBookFile = { id: crypto.randomUUID(), driveFileId: null, workspaceType: activeWorkspaceType(), name, type, folderId, content: '', mimeType: type === 'document' ? 'application/x-mybook-document' : 'application/x-mybook-spreadsheet', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: initialSyncStatus(), isDeleted: false }
       await db.files.add(file)
-      await queueFileSync(file.id, 'create', navigator.onLine ? null : 'Offline. File will sync when you reconnect.')
-      if (navigator.onLine) await processPendingDriveSync()
+      await persistLocalFile(file)
+      await maybeQueueFileSync(file.id, 'create', navigator.onLine ? null : 'Offline. File will sync when you reconnect.')
+      await maybeProcessPendingDriveSync()
       const synced = await db.files.get(file.id)
       return { success: true, data: synced ?? file }
     } catch (error) { return failure(error, 'Could not create file.') }
   },
   async get(id: string) {
     try {
-      const file = await db.files.get(id)
+      const file = await hydrateLocalFile(await db.files.get(id))
       return { success: true, data: file ? { ...file, name: appFileName(file.name, file.type) } : file }
     } catch (error) { return failure(error, 'Could not load file.') }
   },
@@ -202,6 +282,7 @@ export const fileRepository = {
     try {
       const existing = await db.files.get(id)
       if (!existing) return { success: false, error: 'File could not be found.' }
+      if (!fileBelongsToActiveWorkspace(existing)) return { success: false, error: 'File could not be found in this workspace.' }
       if (changes.content !== undefined && changes.content === existing.content && Object.keys(changes).every((key) => key === 'content')) return { success: true }
       if (changes.name !== undefined) {
         const name = appFileName(changes.name, existing.type)
@@ -211,10 +292,15 @@ export const fileRepository = {
         if (!(await uniqueFileName(name, changes.folderId ?? file.folderId, id))) return { success: false, error: 'A file with this name already exists here.' }
         changes = { ...changes, name }
       }
-      await db.files.update(id, { ...changes, updatedAt: new Date().toISOString() })
+      const nextChanges = isLocalWorkspace()
+        ? { ...changes, syncStatus: pendingSyncStatus(), syncError: null }
+        : changes
+      if (nextChanges.folderId !== undefined && !(await folderIsInActiveWorkspace(nextChanges.folderId))) return { success: false, error: 'Folder could not be found in this workspace.' }
+      await db.files.update(id, { ...nextChanges, updatedAt: new Date().toISOString() })
+      await persistLocalFile(await db.files.get(id))
       if (changes.name !== undefined || changes.folderId !== undefined || changes.content !== undefined) {
-        await queueFileSync(id, existing.driveFileId ? 'update' : 'create', navigator.onLine ? null : 'Offline. File changes will sync when you reconnect.')
-        if (navigator.onLine) await processPendingDriveSync()
+        await maybeQueueFileSync(id, existing.driveFileId ? 'update' : 'create', navigator.onLine ? null : 'Offline. File changes will sync when you reconnect.')
+        processPendingDriveSyncInBackground()
       }
       return { success: true }
     } catch (error) { return failure(error, 'Could not update file.') }
@@ -223,9 +309,10 @@ export const fileRepository = {
     try {
       const file = await db.files.get(id)
       if (!file) return { success: false, error: 'File could not be found.' }
+      if (!fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }
       await db.files.update(id, { isDeleted: true, updatedAt: new Date().toISOString() })
-      await queueFileSync(id, 'delete', navigator.onLine ? null : 'Offline. File will move to Drive Trash when you reconnect.')
-      if (navigator.onLine) await processPendingDriveSync()
+      await maybeQueueFileSync(id, 'delete', navigator.onLine ? null : 'Offline. File will move to Drive Trash when you reconnect.')
+      await maybeProcessPendingDriveSync()
       return { success: true }
     } catch (error) { return failure(error, 'Could not delete file.') }
   },
@@ -233,16 +320,18 @@ export const fileRepository = {
     try {
       const file = await db.files.get(id)
       if (!file) return { success: false, error: 'File could not be found.' }
+      if (!fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }
       await db.files.update(id, { isDeleted: false, updatedAt: new Date().toISOString() })
-      await queueFileSync(id, file.driveFileId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. File restore will sync when you reconnect.')
-      if (navigator.onLine) await processPendingDriveSync()
+      await persistLocalFile(await db.files.get(id))
+      await maybeQueueFileSync(id, file.driveFileId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. File restore will sync when you reconnect.')
+      await maybeProcessPendingDriveSync()
       return { success: true }
     } catch (error) { return failure(error, 'Could not restore file.') }
   },
-  async permanentlyDelete(id: string): Promise<RepositoryResult> { try { await db.files.delete(id); return { success: true } } catch (error) { return failure(error, 'Could not permanently delete file.') } },
+  async permanentlyDelete(id: string): Promise<RepositoryResult> { try { const file = await db.files.get(id); if (file && !fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }; if (file) await deleteLocalWorkspaceFile(file); await db.files.delete(id); return { success: true } } catch (error) { return failure(error, 'Could not permanently delete file.') } },
   async list(includeDeleted = false): Promise<MyBookFile[]> {
     try {
-      const files = await db.files.filter((file) => includeDeleted || !file.isDeleted).toArray()
+      const files = await db.files.filter((file) => fileBelongsToActiveWorkspace(file) && (includeDeleted || !file.isDeleted)).toArray()
       const normalized = files.map((file) => ({ ...file, name: appFileName(file.name, file.type) }))
       return includeDeleted ? normalized : uniqueLogicalFiles(normalized)
     } catch (error) { devLog('error', 'Could not list files.', error); return [] }
@@ -250,7 +339,7 @@ export const fileRepository = {
   async search(query: string): Promise<MyBookFile[]> {
     try {
       const value = query.trim().toLocaleLowerCase()
-      const files = (await db.files.filter((file) => !file.isDeleted && appFileName(file.name, file.type).toLocaleLowerCase().includes(value)).toArray())
+      const files = (await db.files.filter((file) => fileBelongsToActiveWorkspace(file) && !file.isDeleted && appFileName(file.name, file.type).toLocaleLowerCase().includes(value)).toArray())
         .map((file) => ({ ...file, name: appFileName(file.name, file.type) }))
       return uniqueLogicalFiles(files)
     } catch (error) { devLog('error', 'Could not search files.', error); return [] }
@@ -259,14 +348,16 @@ export const fileRepository = {
     try {
       const source = await db.files.get(id)
       if (!source) return { success: false, error: 'File could not be found.' }
+      if (!fileBelongsToActiveWorkspace(source)) return { success: false, error: 'File could not be found in this workspace.' }
       const now = new Date().toISOString()
       let copyName = `${source.name} copy`
       let suffix = 2
       while (!(await uniqueFileName(copyName, source.folderId))) copyName = `${source.name} copy ${suffix++}`
-      const copy = { ...source, id: crypto.randomUUID(), driveFileId: null, name: copyName, createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'pending' as const, isDeleted: false }
+      const copy = { ...source, id: crypto.randomUUID(), driveFileId: null, workspaceType: activeWorkspaceType(), name: copyName, createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: initialSyncStatus(), isDeleted: false }
       await db.files.add(copy)
-      await queueFileSync(copy.id, 'create', navigator.onLine ? null : 'Offline. File copy will sync when you reconnect.')
-      if (navigator.onLine) await processPendingDriveSync()
+      await persistLocalFile(copy)
+      await maybeQueueFileSync(copy.id, 'create', navigator.onLine ? null : 'Offline. File copy will sync when you reconnect.')
+      await maybeProcessPendingDriveSync()
       return { success: true, data: (await db.files.get(copy.id)) ?? copy }
     } catch (error) { return failure(error, 'Could not duplicate file.') }
   },
@@ -277,7 +368,8 @@ export const folderRepository = {
     try {
       const normalized = cleanName(name)
       if (!normalized) return { success: false, error: 'Folder name cannot be empty.' }
-      const siblings = await db.folders.filter((folder) => !folder.isDeleted && folder.parentId === parentId).toArray()
+      if (!(await folderIsInActiveWorkspace(parentId))) return { success: false, error: 'Parent folder could not be found in this workspace.' }
+      const siblings = await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && !folder.isDeleted && folder.parentId === parentId).toArray()
       if (siblings.some((folder) => folder.name.toLocaleLowerCase() === normalized.toLocaleLowerCase())) return { success: false, error: `"${normalized}" already exists. Use a different name.` }
       let depth = 1
       let ancestorId = parentId
@@ -287,21 +379,21 @@ export const folderRepository = {
       }
       if (depth > 3) return { success: false, error: 'Folders can be nested up to three levels.' }
       const now = new Date().toISOString()
-      const folder: MyBookFolder = { id: crypto.randomUUID(), driveFolderId: null, name: normalized, parentId, createdAt: now, updatedAt: now, isDeleted: false }
+      const folder: MyBookFolder = { id: crypto.randomUUID(), driveFolderId: null, workspaceType: activeWorkspaceType(), name: normalized, parentId, createdAt: now, updatedAt: now, isDeleted: false }
       await db.folders.add(folder)
-      await queueFolderSync(folder.id, 'create', navigator.onLine ? null : 'Offline. Folder will sync when you reconnect.')
-      if (navigator.onLine) await processPendingDriveSync()
+      await maybeQueueFolderSync(folder.id, 'create', navigator.onLine ? null : 'Offline. Folder will sync when you reconnect.')
+      await maybeProcessPendingDriveSync()
       return { success: true, data: (await db.folders.get(folder.id)) ?? folder }
     } catch (error) { return failure(error, 'Could not create folder.') }
   },
-  async get(id: string) { try { return { success: true, data: await db.folders.get(id) } } catch (error) { return failure(error, 'Could not load folder.') } },
+  async get(id: string) { try { const folder = await db.folders.get(id); return { success: true, data: folder && folderBelongsToActiveWorkspace(folder) ? folder : undefined } } catch (error) { return failure(error, 'Could not load folder.') } },
   async update(id: string, changes: Partial<Omit<MyBookFolder, 'id'>>): Promise<RepositoryResult> {
     try {
-      const folder = await db.folders.get(id); if (!folder) return { success: false, error: 'Folder could not be found.' }
+      const folder = await db.folders.get(id); if (!folder || !folderBelongsToActiveWorkspace(folder)) return { success: false, error: 'Folder could not be found.' }
       const targetParentId = changes.parentId !== undefined ? changes.parentId : folder.parentId
       if (targetParentId === id) return { success: false, error: 'A folder cannot be moved inside itself.' }
       if (changes.parentId !== undefined) {
-        const allFolders = await db.folders.toArray()
+        const allFolders = (await db.folders.toArray()).filter(folderBelongsToActiveWorkspace)
         const descendants = new Set<string>()
         let changed = true
         while (changed) {
@@ -328,31 +420,33 @@ export const folderRepository = {
       }
       if (changes.name !== undefined) { const name = cleanName(changes.name); if (!name) return { success: false, error: 'Folder name cannot be empty.' }; changes = { ...changes, name } }
       const nextName = changes.name ?? folder.name
-      const siblings = await db.folders.filter((item) => !item.isDeleted && item.id !== id && item.parentId === targetParentId).toArray()
+      const siblings = await db.folders.filter((item) => folderBelongsToActiveWorkspace(item) && !item.isDeleted && item.id !== id && item.parentId === targetParentId).toArray()
       if (siblings.some((item) => item.name.toLocaleLowerCase() === nextName.toLocaleLowerCase())) return { success: false, error: `"${nextName}" already exists. Use a different name.` }
       const next = { ...changes, updatedAt: new Date().toISOString() }
       await db.folders.update(id, next)
       if (changes.name !== undefined || changes.parentId !== undefined) {
-        await queueFolderSync(id, folder.driveFolderId ? 'update' : 'create', navigator.onLine ? null : 'Offline. Folder changes will sync when you reconnect.')
-        if (navigator.onLine) await processPendingDriveSync()
+        await maybeQueueFolderSync(id, folder.driveFolderId ? 'update' : 'create', navigator.onLine ? null : 'Offline. Folder changes will sync when you reconnect.')
+        await maybeProcessPendingDriveSync()
       }
       return { success: true }
     } catch (error) { return failure(error, 'Could not update folder.') }
   },
   async delete(id: string): Promise<RepositoryResult> {
     try {
+      const folder = await db.folders.get(id)
+      if (!folder || !folderBelongsToActiveWorkspace(folder)) return { success: false, error: 'Folder could not be found.' }
       let deletedFolderIds: string[] = []
       await db.transaction('rw', db.folders, db.files, async () => {
-        const allFolders = await db.folders.toArray()
+        const allFolders = (await db.folders.toArray()).filter(folderBelongsToActiveWorkspace)
         const ids = new Set([id]); let changed = true
         while (changed) { changed = false; allFolders.forEach((folder) => { if (folder.parentId && ids.has(folder.parentId) && !ids.has(folder.id)) { ids.add(folder.id); changed = true } }) }
         deletedFolderIds = [...ids]
         const now = new Date().toISOString()
         await Promise.all([...ids].map((folderId) => db.folders.update(folderId, { isDeleted: true, updatedAt: now })))
-        await db.files.filter((file) => Boolean(file.folderId && ids.has(file.folderId))).modify({ isDeleted: true, updatedAt: now })
+        await db.files.filter((file) => fileBelongsToActiveWorkspace(file) && Boolean(file.folderId && ids.has(file.folderId))).modify({ isDeleted: true, updatedAt: now })
       })
-      await Promise.all(deletedFolderIds.map((folderId) => queueFolderSync(folderId, 'delete', navigator.onLine ? null : 'Offline. Folder will move to Drive Trash when you reconnect.')))
-      if (navigator.onLine) await processPendingDriveFolderSync()
+      await Promise.all(deletedFolderIds.map((folderId) => maybeQueueFolderSync(folderId, 'delete', navigator.onLine ? null : 'Offline. Folder will move to Drive Trash when you reconnect.')))
+      await maybeProcessPendingDriveSync()
       return { success: true }
     } catch (error) { return failure(error, 'Could not delete folder.') }
   },
@@ -362,8 +456,8 @@ export const folderRepository = {
       let restoredFileIds: string[] = []
       await db.transaction('rw', db.folders, db.files, async () => {
         const folder = await db.folders.get(id)
-        if (!folder) throw new Error('Folder could not be found.')
-        const allFolders = await db.folders.toArray()
+        if (!folder || !folderBelongsToActiveWorkspace(folder)) throw new Error('Folder could not be found.')
+        const allFolders = (await db.folders.toArray()).filter(folderBelongsToActiveWorkspace)
         const ids = new Set([id])
         let changed = true
         while (changed) {
@@ -378,29 +472,29 @@ export const folderRepository = {
         restoredFolderIds = [...ids]
         const now = new Date().toISOString()
         await Promise.all(restoredFolderIds.map((folderId) => db.folders.update(folderId, { isDeleted: false, updatedAt: now })))
-        const nestedFiles = await db.files.filter((file) => Boolean(file.folderId && ids.has(file.folderId))).toArray()
+        const nestedFiles = await db.files.filter((file) => fileBelongsToActiveWorkspace(file) && Boolean(file.folderId && ids.has(file.folderId))).toArray()
         restoredFileIds = nestedFiles.map((file) => file.id)
         await Promise.all(restoredFileIds.map((fileId) => db.files.update(fileId, { isDeleted: false, updatedAt: now })))
       })
       const restoredFolders = await db.folders.bulkGet(restoredFolderIds)
       await Promise.all(restoredFolders
         .filter((folder): folder is MyBookFolder => Boolean(folder))
-        .map((folder) => queueFolderSync(folder.id, folder.driveFolderId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. Folder restore will sync when you reconnect.')))
+        .map((folder) => maybeQueueFolderSync(folder.id, folder.driveFolderId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. Folder restore will sync when you reconnect.')))
       const restoredFiles = await db.files.bulkGet(restoredFileIds)
       await Promise.all(restoredFiles
         .filter((file): file is MyBookFile => Boolean(file))
-        .map((file) => queueFileSync(file.id, file.driveFileId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. File restore will sync when you reconnect.')))
-      if (navigator.onLine) {
-        await processPendingDriveFolderSync()
-        await processPendingDriveSync()
-      }
+        .map(async (file) => {
+          await persistLocalFile(file)
+          await maybeQueueFileSync(file.id, file.driveFileId ? 'restore' : 'create', navigator.onLine ? null : 'Offline. File restore will sync when you reconnect.')
+        }))
+      await maybeProcessPendingDriveSync()
       return { success: true }
     } catch (error) {
       return failure(error, 'Could not restore folder.')
     }
   },
-  async list(): Promise<MyBookFolder[]> { try { return await db.folders.filter((folder) => !folder.isDeleted).toArray() } catch (error) { devLog('error', 'Could not list folders.', error); return [] } },
-  async search(query: string): Promise<MyBookFolder[]> { try { const value = query.trim().toLocaleLowerCase(); return await db.folders.filter((folder) => !folder.isDeleted && folder.name.toLocaleLowerCase().includes(value)).toArray() } catch (error) { devLog('error', 'Could not search folders.', error); return [] } },
+  async list(): Promise<MyBookFolder[]> { try { return await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && !folder.isDeleted).toArray() } catch (error) { devLog('error', 'Could not list folders.', error); return [] } },
+  async search(query: string): Promise<MyBookFolder[]> { try { const value = query.trim().toLocaleLowerCase(); return await db.folders.filter((folder) => folderBelongsToActiveWorkspace(folder) && !folder.isDeleted && folder.name.toLocaleLowerCase().includes(value)).toArray() } catch (error) { devLog('error', 'Could not search folders.', error); return [] } },
 }
 
 export const settingsRepository = {
@@ -436,17 +530,19 @@ export const fileVersionRepository = {
       if (!version) return { success: false, error: 'Version could not be found.' }
       const file = await db.files.get(version.fileId)
       if (!file) return { success: false, error: 'File could not be found.' }
+      if (!fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }
       await saveFileVersion(file, 'local', 'Before version restore')
       await db.files.update(file.id, {
         content: version.content,
         name: version.name,
         mimeType: version.mimeType,
-        syncStatus: 'pending',
+        syncStatus: pendingSyncStatus(),
         syncError: null,
         updatedAt: new Date().toISOString(),
       })
-      await queueFileSync(file.id, file.driveFileId ? 'update' : 'create')
-      if (navigator.onLine) await processPendingDriveSync()
+      await persistLocalFile(await db.files.get(file.id))
+      await maybeQueueFileSync(file.id, file.driveFileId ? 'update' : 'create')
+      await maybeProcessPendingDriveSync()
       const restored = await db.files.get(file.id)
       return { success: true, data: restored }
     } catch (error) {

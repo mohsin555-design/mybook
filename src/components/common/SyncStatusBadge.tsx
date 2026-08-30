@@ -12,6 +12,7 @@ interface SyncStatusBadgeProps {
 }
 
 const statusConfig = {
+  local: { label: 'Stored locally', className: 'bg-muted text-muted-foreground', icon: CheckCircleIcon },
   pending: { label: 'Syncing', className: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300', icon: ArrowPathIcon },
   'backing-up': { label: 'Syncing', className: 'bg-primary/10 text-primary', icon: ArrowPathIcon },
   'backed-up': { label: 'Synced', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300', icon: CheckCircleIcon },

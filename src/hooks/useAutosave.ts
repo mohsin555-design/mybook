@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fileRepository } from '../database/repositories'
+import { isLocalWorkspace } from '../stores/useWorkspaceStore'
 import type { EditorSaveStatus, MyBookFile } from '../types/files'
 
 const SAVE_DELAY = 500
 
 export function useAutosave(file: MyBookFile | undefined) {
-  const recoveryKey = file ? `mybook-recovery:${file.id}` : ''
   const [content, setContent] = useState('')
   const [isHydrated, setIsHydrated] = useState(false)
-  const [status, setStatus] = useState<EditorSaveStatus>(navigator.onLine ? 'pending' : 'offline')
+  const [status, setStatus] = useState<EditorSaveStatus>(isLocalWorkspace() ? 'local' : navigator.onLine ? 'pending' : 'offline')
   const lastSaved = useRef(file?.content ?? '')
   const contentRef = useRef(content)
   const fileRef = useRef(file)
@@ -18,18 +18,8 @@ export function useAutosave(file: MyBookFile | undefined) {
   useEffect(() => {
     if (!file) return
     setIsHydrated(false)
-    const draft = localStorage.getItem(`mybook-recovery:${file.id}`)
-    let next = file.content
-    if (draft) {
-      try {
-        const recovered = JSON.parse(draft) as { content?: unknown }
-        if (typeof recovered.content === 'string') next = recovered.content
-      } catch {
-        localStorage.removeItem(`mybook-recovery:${file.id}`)
-      }
-    }
+    const next = file.content
     setContent(next); contentRef.current = next; lastSaved.current = file.content
-    if (next !== file.content) setStatus('editing')
     setIsHydrated(true)
   }, [file])
 
@@ -37,12 +27,11 @@ export function useAutosave(file: MyBookFile | undefined) {
     const currentFile = fileRef.current
     if (!currentFile || contentRef.current === lastSaved.current) return true
     setStatus('saving-locally')
-    const result = await fileRepository.update(currentFile.id, { content: contentRef.current, syncStatus: 'pending' })
+    const result = await fileRepository.update(currentFile.id, { content: contentRef.current, syncStatus: isLocalWorkspace() ? 'local' : 'pending' })
     if (!result.success) { setStatus('failed'); return false }
     lastSaved.current = contentRef.current
-    localStorage.removeItem(`mybook-recovery:${currentFile.id}`)
     setStatus('saved-locally')
-    window.setTimeout(() => setStatus(navigator.onLine ? 'pending' : 'offline'), 700)
+    window.setTimeout(() => setStatus(isLocalWorkspace() ? 'local' : navigator.onLine ? 'pending' : 'offline'), 700)
     return true
   }, [])
 
@@ -66,14 +55,12 @@ export function useAutosave(file: MyBookFile | undefined) {
 
   const changeContent = (value: string) => {
     setContent(value); contentRef.current = value; setStatus('editing')
-    if (file) localStorage.setItem(recoveryKey, JSON.stringify({ content: value, updatedAt: new Date().toISOString() }))
   }
 
   const replaceContent = (value: string, nextStatus: EditorSaveStatus = 'saved-locally') => {
     setContent(value)
     contentRef.current = value
     lastSaved.current = value
-    if (file) localStorage.removeItem(recoveryKey)
     setStatus(nextStatus)
   }
 

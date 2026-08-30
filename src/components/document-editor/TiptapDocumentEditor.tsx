@@ -111,7 +111,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [loadedId, setLoadedId] = useState<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
   const [docxMessage, setDocxMessage] = useState('')
-  const [cloudMessage, setCloudMessage] = useState<string | null>(null)
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null)
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [isFullWidth, setIsFullWidth] = useState(false)
@@ -246,17 +245,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     cloudTimerRef.current = window.setTimeout(() => {
       if (cloudFlightRef.current || !file || file.isDeleted || file.type !== 'document') return
       cloudFlightRef.current = true
-      setCloudMessage('Syncing…')
       void (async () => {
         try {
           const [savedContent] = await Promise.all([save(), saveTitle()])
-          if (!savedContent) {
-            setCloudMessage('Save failed. Sync paused.')
-            return
-          }
+          if (!savedContent) return
           const result = await backupDocumentToDrive({ fileId: file.id, title, content, folderId: file.folderId })
-          if (result.success) setCloudMessage('Synced')
-          else setCloudMessage(result.error)
+          if (!result.success) toast.add({ title: "Couldn't sync", description: result.error, type: 'error', priority: 'low' })
         } finally {
           cloudFlightRef.current = false
         }
@@ -277,14 +271,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     await saveAll()
     const latest = (await fileRepository.get(file.id)).data
     if (!latest) return
-    setCloudMessage('Syncing…')
     const result = await backupDocumentToDrive({ fileId: latest.id, title: latest.name, content: latest.content, folderId: latest.folderId })
-    setCloudMessage(result.success ? 'Synced' : result.error ?? 'Sync failed.')
+    if (!result.success) toast.add({ title: "Couldn't sync", description: result.error ?? 'Sync failed.', type: 'error', priority: 'low' })
   }
   const copyDriveLink = async () => {
     if (!file.driveFileId) return
     const result = await copyDriveFileLink(file.driveFileId)
-    setCloudMessage(result.success ? 'Backup link copied.' : result.error ?? 'Could not copy the backup link.')
+    toast.add({
+      title: result.success ? 'Backup link copied' : 'Could not copy the backup link',
+      description: result.success ? undefined : result.error,
+      type: result.success ? 'success' : 'error',
+      priority: 'low',
+    })
   }
   const close = async () => { await saveAll(); navigate(file.folderId ? `/folders/${file.folderId}` : '/home') }
   const deleteDocument = async () => {
@@ -456,6 +454,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const documentPageClass = isFullWidth
     ? 'mybook-document-page mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-6 py-10 shadow-none sm:px-8 md:min-h-[calc(100dvh-13rem)] md:px-12 md:py-16 lg:px-16'
     : 'mybook-document-page mybook-document-page--continuous mx-auto min-h-[calc(100dvh-13rem)] w-full bg-transparent px-4 pb-[55vh] pt-6 shadow-none sm:px-6 md:px-16 md:pb-[55vh] md:pt-14'
+  const editorStatus = file.syncStatus === 'failed' && status !== 'editing' && status !== 'saving-locally' && status !== 'saved-locally' ? 'failed' : status
 
   return (
     <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
@@ -465,9 +464,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           <div className="min-w-0 flex-1">
             <label htmlFor="document-title" className="sr-only">Document title</label>
             <input id="document-title" value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} className="h-8 w-full truncate rounded-[6px] bg-transparent text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-background" />
-            <EditorStatus status={status} />
-            {cloudMessage ? <p className="mt-1 text-xs text-muted-foreground">{cloudMessage}</p> : null}
-            {file.lastSyncedAt || file.syncError ? <p className="mt-1 text-xs text-muted-foreground">{file.lastSyncedAt ? `Synced ${new Date(file.lastSyncedAt).toLocaleString()}` : ''}{file.syncError ? `${file.lastSyncedAt ? ' · ' : ''}${file.syncError}` : ''}</p> : null}
+            <EditorStatus status={editorStatus} onRetry={() => void backupNow()} />
             <div className="mt-1">
               <FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={title} onNavigate={navigate} />
             </div>

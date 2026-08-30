@@ -1,5 +1,5 @@
-import { ArrowRightStartOnRectangleIcon, MoonIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
-import { useEffect, useState } from 'react'
+import { ArrowDownTrayIcon, ArrowRightStartOnRectangleIcon, ArrowUpTrayIcon, CloudArrowUpIcon, MoonIcon, ShieldCheckIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 
@@ -7,20 +7,31 @@ import { AppButton } from '../components/common/AppButton'
 import { PageHeader } from '../components/common/PageHeader'
 import { useDriveBootstrap } from '../hooks/useDriveBootstrap'
 import { getDriveFolderStatus, openMyBookFolderInDrive } from '../services/googleDrive'
+import { exportLocalWorkspaceBackup, importLocalWorkspaceBackup } from '../services/localBackup'
+import { getLocalStorageProtectionStatus, requestPersistentLocalStorage } from '../services/localWorkspace'
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import { processPendingDriveFolderSync } from '../database/repositories'
 import { APP_VERSION } from '../config/app'
 import { useAppStore } from '../stores/useAppStore'
+import { useWorkspaceStore } from '../stores/useWorkspaceStore'
+import { toast } from '../components/ui/toast'
 
 export function SettingsPage() {
   const { email, logout, reconnect } = useAuthStore()
+  const { mode: workspaceMode, clearWorkspace, selectGoogleWorkspace } = useWorkspaceStore()
   const { theme, toggleTheme } = useAppStore()
   const navigate = useNavigate()
+  const backupInputRef = useRef<HTMLInputElement>(null)
   const { isPreparing, statusMessage } = useDriveBootstrap()
   const [storedFolderId, setStoredFolderId] = useState<string | null>(null)
   const [databaseStatus, setDatabaseStatus] = useState<'checking' | 'ready' | 'failed'>('checking')
-  const files = useLiveQuery(() => db.files.filter((file) => !file.isDeleted).toArray(), [], []) ?? []
+  const [storageStatus, setStorageStatus] = useState<{ persisted: boolean; usage?: number; quota?: number } | null>(null)
+  const [backupAction, setBackupAction] = useState<'export' | 'import' | 'persist' | null>(null)
+  const files = useLiveQuery(() => db.files.filter((file) => {
+    const belongsToLocal = file.workspaceType === 'local' || (!file.workspaceType && file.syncStatus === 'local' && !file.driveFileId)
+    return !file.isDeleted && (workspaceMode === 'local' ? belongsToLocal : !belongsToLocal)
+  }).toArray(), [workspaceMode], []) ?? []
   const syncQueue = useLiveQuery(() => db.syncQueue.toArray(), [], []) ?? []
   const backupStats = {
     total: files.length,
@@ -32,19 +43,79 @@ export function SettingsPage() {
   useEffect(() => {
     let active = true
     const load = async () => {
+      if (workspaceMode === 'local') {
+        setStoredFolderId(null)
+        return
+      }
       const id = await getDriveFolderStatus()
       if (active) setStoredFolderId(id)
     }
     void load()
     return () => { active = false }
-  }, [])
+  }, [workspaceMode])
   useEffect(() => {
     void db.open().then(() => setDatabaseStatus('ready')).catch(() => setDatabaseStatus('failed'))
+  }, [])
+  useEffect(() => {
+    let active = true
+    void getLocalStorageProtectionStatus().then((status) => {
+      if (active) setStorageStatus(status)
+    }).catch(() => {
+      if (active) setStorageStatus({ persisted: false })
+    })
+    return () => { active = false }
   }, [])
 
   const handleLogout = async () => {
     await logout()
+    clearWorkspace()
     navigate('/login', { replace: true, state: null })
+  }
+
+  const isLocalMode = workspaceMode === 'local'
+
+  const protectStorage = async () => {
+    setBackupAction('persist')
+    try {
+      const persisted = await requestPersistentLocalStorage()
+      const nextStatus = await getLocalStorageProtectionStatus()
+      setStorageStatus(nextStatus)
+      toast.add({ title: persisted ? 'Local storage protection enabled' : 'Storage protection is not available here', type: persisted ? 'success' : 'warning', priority: 'low' })
+    } finally {
+      setBackupAction(null)
+    }
+  }
+
+  const exportBackup = async () => {
+    setBackupAction('export')
+    try {
+      const result = await exportLocalWorkspaceBackup()
+      toast.add({ title: result.method === 'share' ? 'Backup ready to save' : 'Backup downloaded', description: result.fileName, type: 'success', priority: 'low' })
+    } catch (error) {
+      toast.add({ title: 'Could not export backup', description: error instanceof Error ? error.message : 'Please try again.', type: 'error', priority: 'low' })
+    } finally {
+      setBackupAction(null)
+    }
+  }
+
+  const importBackup = async (file: File | undefined) => {
+    if (!file) return
+    setBackupAction('import')
+    try {
+      const result = await importLocalWorkspaceBackup(file)
+      toast.add({ title: 'Backup imported', description: `${result.fileCount} files restored into a new folder.`, type: 'success', priority: 'low' })
+      navigate(`/folders/${result.folderId}`)
+    } catch (error) {
+      toast.add({ title: 'Could not import backup', description: error instanceof Error ? error.message : 'Choose a valid MyBook backup file.', type: 'error', priority: 'low' })
+    } finally {
+      setBackupAction(null)
+      if (backupInputRef.current) backupInputRef.current.value = ''
+    }
+  }
+
+  const connectDriveBackup = () => {
+    selectGoogleWorkspace()
+    navigate('/login', { replace: false, state: { from: '/settings' } })
   }
 
   return (
@@ -64,44 +135,100 @@ export function SettingsPage() {
       <section aria-labelledby="account-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="account-heading" className="text-base font-semibold leading-6">Account</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
-          {email ? `Signed in as ${email}.` : 'Your Google session will appear here after sign-in.'}
+          {isLocalMode ? 'Using a local workspace on this device.' : email ? `Signed in as ${email}.` : 'Your Google session will appear here after sign-in.'}
         </p>
         <AppButton className="mt-4" variant="secondary" onPress={() => void handleLogout()}>
           <ArrowRightStartOnRectangleIcon aria-hidden="true" className="size-5" />
-          Log out
+          {isLocalMode ? 'Return to start' : 'Log out'}
         </AppButton>
       </section>
       <section aria-labelledby="drive-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="drive-heading" className="text-base font-semibold leading-6">Google Drive</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
-          {isPreparing
+          {isLocalMode
+            ? 'Google Drive is not connected for this local workspace.'
+            : isPreparing
             ? 'Checking your MyBook Drive folder...'
             : storedFolderId
               ? 'MyBook folder is connected.'
               : 'MyBook folder is not connected yet.'}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {statusMessage ?? 'MyBook syncs your files across signed-in devices using Drive backups.'}
+          {isLocalMode ? 'Files are saved locally first. Connect Google Drive to start automatic cloud backup.' : statusMessage ?? 'MyBook syncs your files across signed-in devices using Drive backups.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <AppButton
             variant="secondary"
-            isDisabled={!storedFolderId}
+            isDisabled={isLocalMode || !storedFolderId}
             onPress={() => {
               if (storedFolderId) openMyBookFolderInDrive(storedFolderId)
             }}
           >
             Open MyBook folder in Drive
           </AppButton>
-          <AppButton variant="secondary" onPress={() => void reconnect()}>
+          <AppButton variant="secondary" isDisabled={isLocalMode} onPress={() => void reconnect()}>
             Reconnect
           </AppButton>
+          {isLocalMode ? (
+            <AppButton variant="primary" onPress={connectDriveBackup}>
+              <CloudArrowUpIcon aria-hidden="true" className="size-5" />
+              Connect Google Drive backup
+            </AppButton>
+          ) : null}
         </div>
         <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {([['Local files', backupStats.total], ['Synced', backupStats.backedUp], ['Syncing', backupStats.pending], ['Sync paused', backupStats.failed]] as const).map(([label, value]) => <div key={label} className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 text-2xl font-semibold">{value}</dd></div>)}
+          {([['Local files', backupStats.total], [isLocalMode ? 'Stored locally' : 'Synced', isLocalMode ? backupStats.total : backupStats.backedUp], ['Syncing', isLocalMode ? 0 : backupStats.pending], ['Sync paused', isLocalMode ? 0 : backupStats.failed]] as const).map(([label, value]) => <div key={label} className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 text-2xl font-semibold">{value}</dd></div>)}
         </dl>
-        {backupStats.failed > 0 ? <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Sync paused</p>{files.filter((file) => file.syncStatus === 'failed').map((file) => <p key={file.id} className="mt-1 text-muted-foreground">{file.name}: {file.syncError ?? 'Sync failed.'}</p>)}</div> : null}
+        {!isLocalMode && backupStats.failed > 0 ? <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Sync paused</p>{files.filter((file) => file.syncStatus === 'failed').map((file) => <p key={file.id} className="mt-1 text-muted-foreground">{file.name}: {file.syncError ?? 'Sync failed.'}</p>)}</div> : null}
       </section>
+      {isLocalMode ? (
+        <section aria-labelledby="backup-heading" className="rounded-2xl bg-muted/70 p-4">
+          <h2 id="backup-heading" className="text-base font-semibold leading-6">Local backup</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Save a backup file to Files or iCloud Drive, or restore a backup into a new imported folder.
+          </p>
+          <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[var(--app-border)] p-3">
+              <dt className="text-sm text-muted-foreground">Storage protection</dt>
+              <dd className="mt-1 font-medium">{storageStatus?.persisted ? 'Protected' : 'Best effort'}</dd>
+            </div>
+            <div className="rounded-xl border border-[var(--app-border)] p-3">
+              <dt className="text-sm text-muted-foreground">Used</dt>
+              <dd className="mt-1 font-medium">{formatBytes(storageStatus?.usage)}</dd>
+            </div>
+            <div className="rounded-xl border border-[var(--app-border)] p-3">
+              <dt className="text-sm text-muted-foreground">Available quota</dt>
+              <dd className="mt-1 font-medium">{formatBytes(storageStatus?.quota)}</dd>
+            </div>
+          </dl>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <AppButton variant="secondary" isLoading={backupAction === 'persist'} loadingLabel="Checking..." onPress={() => void protectStorage()}>
+              <ShieldCheckIcon aria-hidden="true" className="size-5" />
+              Protect storage
+            </AppButton>
+            <AppButton variant="secondary" isLoading={backupAction === 'export'} loadingLabel="Preparing..." onPress={() => void exportBackup()}>
+              <ArrowUpTrayIcon aria-hidden="true" className="size-5" />
+              Export backup
+            </AppButton>
+            <AppButton variant="secondary" isLoading={backupAction === 'import'} loadingLabel="Importing..." onPress={() => backupInputRef.current?.click()}>
+              <ArrowDownTrayIcon aria-hidden="true" className="size-5" />
+              Import backup
+            </AppButton>
+          </div>
+          <input
+            ref={backupInputRef}
+            type="file"
+            accept=".mybook-backup.json,application/json"
+            aria-hidden="true"
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(event) => void importBackup(event.target.files?.[0])}
+          />
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Protection helps prevent automatic browser cleanup. Export or Drive backup is still needed before removing app or browser data.
+          </p>
+        </section>
+      ) : null}
       <section aria-labelledby="files-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="files-heading" className="text-base font-semibold leading-6">Files</h2>
         <AppButton className="mt-4" variant="secondary" onPress={() => navigate('/trash')}><TrashIcon aria-hidden="true" className="size-5" />Open Trash</AppButton>
@@ -120,9 +247,21 @@ export function SettingsPage() {
           <div className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted-foreground">Queued operations</dt><dd className="mt-1 font-medium">{syncQueue.filter((item) => item.status !== 'completed').length}</dd></div>
           <div className="rounded-xl border border-[var(--app-border)] p-3"><dt className="text-sm text-muted-foreground">Failed operations</dt><dd className="mt-1 font-medium">{syncQueue.filter((item) => item.status === 'failed').length}</dd></div>
         </dl>
-        {syncQueue.some((item) => item.status === 'failed') ? <div role="alert" className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Some Drive operations need attention.</p>{syncQueue.filter((item) => item.status === 'failed').slice(0, 5).map((item) => <p key={item.id} className="mt-1 text-muted-foreground">{item.entityType} {item.operation}: {item.errorMessage ?? 'Retry required.'}</p>)}</div> : null}
-        <AppButton className="mt-4" variant="secondary" onPress={() => void processPendingDriveFolderSync()}>Retry Drive sync</AppButton>
+        {!isLocalMode && syncQueue.some((item) => item.status === 'failed') ? <div role="alert" className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Some Drive operations need attention.</p>{syncQueue.filter((item) => item.status === 'failed').slice(0, 5).map((item) => <p key={item.id} className="mt-1 text-muted-foreground">{item.entityType} {item.operation}: {item.errorMessage ?? 'Retry required.'}</p>)}</div> : null}
+        <AppButton className="mt-4" variant="secondary" isDisabled={isLocalMode} onPress={() => void processPendingDriveFolderSync()}>Retry Drive sync</AppButton>
       </section>
     </div>
   )
+}
+
+function formatBytes(value: number | undefined) {
+  if (!value) return 'Unknown'
+  const units = ['B', 'KB', 'MB', 'GB'] as const
+  let size = value
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit += 1
+  }
+  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
 }

@@ -73,7 +73,7 @@ export function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-[calc(2.5rem+env(safe-area-inset-top))] text-foreground sm:px-6">
+    <main className="flex h-full min-h-0 items-center justify-center overflow-y-auto overscroll-contain bg-background px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-[calc(2.5rem+env(safe-area-inset-top))] text-foreground sm:px-6">
       <section className="w-full max-w-sm" aria-labelledby="login-title">
         <div className="mb-6 flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <BookOpenIcon aria-hidden="true" className="size-7" />

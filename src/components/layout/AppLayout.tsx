@@ -36,8 +36,8 @@ export function AppLayout() {
 
   if (isEditor) {
     return (
-      <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-background text-foreground">
-        <main className="min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain bg-background p-0">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+        <main className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain bg-background p-0">
           <Outlet />
         </main>
       </div>
@@ -45,7 +45,7 @@ export function AppLayout() {
   }
 
   return (
-    <SidebarProvider className="h-dvh min-h-[480px] overflow-hidden bg-background text-foreground">
+    <SidebarProvider className="h-full min-h-0 overflow-hidden bg-background text-foreground">
       <Sidebar side="left" collapsible="icon">
         <SidebarHeader>
           <SidebarMenu>
@@ -100,7 +100,7 @@ export function AppLayout() {
         <SidebarRail />
       </Sidebar>
 
-      <SidebarInset className="min-w-0 overflow-hidden">
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <header className="sticky top-0 z-30 hidden shrink-0 border-b bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur md:block">
           <div className="flex h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-8">
             <div className="ml-auto flex items-center gap-2">
@@ -122,7 +122,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-background px-0 pb-[calc(7rem+env(safe-area-inset-bottom))] md:px-8 md:pb-8 md:pt-6">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-background px-0 pb-4 md:px-8 md:pb-8 md:pt-6">
           <div className="mx-auto w-full max-w-6xl">
             <Outlet />
           </div>

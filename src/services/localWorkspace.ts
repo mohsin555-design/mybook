@@ -72,10 +72,11 @@ export function canPickDeviceDirectory() {
   return typeof (window as FileSystemWindow).showDirectoryPicker === 'function'
 }
 
-async function hasReadWritePermission(handle: FileSystemDirectoryHandle) {
+async function hasReadWritePermission(handle: FileSystemDirectoryHandle, { request = true } = {}) {
   const permissioned = handle as PermissionedDirectoryHandle
   if (!permissioned.queryPermission || !permissioned.requestPermission) return true
   if (await permissioned.queryPermission({ mode: 'readwrite' }) === 'granted') return true
+  if (!request) return false
   return await permissioned.requestPermission({ mode: 'readwrite' }) === 'granted'
 }
 
@@ -98,7 +99,7 @@ export async function pickLocalWorkspaceDirectory(): Promise<PickedLocalWorkspac
       id: 'writin-local-workspace',
       mode: 'readwrite',
     })
-    if (!handle || !await hasReadWritePermission(handle)) return null
+    if (!handle) return null
     return { handle, name: handle.name }
   } catch (error) {
     if (!(error instanceof DOMException && error.name === 'AbortError')) {
@@ -112,18 +113,25 @@ async function getDeviceDirectoryHandle() {
   return (await db.settings.get(LOCAL_DIRECTORY_HANDLE_KEY))?.value as FileSystemDirectoryHandle | undefined
 }
 
+async function createFilesDirectory(root: FileSystemDirectoryHandle) {
+  const workspace = await root.getDirectoryHandle(ROOT_DIR, { create: true })
+  return workspace.getDirectoryHandle(FILES_DIR, { create: true })
+}
+
 async function filesDirectory() {
   const deviceDirectory = await getDeviceDirectoryHandle()
-  if (deviceDirectory && await hasReadWritePermission(deviceDirectory)) {
-    const workspace = await deviceDirectory.getDirectoryHandle(ROOT_DIR, { create: true })
-    return workspace.getDirectoryHandle(FILES_DIR, { create: true })
+  if (deviceDirectory && await hasReadWritePermission(deviceDirectory, { request: false })) {
+    try {
+      return await createFilesDirectory(deviceDirectory)
+    } catch (error) {
+      devLog('warn', 'Could not open device folder workspace.', error)
+    }
   }
 
   const getDirectory = opfsRoot()
   if (!getDirectory) return null
   const root = await getDirectory.call(navigator.storage)
-  const workspace = await root.getDirectoryHandle(ROOT_DIR, { create: true })
-  return workspace.getDirectoryHandle(FILES_DIR, { create: true })
+  return createFilesDirectory(root)
 }
 
 function privateStorageKind(): LocalWorkspaceStorageKind {
@@ -161,12 +169,10 @@ export async function initializeLocalWorkspace({
       await saveLocalWorkspaceDetails({ name, storage, createdAt })
       return { storage }
     }
-    if (await hasReadWritePermission(handle)) {
-      await saveDeviceDirectoryHandle(handle)
-      await filesDirectory()
-      await saveLocalWorkspaceDetails({ name, storage: 'file-system', createdAt })
-      return { storage: 'file-system' as const }
-    }
+    await createFilesDirectory(handle)
+    await saveDeviceDirectoryHandle(handle)
+    await saveLocalWorkspaceDetails({ name, storage: 'file-system', createdAt })
+    return { storage: 'file-system' as const }
   } catch (error) {
     if (!allowPrivateFallback && error instanceof DOMException && error.name === 'AbortError') {
       return { storage: privateStorageKind(), cancelled: true }

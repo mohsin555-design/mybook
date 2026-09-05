@@ -11,6 +11,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeSelection } from '@tiptap/pm/state'
 import { useEffect, useState, type ReactNode } from 'react'
 import { AppButton } from '../common/AppButton'
+import { cloneDatabaseAttrs } from './databaseModel'
 import { MobileBottomSheet } from '../common/MobileBottomSheet'
 import {
   Dialog,
@@ -21,7 +22,7 @@ import {
   DialogTitle,
 } from '../ui/dialog'
 
-const actionableBlocks = new Set(['callout', 'toggleBlock', 'imageBlock', 'fileAttachment', 'table', 'blockquote', 'codeBlock'])
+const actionableBlocks = new Set(['callout', 'toggleBlock', 'tableOfContents', 'documentLink', 'databaseBlock', 'imageBlock', 'fileAttachment', 'table', 'blockquote', 'codeBlock'])
 
 interface BlockTarget {
   node: ProseMirrorNode
@@ -67,7 +68,11 @@ function selectMovedNode(editor: Editor, pos: number) {
 }
 
 function duplicateBlock(editor: Editor, target: BlockTarget) {
-  editor.chain().focus().insertContentAt(target.pos + target.node.nodeSize, target.node.toJSON() as JSONContent).run()
+  const json = target.node.toJSON() as JSONContent
+  const duplicate = json.type === 'databaseBlock'
+    ? { ...json, attrs: cloneDatabaseAttrs(json.attrs) }
+    : json
+  editor.chain().focus().insertContentAt(target.pos + target.node.nodeSize, duplicate).run()
   selectMovedNode(editor, target.pos + target.node.nodeSize)
 }
 

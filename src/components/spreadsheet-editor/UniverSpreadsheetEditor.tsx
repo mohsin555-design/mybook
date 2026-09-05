@@ -226,13 +226,15 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     if (key === 'delete') setIsDeleteDialogOpen(true)
     if (key === 'close') void close()
   }
-  const editorStatus = file.syncStatus === 'failed' && status !== 'editing' && status !== 'saving-locally' && status !== 'saved-locally' ? 'failed' : status
+  const localSaveStatusActive = status === 'editing' || status === 'saving-locally' || status === 'saved-locally'
+  const editorStatus = localSaveStatusActive ? status : file.syncStatus
+  const editorStatusWorkspace = file.workspaceType === 'local' || file.syncStatus === 'local' ? 'local' : 'drive'
 
   return (
     <section className="-mx-4 -my-6 flex min-h-0 flex-col sm:-mx-6 lg:-mx-8" style={{ height: editorHeight }}>
       <header className="z-30 flex min-h-16 shrink-0 items-center gap-2 border-b border-[var(--app-border)] bg-background px-2 sm:px-4">
         <button type="button" onClick={() => void close()} aria-label="Close spreadsheet" className="flex size-11 shrink-0 items-center justify-center rounded-[10px]"><ArrowLeftIcon aria-hidden="true" className="size-5" /></button>
-        <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">{file.name}</h1><EditorStatus status={editorStatus} onRetry={() => void backupNow()} /><div className="mt-1"><FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={file.name} onNavigate={navigate} /></div></div>
+        <div className="min-w-0 flex-1"><h1 className="truncate text-base font-semibold">{file.name}</h1><EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} /><div className="mt-1"><FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={file.name} onNavigate={navigate} /></div></div>
         <Dropdown><Dropdown.Trigger aria-label="More spreadsheet actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Spreadsheet actions" onAction={handleMenuAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Sync now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item><Dropdown.Item id="duplicate">Duplicate</Dropdown.Item><Dropdown.Item id="download-local">Download local copy</Dropdown.Item><Dropdown.Item id="import"><span className="flex items-center gap-2"><ArrowUpTrayIcon aria-hidden="true" className="size-5" />Import XLSX</span></Dropdown.Item><Dropdown.Item id="export">Export XLSX</Dropdown.Item><Dropdown.Item id="download"><span className="flex items-center gap-2"><ArrowDownTrayIcon aria-hidden="true" className="size-5" />Download XLSX</span></Dropdown.Item><Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item><Dropdown.Item id="close">Close spreadsheet</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
         <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void save()}>Save</AppButton>
         <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void backupNow()}>Sync now</AppButton>

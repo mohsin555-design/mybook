@@ -1,6 +1,7 @@
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import type { JSONContent } from '@tiptap/core'
+import type { SyncEntityType, SyncQueueItem } from '../types/files'
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
@@ -15,7 +16,10 @@ export interface DriveFolder {
   name: string
   mimeType: string
   trashed?: boolean
+  explicitlyTrashed?: boolean
   webViewLink?: string
+  parents?: string[]
+  appProperties?: Record<string, string>
 }
 
 export interface DriveFile {
@@ -23,9 +27,30 @@ export interface DriveFile {
   name: string
   mimeType: string
   trashed?: boolean
+  explicitlyTrashed?: boolean
   webViewLink?: string
   parents?: string[]
+  appProperties?: Record<string, string>
   modifiedTime?: string
+}
+
+export type DriveTrashClassification = 'active' | 'independent-trash-root' | 'recursive-trash-descendant'
+
+export interface DriveTrashMetadata {
+  id: string
+  name: string
+  mimeType: string
+  parents: string[]
+  trashed: boolean
+  explicitlyTrashed: boolean
+  appProperties: Record<string, string>
+  modifiedTime?: string
+  mybookFolderId: string | null
+}
+
+export interface ClassifiedDriveTrashItem extends DriveTrashMetadata {
+  classification: DriveTrashClassification
+  trashedByAncestorDriveId: string | null
 }
 
 export type DriveSetupResult =
@@ -89,6 +114,72 @@ async function listChildFiles(parentId: string): Promise<DriveFile[]> {
   if (!result.success) throw new Error(result.error)
   const data = await result.response.json() as { files?: DriveFile[] }
   return data.files ?? []
+}
+
+function normalizeDriveTrashMetadata(item: DriveFile | DriveFolder): DriveTrashMetadata {
+  return {
+    id: item.id,
+    name: item.name,
+    mimeType: item.mimeType,
+    parents: item.parents ?? [],
+    trashed: item.trashed === true,
+    explicitlyTrashed: item.explicitlyTrashed === true,
+    appProperties: item.appProperties ?? {},
+    modifiedTime: 'modifiedTime' in item ? item.modifiedTime : undefined,
+    mybookFolderId: item.appProperties?.mybookFolderId ?? null,
+  }
+}
+
+function classifyDriveTrashItems(items: DriveTrashMetadata[]): ClassifiedDriveTrashItem[] {
+  const byId = new Map(items.map((item) => [item.id, item]))
+  const explicitTrashAncestorFor = (item: DriveTrashMetadata) => {
+    const seen = new Set<string>()
+    let currentParentId = item.parents[0] ?? null
+    while (currentParentId) {
+      if (seen.has(currentParentId)) return null
+      seen.add(currentParentId)
+      const parent = byId.get(currentParentId)
+      if (!parent) return null
+      if (parent.trashed && parent.explicitlyTrashed) return parent.id
+      currentParentId = parent.parents[0] ?? null
+    }
+    return null
+  }
+
+  return items.map((item) => {
+    const trashedByAncestorDriveId = item.trashed && !item.explicitlyTrashed ? explicitTrashAncestorFor(item) : null
+    return {
+      ...item,
+      classification: item.trashed
+        ? item.explicitlyTrashed
+          ? 'independent-trash-root'
+          : 'recursive-trash-descendant'
+        : 'active',
+      trashedByAncestorDriveId,
+    }
+  })
+}
+
+export function classifyDriveTrashMetadata(items: Array<DriveFile | DriveFolder | DriveTrashMetadata>): ClassifiedDriveTrashItem[] {
+  return classifyDriveTrashItems(items.map((item) => normalizeDriveTrashMetadata(item as DriveFile | DriveFolder)))
+}
+
+const DRIVE_TRASH_FIELDS = 'files(id,name,mimeType,parents,trashed,explicitlyTrashed,appProperties,modifiedTime)'
+
+export async function listTrashedMyBookDriveFiles(parentId: string): Promise<DriveTrashMetadata[]> {
+  const query = `'${parentId}' in parents and mimeType!='${DRIVE_FOLDER_MIME}' and trashed=true`
+  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(DRIVE_TRASH_FIELDS)}&spaces=drive`)
+  if (!result.success) throw new Error(result.error)
+  const data = await result.response.json() as { files?: DriveFile[] }
+  return (data.files ?? []).map(normalizeDriveTrashMetadata)
+}
+
+export async function listTrashedMyBookDriveFolders(parentId: string): Promise<DriveTrashMetadata[]> {
+  const query = `'${parentId}' in parents and mimeType='${DRIVE_FOLDER_MIME}' and trashed=true`
+  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(DRIVE_TRASH_FIELDS)}&spaces=drive`)
+  if (!result.success) throw new Error(result.error)
+  const data = await result.response.json() as { files?: DriveFolder[] }
+  return (data.files ?? []).map(normalizeDriveTrashMetadata)
 }
 
 async function parentMoveParams(fileId: string, targetParentId: string, accessToken: string) {
@@ -205,6 +296,18 @@ export async function updateDriveFolder(folderId: string, changes: { name?: stri
 
 export async function trashDriveFolder(folderId: string) {
   return updateDriveFolderState(folderId, true)
+}
+
+export async function permanentlyDeleteDriveFile(fileId: string) {
+  const accessToken = await useAuthStore.getState().getAccessToken()
+  if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
+  const response = await fetch(`${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (response.ok || response.status === 404) return
+  const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
+  throw new Error(body?.error?.message ?? 'Could not permanently delete the Google Drive item.')
 }
 
 export async function restoreDriveFolder(folderId: string) {
@@ -423,9 +526,16 @@ export async function backupDocumentToDrive(input: {
         try { return JSON.parse(content || '{"type":"doc","content":[{"type":"paragraph"}]}') as JSONContent } catch { return { type: 'doc', content: [{ type: 'paragraph' }] } as JSONContent }
       })()
       const { documentToMyBookMarkdown } = await import('../utils/mybookMarkdown')
-      const markdown = documentToMyBookMarkdown(title, parsedContent)
+      const markdown = documentToMyBookMarkdown(title, parsedContent, { documentId: file.id })
       const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId))
-      await db.files.update(file.id, {
+      const current = await db.files.get(file.id)
+      const changedDuringUpload = !current || current.content !== content || current.name !== title || current.folderId !== (latest?.folderId ?? file.folderId) || current.isDeleted
+      await db.files.update(file.id, changedDuringUpload ? {
+        driveFileId: result.id,
+        workspaceType: 'drive',
+        mimeType: 'application/x-mybook-document',
+        syncStatus: current?.syncStatus === 'failed' ? 'failed' : 'pending',
+      } : {
         driveFileId: result.id,
         workspaceType: 'drive',
         mimeType: 'application/x-mybook-document',
@@ -503,7 +613,13 @@ export async function backupSpreadsheetToDrive(input: {
       const exported = await exportWorkbookToXlsx(snapshot)
       if (!exported.success || !exported.data) throw new Error(exported.error ?? 'Could not convert the spreadsheet to XLSX.')
       const result = await retryWithBackoff(() => uploadXlsxBlob(latest?.name ?? input.title, exported.data as Blob, driveParentId, latest?.driveFileId ?? file.driveFileId, latest?.mimeType === GOOGLE_SHEET_MIME ? GOOGLE_SHEET_MIME : undefined))
-      await db.files.update(file.id, { driveFileId: result.id, workspaceType: 'drive', syncStatus: 'backed-up', lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
+      const current = await db.files.get(file.id)
+      const uploadedContent = latest?.content ?? input.content
+      const uploadedTitle = latest?.name ?? input.title
+      const changedDuringUpload = !current || current.content !== uploadedContent || current.name !== uploadedTitle || current.folderId !== (latest?.folderId ?? file.folderId) || current.isDeleted
+      await db.files.update(file.id, changedDuringUpload
+        ? { driveFileId: result.id, workspaceType: 'drive', syncStatus: current?.syncStatus === 'failed' ? 'failed' : 'pending' }
+        : { driveFileId: result.id, workspaceType: 'drive', syncStatus: 'backed-up', lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
       return { success: true, folderId: driveParentId, folderName: 'MyBook', created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not back up the spreadsheet to Google Drive.'
@@ -583,6 +699,7 @@ export async function importDriveFoldersToLocal(
   if (!bootstrap.success) throw new Error(bootstrap.error)
 
   const localFolders = await db.folders.toArray()
+  const unresolvedSync = await unresolvedSyncIndex()
   const byDriveId = new Map(localFolders.filter((folder) => folder.driveFolderId).map((folder) => [folder.driveFolderId as string, folder]))
   const byNameAndParent = new Map(localFolders.map((folder) => [`${folder.parentId ?? 'root'}:${folder.name.toLowerCase()}`, folder]))
   const seenDriveIds = new Set<string>()
@@ -595,7 +712,12 @@ export async function importDriveFoldersToLocal(
       let matchedLocalId: string
       if (localMatch) {
         matchedLocalId = localMatch.id
-        if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted) {
+        const hasLocalIntent = unresolvedSync.has('folder', localMatch.id)
+        if (hasLocalIntent) {
+          if (localMatch.driveFolderId !== driveFolder.id || localMatch.workspaceType !== 'drive') {
+            await db.folders.update(localMatch.id, { driveFolderId: driveFolder.id, workspaceType: 'drive' })
+          }
+        } else if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted) {
           await db.folders.update(localMatch.id, { name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', updatedAt: new Date().toISOString(), isDeleted: false })
         }
       } else {
@@ -610,7 +732,7 @@ export async function importDriveFoldersToLocal(
   }
 
   await syncChildren(bootstrap.folderId, null)
-  const missing = localFolders.filter((folder) => !folder.isDeleted && folder.driveFolderId && !seenDriveIds.has(folder.driveFolderId))
+  const missing = localFolders.filter((folder) => !folder.isDeleted && folder.driveFolderId && !seenDriveIds.has(folder.driveFolderId) && !unresolvedSync.has('folder', folder.id))
   if (missing.length) {
     const allFolders = await db.folders.toArray()
     const allFiles = await db.files.toArray()
@@ -629,7 +751,7 @@ export async function importDriveFoldersToLocal(
     const now = new Date().toISOString()
     await db.transaction('rw', db.folders, db.files, db.syncQueue, async () => {
       await Promise.all([...deletedFolderIds].map((folderId) => db.folders.update(folderId, { isDeleted: true, updatedAt: now })))
-      await db.files.filter((file) => Boolean(file.folderId && deletedFolderIds.has(file.folderId))).modify({ isDeleted: true, updatedAt: now })
+      await db.files.filter((file) => Boolean(file.folderId && deletedFolderIds.has(file.folderId)) && !unresolvedSync.has('file', file.id)).modify({ isDeleted: true, updatedAt: now })
       await db.syncQueue
         .filter((item) => item.status !== 'completed' && item.entityType === 'folder' && deletedFolderIds.has(item.entityId))
         .modify({ status: 'completed', errorMessage: 'Deleted in Google Drive.', updatedAt: now })
@@ -670,6 +792,26 @@ function preferLocalFileMatch<T extends { driveFileId: string | null; syncStatus
 
 function normalizedTitle(value: string) {
   return value.replace(/\.(docx|xlsx)$/i, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase()
+}
+
+function driveModifiedAfterLastSync(driveModifiedTime: string, lastSyncedAt: string | null) {
+  if (!lastSyncedAt) return true
+  return new Date(driveModifiedTime).getTime() > new Date(lastSyncedAt).getTime()
+}
+
+function isUnresolvedSyncItem(item: SyncQueueItem) {
+  return item.status === 'pending' || item.status === 'processing' || item.status === 'failed'
+}
+
+async function unresolvedSyncIndex() {
+  const items = await db.syncQueue.filter(isUnresolvedSyncItem).toArray()
+  const unresolved = new Set<string>()
+  for (const item of items) unresolved.add(`${item.entityType}:${item.entityId}`)
+  return {
+    has(entityType: SyncEntityType, entityId: string) {
+      return unresolved.has(`${entityType}:${entityId}`)
+    },
+  }
 }
 
 function textNode(text: string, marks: Array<{ type: string; attrs?: Record<string, unknown> }> = []): JSONContent[] {
@@ -768,8 +910,9 @@ function tiptapDocFromHtml(html: string, fileName: string) {
 
 async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string) {
   if (file.mimeType === MYBOOK_MARKDOWN_MIME || /\.md$/i.test(file.name)) {
-    const { myBookMarkdownToDocument } = await import('../utils/mybookMarkdown')
-    return JSON.stringify(myBookMarkdownToDocument(await getDriveFileContent(file.id)))
+    const { parseMyBookMarkdown } = await import('../utils/mybookMarkdown')
+    const parsed = parseMyBookMarkdown(await getDriveFileContent(file.id))
+    return { content: JSON.stringify(parsed.document), documentId: parsed.metadata.documentId }
   }
   if (file.mimeType === GOOGLE_DOC_MIME || file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)) {
     const blob = file.mimeType === GOOGLE_DOC_MIME
@@ -777,7 +920,7 @@ async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string)
       : await getDriveFileBlob(file.id)
     const mammoth = (await import('mammoth')).default
     const result = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() })
-    return tiptapDocFromHtml(result.value, file.name)
+    return { content: tiptapDocFromHtml(result.value, file.name) }
   }
   if (file.mimeType === GOOGLE_SHEET_MIME || file.mimeType === XLSX_MIME || /\.xlsx$/i.test(file.name)) {
     const blob = file.mimeType === GOOGLE_SHEET_MIME
@@ -791,9 +934,9 @@ async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string)
       arrayBuffer: () => blob.arrayBuffer(),
     }, localFileId)
     if (!imported.success || !imported.data) throw new Error(imported.error ?? 'Could not import the Drive spreadsheet.')
-    return JSON.stringify(imported.data)
+    return { content: JSON.stringify(imported.data) }
   }
-  return getDriveFileContent(file.id)
+  return { content: await getDriveFileContent(file.id) }
 }
 
 async function saveVersionBeforeDriveUpdate(existingId: string, driveModifiedTime: string | null) {
@@ -819,6 +962,8 @@ export async function importDriveFilesToLocal() {
 
   const localFolders = await db.folders.toArray()
   const localFiles = await db.files.toArray()
+  const unresolvedSync = await unresolvedSyncIndex()
+  const usedLocalFileIds = new Set(localFiles.map((file) => file.id))
   const byDriveId = new Map(localFiles.filter((file) => file.driveFileId).map((file) => [file.driveFileId as string, file]))
   const byNameAndParent = new Map<string, typeof localFiles[number]>()
   for (const file of localFiles) {
@@ -839,42 +984,60 @@ export async function importDriveFilesToLocal() {
         ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFile.name.toLowerCase()}`)
         ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${localFileName(driveFile.name, fileType).toLowerCase()}`)
       const now = new Date().toISOString()
-      const localId = existing?.id ?? crypto.randomUUID()
+      let localId = existing?.id ?? crypto.randomUUID()
       const driveModifiedTime = driveFile.modifiedTime ?? now
       let content = ''
-      try {
-        content = await readDriveFileAsLocalContent(driveFile, localId)
-      } catch {
-        content = ''
+      let portableDocumentId: string | undefined
+      const hasLocalIntent = existing ? unresolvedSync.has('file', existing.id) : false
+      const shouldReadContent = !existing || (!hasLocalIntent && driveModifiedAfterLastSync(driveModifiedTime, existing.lastSyncedAt))
+      if (shouldReadContent) {
+        try {
+          const imported = await readDriveFileAsLocalContent(driveFile, localId)
+          content = imported.content
+          portableDocumentId = imported.documentId
+        } catch {
+          content = ''
+        }
       }
+      if (!existing && fileType === 'document' && portableDocumentId) {
+        if (!usedLocalFileIds.has(portableDocumentId)) localId = portableDocumentId
+      }
+      usedLocalFileIds.add(localId)
       if (existing) {
         const name = localFileName(driveFile.name, fileType)
         const type = existing.type ?? fileType
         const mimeType = driveFile.mimeType || existing.mimeType
-        const driveIsNewer = !existing.lastSyncedAt || new Date(driveModifiedTime).getTime() > new Date(existing.lastSyncedAt).getTime()
-        const nextContent = driveIsNewer && content && content !== existing.content ? content : existing.content
+        const driveIsNewer = shouldReadContent
+        const nextContent = !hasLocalIntent && driveIsNewer && content && content !== existing.content ? content : existing.content
         if (nextContent !== existing.content) await saveVersionBeforeDriveUpdate(existing.id, driveModifiedTime)
         const userVisibleChanged =
           name !== existing.name ||
           parentLocalId !== existing.folderId ||
           type !== existing.type ||
-          mimeType !== existing.mimeType ||
           nextContent !== existing.content ||
           existing.isDeleted
-        await db.files.update(existing.id, {
+        const nextFileChanges = hasLocalIntent ? {
+          driveFileId: driveFile.id,
+          workspaceType: 'drive' as const,
+          type,
+          mimeType,
+        } : {
           name,
           folderId: parentLocalId,
           driveFileId: driveFile.id,
-          workspaceType: 'drive',
+          workspaceType: 'drive' as const,
           type,
           mimeType,
           content: nextContent,
           updatedAt: userVisibleChanged ? driveModifiedTime : existing.updatedAt,
           lastSyncedAt: driveModifiedTime,
-          syncStatus: 'backed-up',
+          syncStatus: 'backed-up' as const,
           syncError: null,
           isDeleted: false,
-        })
+        }
+        if (hasLocalIntent || userVisibleChanged || existing.driveFileId !== driveFile.id || existing.workspaceType !== 'drive' || !existing.lastSyncedAt || new Date(driveModifiedTime).getTime() > new Date(existing.lastSyncedAt).getTime() || existing.syncStatus !== 'backed-up' || existing.syncError) {
+          await db.files.update(existing.id, nextFileChanges)
+        }
       } else {
         await db.files.add({
           id: localId,
@@ -906,7 +1069,7 @@ export async function importDriveFilesToLocal() {
   }
 
   await walk(bootstrap.folderId, null)
-  const missingFiles = localFiles.filter((file) => !file.isDeleted && file.driveFileId && !seenDriveFileIds.has(file.driveFileId))
+  const missingFiles = localFiles.filter((file) => !file.isDeleted && file.driveFileId && !seenDriveFileIds.has(file.driveFileId) && !unresolvedSync.has('file', file.id))
   if (missingFiles.length) {
     const now = new Date().toISOString()
     const missingFileIds = new Set(missingFiles.map((file) => file.id))
@@ -932,7 +1095,8 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
       mimeType: local.type === 'spreadsheet' ? XLSX_MIME : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       modifiedTime: driveModifiedTime,
     }
-    const content = await readDriveFileAsLocalContent(driveFile, local.id)
+    const imported = await readDriveFileAsLocalContent(driveFile, local.id)
+    const content = imported.content
     if (!content || content === local.content) {
       await db.files.update(local.id, { workspaceType: 'drive', lastSyncedAt: driveModifiedTime, syncStatus: 'backed-up', syncError: null })
       return { updated: false, modifiedTime: driveModifiedTime }

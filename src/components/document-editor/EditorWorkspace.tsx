@@ -29,7 +29,7 @@ export function EditorWorkspace({ fileId, type }: { fileId: string; type: FileTy
         <button type="button" onClick={() => void closeEditor()} aria-label="Close editor" className="flex size-11 shrink-0 items-center justify-center rounded-[10px]"><ArrowLeftIcon aria-hidden="true" className="size-5" /></button>
         <Icon aria-hidden="true" className="hidden size-5 text-primary sm:block" />
         <h1 id="editor-title" className="min-w-0 flex-1 truncate text-base font-semibold">{file.name}</h1>
-        <EditorStatus status={status} />
+        <EditorStatus status={status} workspace={file.workspaceType === 'local' || file.syncStatus === 'local' ? 'local' : 'drive'} />
         <AppButton variant="secondary" onPress={() => void save()}>Save</AppButton>
       </header>
       <label htmlFor="editor-content" className="sr-only">{type === 'document' ? 'Document content' : 'Spreadsheet data'}</label>

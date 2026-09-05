@@ -1,0 +1,44 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e64]:
+    - generic [ref=e67]:
+      - list [ref=e69]:
+        - listitem [ref=e70]:
+          - link "MyBook" [ref=e71] [cursor=pointer]:
+            - /url: /home
+      - list [ref=e78]:
+        - listitem [ref=e79]:
+          - link "Home" [ref=e80] [cursor=pointer]:
+            - /url: /home
+        - listitem [ref=e83]:
+          - link "Library" [ref=e84] [cursor=pointer]:
+            - /url: /folders
+        - listitem [ref=e87]:
+          - link "Preferences" [ref=e88] [cursor=pointer]:
+            - /url: /settings
+        - listitem [ref=e91]:
+          - link "Search" [ref=e92] [cursor=pointer]:
+            - /url: /search
+      - list [ref=e96]:
+        - listitem [ref=e97]:
+          - link "Trash" [ref=e98] [cursor=pointer]:
+            - /url: /trash
+      - button "Toggle Sidebar" [ref=e102]
+    - main [ref=e103]:
+      - generic [ref=e106]:
+        - generic [ref=e107]: Local workspace
+        - button "Switch to dark theme" [ref=e108]
+      - main [ref=e109]:
+        - generic [ref=e111]:
+          - heading "Home" [level=1] [ref=e115]
+          - generic [ref=e116]:
+            - tablist "File view" [ref=e117]:
+              - tab "Recent" [selected] [ref=e118]
+              - tab "Favorites" [ref=e119]
+              - tab "All files" [ref=e120]
+            - tabpanel "Recent" [ref=e121]:
+              - region [ref=e123]:
+                - heading "No recent files" [level=2] [ref=e127]
+                - paragraph [ref=e128]: Files you open or edit will appear here.
+          - button "Create new" [ref=e129]
+  - generic:
+    - region "Notifications"

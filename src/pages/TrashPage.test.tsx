@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TrashPage } from './TrashPage'
-import { fileRepository } from '../database/repositories'
+import { fileRepository, folderRepository } from '../database/repositories'
 import type { MyBookFile, MyBookFolder } from '../types/files'
 
 const mockNavigate = vi.hoisted(() => vi.fn())
@@ -32,11 +32,18 @@ vi.mock('../database/repositories', () => ({
     permanentlyDelete: vi.fn(),
     restore: vi.fn(),
   },
+  folderRepository: {
+    permanentlyDelete: vi.fn(),
+    restore: vi.fn(),
+  },
 }))
 
 vi.mock('../components/files/TrashActionsMenu', () => ({
-  TrashActionsMenu: ({ fileName, onDelete }: { fileName: string; onDelete: () => void }) => (
-    <button type="button" onClick={onDelete}>Delete permanently {fileName}</button>
+  TrashActionsMenu: ({ fileName, onRestore, onDelete }: { fileName: string; onRestore: () => void; onDelete: () => void }) => (
+    <div>
+      <button type="button" onClick={onRestore}>Restore {fileName}</button>
+      <button type="button" onClick={onDelete}>Delete permanently {fileName}</button>
+    </div>
   ),
 }))
 
@@ -87,5 +94,113 @@ describe('TrashPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }))
 
     await waitFor(() => expect(fileRepository.permanentlyDelete).toHaveBeenCalledWith('file-1'))
+  })
+
+  it('shows top-level deleted folders in Trash and restores them by folder ID', async () => {
+    mockLibraryData.folders = [{
+      id: 'folder-1',
+      driveFolderId: 'drive-folder-1',
+      workspaceType: 'drive',
+      name: 'Projects',
+      parentId: null,
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: '2026-08-22T00:00:00.000Z',
+      isDeleted: true,
+    }]
+
+    render(<MemoryRouter><TrashPage /></MemoryRouter>)
+
+    expect(screen.getByText('Projects')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Restore Projects' }))
+
+    expect(folderRepository.restore).toHaveBeenCalledWith('folder-1')
+  })
+
+  it('does not surface descendants of a trashed folder as separate Trash entries', () => {
+    mockLibraryData.folders = [
+      {
+        id: 'folder-parent',
+        driveFolderId: null,
+        workspaceType: 'local',
+        name: 'Projects',
+        parentId: null,
+        createdAt: '2026-08-20T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        isDeleted: true,
+      },
+      {
+        id: 'folder-child',
+        driveFolderId: null,
+        workspaceType: 'local',
+        name: 'Assets',
+        parentId: 'folder-parent',
+        createdAt: '2026-08-20T00:00:00.000Z',
+        updatedAt: '2026-08-22T00:00:00.000Z',
+        isDeleted: true,
+      },
+    ]
+    mockLibraryData.files = [{
+      id: 'file-child',
+      driveFileId: null,
+      workspaceType: 'local',
+      name: 'Budget',
+      type: 'document',
+      folderId: 'folder-child',
+      content: '',
+      mimeType: 'application/x-mybook-document',
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: '2026-08-22T00:00:00.000Z',
+      lastSyncedAt: null,
+      syncStatus: 'local',
+      isDeleted: true,
+    }]
+
+    render(<MemoryRouter><TrashPage /></MemoryRouter>)
+
+    expect(screen.getByText('Projects')).toBeInTheDocument()
+    expect(screen.queryByText('Assets')).not.toBeInTheDocument()
+    expect(screen.queryByText('Budget')).not.toBeInTheDocument()
+  })
+
+  it('requires confirmation before permanently deleting a folder', async () => {
+    mockLibraryData.folders = [{
+      id: 'folder-1',
+      driveFolderId: null,
+      workspaceType: 'local',
+      name: 'Projects',
+      parentId: null,
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: '2026-08-22T00:00:00.000Z',
+      isDeleted: true,
+    }]
+
+    render(<MemoryRouter><TrashPage /></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete permanently Projects' }))
+
+    expect(folderRepository.permanentlyDelete).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toHaveTextContent('Delete "Projects" permanently?')
+    expect(screen.getByRole('dialog')).toHaveTextContent('This folder will be permanently deleted')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete permanently' }))
+
+    await waitFor(() => expect(folderRepository.permanentlyDelete).toHaveBeenCalledWith('folder-1'))
+  })
+
+  it('counts folders when deciding whether Trash is empty', () => {
+    mockLibraryData.folders = [{
+      id: 'folder-1',
+      driveFolderId: null,
+      workspaceType: 'local',
+      name: 'Projects',
+      parentId: null,
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: '2026-08-22T00:00:00.000Z',
+      isDeleted: true,
+    }]
+
+    render(<MemoryRouter><TrashPage /></MemoryRouter>)
+
+    expect(screen.queryByText('Trash is empty')).not.toBeInTheDocument()
   })
 })

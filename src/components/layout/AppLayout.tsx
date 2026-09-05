@@ -1,5 +1,7 @@
 import {
   BookOpenIcon,
+  DocumentTextIcon,
+  FolderIcon,
   MoonIcon,
   SunIcon,
   TrashIcon,
@@ -10,6 +12,8 @@ import { useAppStore } from '../../stores/useAppStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
+import { useLibraryData } from '../../hooks/useLibraryData'
+import { activeFavoriteItems } from '../../utils/favorites'
 import { navigationItems } from '../../utils/navigation'
 import { IconButton } from '../common/IconButton'
 import {
@@ -17,7 +21,9 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -32,9 +38,12 @@ export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
   const { email, isAuthenticated } = useAuthStore()
   const workspaceMode = useWorkspaceStore((state) => state.mode)
+  const { files, folders } = useLibraryData()
   useDriveBootstrap()
   const { pathname } = useLocation()
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
+  const favorites = activeFavoriteItems(files, folders)
+  const sidebarFavorites = favorites.slice(0, 5)
 
   if (isEditor) {
     return (
@@ -80,6 +89,45 @@ export function AppLayout() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Favorites</SidebarGroupLabel>
+            {favorites.length > 5 ? (
+              <SidebarGroupAction
+                render={<NavLink to="/favorites" />}
+                aria-label="See all favorites"
+                title="See all favorites"
+                className="aspect-auto h-6 w-auto px-2 text-xs"
+              >
+                More
+              </SidebarGroupAction>
+            ) : null}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {sidebarFavorites.map((favorite) => {
+                  const path = favorite.kind === 'folder'
+                    ? `/folders/${favorite.item.id}`
+                    : `/${favorite.item.type}/${favorite.item.id}`
+                  const Icon = favorite.kind === 'folder' ? FolderIcon : DocumentTextIcon
+                  const label = favorite.kind === 'folder'
+                    ? `Open favorite folder ${favorite.item.name}`
+                    : `Open favorite ${favorite.item.type} ${favorite.item.name}`
+
+                  return (
+                    <SidebarMenuItem key={`${favorite.kind}:${favorite.item.id}`}>
+                      <SidebarMenuButton
+                        render={<NavLink to={path} aria-label={label} />}
+                        isActive={pathname === path}
+                        tooltip={favorite.item.name}
+                      >
+                        <Icon aria-hidden="true" className="size-4" />
+                        <span>{favorite.item.name}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

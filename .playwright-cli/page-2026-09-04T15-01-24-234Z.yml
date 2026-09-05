@@ -1,0 +1,42 @@
+- generic [ref=e1]:
+  - main [ref=e5]:
+    - region [ref=e6]:
+      - heading "MyBook" [level=1] [ref=e10]
+      - paragraph [ref=e11]: Your private documents and spreadsheets, on this device or backed up to your Drive.
+      - generic [ref=e12]:
+        - button "Create Local Workspace" [ref=e13]
+        - generic [ref=e20]:
+          - button "Sign in with Google. Opens in new tab" [ref=e22] [cursor=pointer]:
+            - generic [ref=e24]: Sign in with Google
+          - iframe
+      - paragraph [ref=e14]
+      - paragraph [ref=e18]: Local workspaces stay on this device. Google workspaces use your own Drive and only request access needed to manage files you create here.
+    - dialog [ref=e34]:
+      - generic [ref=e39]:
+        - heading "Create local workspace" [level=2] [ref=e40]
+        - paragraph [ref=e41]: Choose where this device should keep your Writin files.
+        - paragraph [ref=e42]: Local workspaces are tied to this browser unless you choose the same device folder again on a supported browser. Use Google Drive when you need the same files everywhere.
+      - generic [ref=e43]: Workspace name
+      - textbox "Workspace name" [ref=e44]:
+        - /placeholder: My Workspace
+        - text: My Workspace
+      - group "Storage location" [ref=e45]:
+        - generic [ref=e47]:
+          - generic [ref=e48] [cursor=pointer]:
+            - radio "Choose a folder on this device Best for macOS, Windows, and supported Android browsers. Files stay visible outside the app. Browse folder No folder selected yet." [ref=e49]
+            - generic [ref=e50]:
+              - generic [ref=e51]: Choose a folder on this device
+              - generic [ref=e52]: Best for macOS, Windows, and supported Android browsers. Files stay visible outside the app.
+              - generic [ref=e53]:
+                - button "Browse folder" [ref=e54]
+                - generic [ref=e55]: No folder selected yet.
+          - generic [ref=e56] [cursor=pointer]:
+            - radio "Use private app storage Works across devices including iPhone and iPad. Export backups or connect Drive to protect local-only work." [checked] [active] [ref=e57]
+            - generic [ref=e58]:
+              - generic [ref=e59]: Use private app storage
+              - generic [ref=e60]: Works across devices including iPhone and iPad. Export backups or connect Drive to protect local-only work.
+      - generic [ref=e61]:
+        - button "Cancel" [ref=e62]
+        - button "Create Workspace" [ref=e63]
+  - generic:
+    - region "Notifications"

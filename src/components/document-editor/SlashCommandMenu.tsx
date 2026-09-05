@@ -1,6 +1,8 @@
 import type { Editor } from '@tiptap/react'
 
 import { calloutNode } from './extensions/Callout'
+import { databaseBlockNode } from './extensions/DatabaseBlock'
+import { tableOfContentsNode } from './extensions/TableOfContents'
 import { toggleBlockNode } from './extensions/ToggleBlock'
 
 export interface SlashCommand {
@@ -26,6 +28,9 @@ export const slashCommands: SlashCommand[] = [
   { id: 'task', title: 'Checklist', description: 'Track tasks and todos', keywords: ['task', 'check', 'todo', 'checklist'] },
   { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'] },
   { id: 'toggle', title: 'Toggle', description: 'Hide details under a title', keywords: ['toggle', 'details', 'collapse'] },
+  { id: 'toc', title: 'Table of contents', description: 'Show document headings', keywords: ['toc', 'table of contents', 'contents', 'outline'] },
+  { id: 'document-link', title: 'Document link', description: 'Link to another document', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document'] },
+  { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'] },
   { id: 'image', title: 'Image', description: 'Upload an image', keywords: ['image', 'photo', 'picture', 'media'] },
   { id: 'file', title: 'File attachment', description: 'Attach a file block', keywords: ['file', 'attachment', 'upload', 'pdf', 'doc'] },
   { id: 'quote', title: 'Blockquote', description: 'Highlight quoted text', keywords: ['quote', 'blockquote'] },
@@ -54,6 +59,12 @@ export function runSlashCommand(editor: Editor, commandId: string, range: SlashM
   else if (commandId === 'task') chain.toggleTaskList().run()
   else if (commandId === 'callout') chain.insertContent(calloutNode()).run()
   else if (commandId === 'toggle') chain.insertContent(toggleBlockNode()).run()
+  else if (commandId === 'toc') chain.insertContent(tableOfContentsNode()).run()
+  else if (commandId === 'database') chain.insertContent(databaseBlockNode()).run()
+  else if (commandId === 'document-link') {
+    chain.run()
+    window.dispatchEvent(new CustomEvent('mybook:insert-document-link'))
+  }
   else if (commandId === 'image') {
     chain.run()
     window.dispatchEvent(new CustomEvent('mybook:insert-image'))

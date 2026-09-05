@@ -1,6 +1,7 @@
 import { db } from '../database/db'
 import { writeLocalWorkspaceFile } from './localWorkspace'
 import type { FileType, MyBookFile, MyBookFileVersion, MyBookFolder } from '../types/files'
+import { remapDocumentLinksInContent } from '../utils/documentLinkRemap'
 
 const BACKUP_KIND = 'mybook-workspace-backup'
 const BACKUP_VERSION = 1
@@ -116,7 +117,11 @@ export async function importLocalWorkspaceBackup(file: File) {
 
   const sortedFolders = [...parsed.folders].sort((a, b) => Number(Boolean(a.parentId)) - Number(Boolean(b.parentId)))
   for (const folder of sortedFolders) folderIdMap.set(folder.id, crypto.randomUUID())
-  for (const source of parsed.files) fileIdMap.set(source.id, crypto.randomUUID())
+  const importedFileIds = parsed.files.map((source) => {
+    const id = crypto.randomUUID()
+    if (!fileIdMap.has(source.id)) fileIdMap.set(source.id, id)
+    return id
+  })
 
   const folders: MyBookFolder[] = [
     importRoot,
@@ -129,12 +134,13 @@ export async function importLocalWorkspaceBackup(file: File) {
       isDeleted: false,
     })),
   ]
-  const files: MyBookFile[] = parsed.files.map((file) => ({
+  const files: MyBookFile[] = parsed.files.map((file, index) => ({
     ...file,
-    id: fileIdMap.get(file.id) ?? crypto.randomUUID(),
+    id: importedFileIds[index] ?? crypto.randomUUID(),
     driveFileId: null,
     workspaceType: 'local' as const,
     folderId: file.folderId ? folderIdMap.get(file.folderId) ?? importRootId : importRootId,
+    content: file.type === 'document' ? remapDocumentLinksInContent(file.content, fileIdMap) : file.content,
     mimeType: file.mimeType || fileMimeType(file.type),
     lastSyncedAt: null,
     syncError: null,

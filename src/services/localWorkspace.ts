@@ -194,9 +194,9 @@ function portableFileName(file: Pick<MyBookFile, 'id' | 'type'>) {
   return file.type === 'spreadsheet' ? `${file.id}.mybook.json` : `${file.id}.mybook.md`
 }
 
-function documentMarkdown(file: Pick<MyBookFile, 'name' | 'content'>) {
+function documentMarkdown(file: Pick<MyBookFile, 'id' | 'name' | 'content'>) {
   try {
-    return documentToMyBookMarkdown(file.name, JSON.parse(file.content) as JSONContent)
+    return documentToMyBookMarkdown(file.name, JSON.parse(file.content) as JSONContent, { documentId: file.id })
   } catch {
     return file.content
   }

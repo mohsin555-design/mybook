@@ -7,7 +7,7 @@ import Underline from '@tiptap/extension-underline'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useCallback, useEffect, useRef, useState, type Key, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { fileRepository } from '../../database/repositories'
@@ -24,9 +24,14 @@ import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { EditorStatus } from './EditorStatus'
 import { Callout, calloutNode } from './extensions/Callout'
+import { DatabaseBlock } from './extensions/DatabaseBlock'
+import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
 import { ImageBlock, imageBlockNode } from './extensions/ImageBlock'
+import { TableOfContents } from './extensions/TableOfContents'
 import { ToggleBlock, toggleBlockNode } from './extensions/ToggleBlock'
+import { DocumentLinkProvider } from './DocumentLinkContext'
+import { documentLinkTargets } from './documentLinkModel'
 import { filterSlashCommands, runSlashCommand, SlashCommandMenu, type SlashMenuState } from './SlashCommandMenu'
 import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
@@ -102,9 +107,91 @@ function DesktopMenu({ label, children }: { label: string; children: ReactNode }
   )
 }
 
+function DocumentLinkPicker({
+  currentFileId,
+  files,
+  folderLabel,
+  isOpen,
+  onClose,
+  onSelect,
+}: {
+  currentFileId: string
+  files: NonNullable<ReturnType<typeof useLibraryData>['files']>
+  folderLabel: (folderId: string | null) => string
+  isOpen: boolean
+  onClose: () => void
+  onSelect: (target: { id: string; name: string }) => void
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    if (isOpen && !dialog.open) dialog.showModal()
+    if (!isOpen && dialog.open) dialog.close()
+    if (isOpen) setQuery('')
+  }, [isOpen])
+
+  const documents = useMemo(() => {
+    return documentLinkTargets(files, currentFileId, query)
+  }, [currentFileId, files, query])
+
+  return (
+    <dialog
+      ref={dialogRef}
+      onCancel={(event) => {
+        event.preventDefault()
+        onClose()
+      }}
+      onClose={onClose}
+      className="w-[min(32rem,calc(100vw-1rem))] rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-0 text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.24)] backdrop:bg-black/35"
+      aria-labelledby="document-link-picker-title"
+    >
+      <div className="border-b border-[var(--app-border)] px-4 py-3">
+        <h2 id="document-link-picker-title" className="text-sm font-semibold">Link to document</h2>
+        <label className="sr-only" htmlFor="document-link-search">Search documents</label>
+        <input
+          id="document-link-search"
+          autoFocus
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search documents..."
+          className="mt-3 h-10 w-full rounded-[8px] border border-[var(--app-border)] bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        />
+      </div>
+      <div className="max-h-[min(24rem,60vh)] overflow-y-auto p-2">
+        {documents.length ? documents.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect({ id: item.id, name: item.name })}
+            className="flex min-h-12 w-full flex-col rounded-[7px] px-3 py-2 text-left transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            aria-label={`Link to document ${item.name}`}
+          >
+            <span className="break-words text-sm font-medium">{item.name}</span>
+            <span className="text-xs text-muted-foreground">{folderLabel(item.folderId)}</span>
+          </button>
+        )) : (
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground">{query.trim() ? 'No documents found.' : 'No other documents available.'}</p>
+        )}
+      </div>
+      <div className="flex justify-end border-t border-[var(--app-border)] px-4 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-9 rounded-[8px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  )
+}
+
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
-  const { folders } = useLibraryData()
+  const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
   const { content, isHydrated, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
@@ -116,6 +203,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [isFullWidth, setIsFullWidth] = useState(false)
   const [zoom, setZoom] = useState(100)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDocumentLinkPickerOpen, setIsDocumentLinkPickerOpen] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -150,6 +238,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       FileAttachment,
       ImageBlock,
       ToggleBlock,
+      DatabaseBlock,
+      TableOfContents,
+      DocumentLink,
     ],
     content: emptyDocument,
     editorProps: {
@@ -227,6 +318,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     return () => window.removeEventListener('mybook:insert-file', openFilePicker)
   }, [openFilePicker])
 
+  const openDocumentLinkPicker = useCallback(() => {
+    setIsDocumentLinkPickerOpen(true)
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('mybook:insert-document-link', openDocumentLinkPicker)
+    return () => window.removeEventListener('mybook:insert-document-link', openDocumentLinkPicker)
+  }, [openDocumentLinkPicker])
+
   useEffect(() => { if (file) setTitle(file.name) }, [file])
   useEffect(() => {
     if (!editor || !file || !isHydrated) return
@@ -301,6 +401,16 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (result.data) navigate(`/document/${result.data.id}`)
   }
 
+  const folderLabel = (folderId: string | null) => {
+    if (!folderId) return 'MyBook root'
+    return folders.find((folder) => folder.id === folderId)?.name ?? 'Unknown folder'
+  }
+
+  const insertDocumentLink = (target: { id: string; name: string }) => {
+    editor.chain().focus().insertContent(documentLinkNode({ targetId: target.id, label: target.name })).run()
+    setIsDocumentLinkPickerOpen(false)
+  }
+
   const setEditorLink = () => {
     const current = editor.getAttributes('link').href as string | undefined
     const url = window.prompt('Link URL', current ?? 'https://')
@@ -324,7 +434,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
   const exportMarkdown = async (download: boolean) => {
     try {
-      const markdown = documentToMyBookMarkdown(title, editor.getJSON())
+      const markdown = documentToMyBookMarkdown(title, editor.getJSON(), { documentId: file.id })
       setDocxMessage(download ? 'MyBook Markdown downloaded.' : 'MyBook Markdown ready.')
       if (download) downloadMyBookMarkdown(markdown, title)
     } catch (error) {
@@ -454,7 +564,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const documentPageClass = isFullWidth
     ? 'mybook-document-page mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-6 py-10 shadow-none sm:px-8 md:min-h-[calc(100dvh-13rem)] md:px-12 md:py-16 lg:px-16'
     : 'mybook-document-page mybook-document-page--continuous mx-auto min-h-[calc(100dvh-13rem)] w-full bg-transparent px-4 pb-[55vh] pt-6 shadow-none sm:px-6 md:px-16 md:pb-[55vh] md:pt-14'
-  const editorStatus = file.syncStatus === 'failed' && status !== 'editing' && status !== 'saving-locally' && status !== 'saved-locally' ? 'failed' : status
+  const localSaveStatusActive = status === 'editing' || status === 'saving-locally' || status === 'saved-locally'
+  const editorStatus = localSaveStatusActive ? status : file.syncStatus
+  const editorStatusWorkspace = file.workspaceType === 'local' || file.syncStatus === 'local' ? 'local' : 'drive'
 
   return (
     <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
@@ -464,7 +576,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           <div className="min-w-0 flex-1">
             <label htmlFor="document-title" className="sr-only">Document title</label>
             <input id="document-title" value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => void saveTitle()} className="h-8 w-full truncate rounded-[6px] bg-transparent text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-background" />
-            <EditorStatus status={editorStatus} onRetry={() => void backupNow()} />
+            <EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} />
             <div className="mt-1">
               <FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={title} onNavigate={navigate} />
             </div>
@@ -591,7 +703,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
               width: `${100 / pageScale}%`,
             }}
           >
-            <EditorContent editor={editor} />
+            <DocumentLinkProvider
+              currentFileId={file.id}
+              files={files}
+              openDocument={(targetId) => navigate(`/document/${targetId}`)}
+            >
+              <EditorContent editor={editor} />
+            </DocumentLinkProvider>
           </div>
         </div>
       </div>
@@ -609,6 +727,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       <TableActionsMenu editor={editor} />
       <ChecklistActionsMenu editor={editor} />
       <BlockActionsMenu editor={editor} />
+      <DocumentLinkPicker
+        currentFileId={file.id}
+        files={files}
+        folderLabel={folderLabel}
+        isOpen={isDocumentLinkPickerOpen}
+        onClose={() => setIsDocumentLinkPickerOpen(false)}
+        onSelect={insertDocumentLink}
+      />
       <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} variant="mobile" />
       <DeleteFileDialog
         isOpen={isDeleteDialogOpen}

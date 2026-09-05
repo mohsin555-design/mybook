@@ -28,6 +28,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/home" replace /> },
           { path: '/home', element: <HomePage /> },
+          { path: '/favorites', element: <HomePage initialTab="favorites" /> },
           { path: '/folders', element: <FoldersPage /> },
           { path: '/folders/:folderId', element: <FolderPage /> },
           { path: '/search', element: <SearchPage /> },

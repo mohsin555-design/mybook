@@ -20,6 +20,7 @@ export interface MyBookFile {
   syncError?: string | null
   syncStatus: SyncStatus
   isDeleted: boolean
+  isFavorite?: boolean
 }
 
 export type FileVersionSource = 'local' | 'drive'
@@ -46,10 +47,11 @@ export interface MyBookFolder {
   createdAt: string
   updatedAt: string
   isDeleted: boolean
+  isFavorite?: boolean
 }
 
 export type SyncEntityType = 'file' | 'folder'
-export type SyncOperation = 'create' | 'update' | 'delete' | 'restore'
+export type SyncOperation = 'create' | 'update' | 'delete' | 'restore' | 'permanent-delete'
 export type SyncQueueStatus = 'pending' | 'processing' | 'failed' | 'completed'
 
 export interface SyncQueueItem {

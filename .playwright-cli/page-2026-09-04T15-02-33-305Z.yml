@@ -1,0 +1,78 @@
+- generic [ref=e1]:
+  - main [ref=e167]:
+    - generic [ref=e168]:
+      - generic [ref=e169]:
+        - generic [ref=e170]:
+          - button "Close document" [ref=e171]
+          - generic [ref=e174]:
+            - generic [ref=e175]: Document title
+            - textbox "Document title" [ref=e176]: Untitled Document
+            - 'status "Editor status: Saving..." [ref=e280]': Saving...
+            - navigation "Folder path" [ref=e179]:
+              - list [ref=e180]:
+                - listitem [ref=e181]:
+                  - link "Library" [ref=e182] [cursor=pointer]:
+                    - /url: /folders
+                - listitem [aria-hidden] [ref=e183]
+                - listitem [ref=e186]:
+                  - link "Untitled Document" [disabled] [ref=e187]
+          - button "More document actions" [ref=e188]
+          - button "Save" [ref=e191]
+          - button "Sync now" [ref=e192]
+          - button "Open backup" [disabled]
+        - navigation "Desktop document commands" [ref=e193]:
+          - button "Document menu" [ref=e194]: Document
+          - button "Edit menu" [ref=e195]: Edit
+          - button "View menu" [ref=e196]: View
+          - button "Insert menu" [ref=e197]: Insert
+          - button "Format menu" [ref=e198]: Format
+          - group "Document view controls" [ref=e199]:
+            - button "Page" [pressed] [ref=e200]
+            - button "Full" [ref=e201]
+            - generic [ref=e202]: Document zoom
+            - combobox "Document zoom" [ref=e203]:
+              - option "75%"
+              - option "100%" [selected]
+              - option "125%"
+              - option "150%"
+        - toolbar "Document formatting" [ref=e204]:
+          - generic [ref=e205]:
+            - group "Text style" [ref=e206]:
+              - button "Bold" [ref=e207]
+              - button "Italic" [ref=e210]
+              - button "Underline" [ref=e213]
+            - group "Block type" [ref=e216]:
+              - generic [ref=e217]: Heading level
+              - combobox "Heading level" [ref=e218]:
+                - option "Text" [selected]
+                - option "H1"
+                - option "H2"
+                - option "H3"
+            - group "Lists" [ref=e219]:
+              - button "Bulleted list" [ref=e220]
+              - button "Numbered list" [ref=e223]
+              - button "Checklist" [ref=e226]
+            - group "History and more formatting" [ref=e229]:
+              - button "Undo" [ref=e230]
+              - button "Redo" [disabled] [ref=e233]
+              - button "Blockquote" [ref=e236]
+              - button "Link" [ref=e239]
+              - button "Callout" [ref=e242]
+              - button "Toggle" [ref=e245]
+              - button "Image" [ref=e248]
+              - button "File attachment" [ref=e251]
+              - button "Table" [ref=e254]
+              - button "Horizontal rule" [ref=e257]
+              - button "Inline code" [ref=e259]
+              - button "Code block" [ref=e262]
+              - button "Strikethrough" [ref=e265]
+              - button "Clear formatting" [ref=e268]
+      - button "Import document file" [ref=e271]
+      - button "Attach file" [ref=e272]
+      - button "Insert image" [ref=e273]
+      - textbox "Document content" [active] [ref=e278]:
+        - paragraph [ref=e279]
+        - paragraph [ref=e282]
+        - paragraph [ref=e283]
+  - generic:
+    - region "Notifications"

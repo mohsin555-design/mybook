@@ -8,28 +8,40 @@ import { DeleteFileDialog } from '../components/files/DeleteFileDialog'
 import { FileActionsMenu } from '../components/files/FileActionsMenu'
 import { FileCard } from '../components/files/FileCard'
 import { FileNameDialog } from '../components/files/FileNameDialog'
+import { FolderActionsMenu } from '../components/files/FolderActionsMenu'
+import { FolderCard } from '../components/files/FolderCard'
 import { FolderNameDialog } from '../components/files/FolderNameDialog'
 import { toast } from '../components/ui/toast'
 import { fileRepository, folderRepository } from '../database/repositories'
 import { useLibraryData } from '../hooks/useLibraryData'
-import type { MyBookFile } from '../types/files'
+import type { MyBookFile, MyBookFolder } from '../types/files'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { formatUpdatedAt } from '../utils/dateFormat'
 import { deletedToast } from '../utils/deleteToast'
+import { activeFavoriteItems } from '../utils/favorites'
 
 type HomeTab = 'recent' | 'favorites' | 'all'
 
-export function HomePage() {
+interface HomePageProps {
+  initialTab?: HomeTab
+}
+
+export function HomePage({ initialTab = 'recent' }: HomePageProps) {
   const navigate = useNavigate()
   const { files, folders } = useLibraryData()
-  const [activeTab, setActiveTab] = useState<HomeTab>('recent')
+  const [activeTab, setActiveTab] = useState<HomeTab>(initialTab)
   const [renameTarget, setRenameTarget] = useState<MyBookFile | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MyBookFile | null>(null)
+  const [folderRenameTarget, setFolderRenameTarget] = useState<MyBookFolder | null>(null)
+  const [folderDeleteTarget, setFolderDeleteTarget] = useState<MyBookFolder | null>(null)
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const recentFiles = [...files].sort(compareFilesByUpdatedAt)
-  const visibleFiles = activeTab === 'favorites' ? [] : activeTab === 'all' ? files : recentFiles
+  const favoriteItems = activeTab === 'favorites' ? activeFavoriteItems(files, folders) : []
+  const visibleFiles = activeTab === 'all' ? files : activeTab === 'recent' ? recentFiles : []
   const rootFolderNames = folders.filter((folder) => folder.parentId === null).map((folder) => folder.name)
   const emptyState = emptyHomeState(activeTab)
+  const folderCount = (targetId: string) => folders.filter((folder) => folder.parentId === targetId).length
+  const fileCount = (targetId: string) => files.filter((file) => file.folderId === targetId).length
 
   const deleteFile = (file: MyBookFile) => {
     void fileRepository.delete(file.id).then((result) => {
@@ -41,30 +53,23 @@ export function HomePage() {
     })
   }
 
+  const favoriteList = favoriteItems.length ? (
+    <div className="px-1">
+      {favoriteItems.map((favorite) => favorite.kind === 'folder'
+        ? renderFolderCard(favorite.item)
+        : renderFileCard(favorite.item))}
+    </div>
+  ) : (
+    <div className="px-4 pt-12">
+      <EmptyState
+        title={emptyState.title}
+        description={emptyState.description}
+      />
+    </div>
+  )
   const fileList = visibleFiles.length ? (
     <div className="px-1">
-      {visibleFiles.map((file) => (
-        <FileCard
-          key={file.id}
-          name={file.name}
-          meta={`Updated ${formatUpdatedAt(file.updatedAt)}`}
-          type={file.type}
-          syncStatus={file.syncStatus}
-          folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'MyBook'}
-          onOpen={() => navigate(`/${file.type}/${file.id}`)}
-          action={
-            <FileActionsMenu
-              fileName={file.name}
-              folders={folders}
-              currentFolderId={file.folderId}
-              onRename={() => setRenameTarget(file)}
-              onDuplicate={() => void fileRepository.duplicate(file.id)}
-              onMove={(folderId) => void fileRepository.update(file.id, { folderId })}
-              onDelete={() => setDeleteTarget(file)}
-            />
-          }
-        />
-      ))}
+      {visibleFiles.map((file) => renderFileCard(file))}
     </div>
   ) : (
     <div className="px-4 pt-12">
@@ -90,7 +95,7 @@ export function HomePage() {
           <TabsTrigger value="all">All files</TabsTrigger>
         </TabsList>
         <TabsContent value="recent">{activeTab === 'recent' ? fileList : null}</TabsContent>
-        <TabsContent value="favorites">{activeTab === 'favorites' ? fileList : null}</TabsContent>
+        <TabsContent value="favorites">{activeTab === 'favorites' ? favoriteList : null}</TabsContent>
         <TabsContent value="all">{activeTab === 'all' ? fileList : null}</TabsContent>
       </Tabs>
 
@@ -118,6 +123,17 @@ export function HomePage() {
           }
         }}
       />
+      <FolderNameDialog
+        isOpen={Boolean(folderRenameTarget)}
+        title="Rename folder"
+        submitLabel="Save"
+        initialName={folderRenameTarget?.name}
+        onClose={() => setFolderRenameTarget(null)}
+        existingFolderNames={folders
+          .filter((folder) => folder.parentId === folderRenameTarget?.parentId && folder.id !== folderRenameTarget?.id)
+          .map((folder) => folder.name)}
+        onSubmit={(name) => folderRenameTarget ? folderRepository.update(folderRenameTarget.id, { name }) : Promise.resolve({ success: false })}
+      />
       <DeleteFileDialog
         isOpen={Boolean(deleteTarget)}
         fileName={deleteTarget?.name ?? ''}
@@ -127,8 +143,76 @@ export function HomePage() {
           deleteFile(deleteTarget)
         }}
       />
+      <DeleteFileDialog
+        isOpen={Boolean(folderDeleteTarget)}
+        itemKind="folder"
+        fileName={folderDeleteTarget?.name ?? ''}
+        onClose={() => setFolderDeleteTarget(null)}
+        onConfirm={() => {
+          if (!folderDeleteTarget) return
+          void folderRepository.delete(folderDeleteTarget.id).then((result) => {
+            if (!result.success) return
+            toast.add(deletedToast({
+              itemName: folderDeleteTarget.name,
+              onUndo: () => { void folderRepository.restore(folderDeleteTarget.id) },
+            }))
+          })
+        }}
+      />
     </div>
   )
+
+  function renderFileCard(file: MyBookFile) {
+    return (
+      <FileCard
+        key={`file:${file.id}`}
+        name={file.name}
+        meta={`Updated ${formatUpdatedAt(file.updatedAt)}`}
+        type={file.type}
+        syncStatus={file.syncStatus}
+        folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'MyBook'}
+        onOpen={() => navigate(`/${file.type}/${file.id}`)}
+        action={
+          <FileActionsMenu
+            fileName={file.name}
+            folders={folders}
+            currentFolderId={file.folderId}
+            isFavorite={Boolean(file.isFavorite)}
+            onRename={() => setRenameTarget(file)}
+            onDuplicate={() => void fileRepository.duplicate(file.id)}
+            onMove={(folderId) => void fileRepository.update(file.id, { folderId })}
+            onToggleFavorite={() => void fileRepository.setFavorite(file.id, !file.isFavorite)}
+            onDelete={() => setDeleteTarget(file)}
+          />
+        }
+      />
+    )
+  }
+
+  function renderFolderCard(folder: MyBookFolder) {
+    return (
+      <FolderCard
+        key={`folder:${folder.id}`}
+        name={folder.name}
+        fileCount={fileCount(folder.id)}
+        folderCount={folderCount(folder.id)}
+        onOpen={() => navigate(`/folders/${folder.id}`)}
+        action={
+          <FolderActionsMenu
+            folderName={folder.name}
+            folders={folders}
+            folderId={folder.id}
+            currentParentId={folder.parentId}
+            isFavorite={Boolean(folder.isFavorite)}
+            onRename={() => setFolderRenameTarget(folder)}
+            onMove={(destination) => void folderRepository.update(folder.id, { parentId: destination })}
+            onToggleFavorite={() => void folderRepository.setFavorite(folder.id, !folder.isFavorite)}
+            onDelete={() => setFolderDeleteTarget(folder)}
+          />
+        }
+      />
+    )
+  }
 }
 
 function emptyHomeState(activeTab: HomeTab) {
@@ -141,7 +225,7 @@ function emptyHomeState(activeTab: HomeTab) {
   if (activeTab === 'favorites') {
     return {
       title: 'No favorite files yet',
-      description: 'Favorite files will appear here.',
+      description: 'Favorite files and folders will appear here.',
     }
   }
   return {

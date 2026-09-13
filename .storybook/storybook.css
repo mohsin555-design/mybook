@@ -1,0 +1,11 @@
+html,
+body,
+#storybook-root {
+  min-width: 320px;
+  min-height: 100%;
+  overflow: auto;
+}
+
+.sb-show-main.sb-main-padded {
+  padding: 0;
+}

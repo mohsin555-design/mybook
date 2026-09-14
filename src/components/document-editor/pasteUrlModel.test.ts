@@ -10,7 +10,13 @@ describe('pasteUrlModel', () => {
 
   it('recognizes supported YouTube URLs as embeddable', () => {
     expect(analyzePastedUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')?.youtubeId).toBe('dQw4w9WgXcQ')
-    expect(analyzePastedUrl('https://youtu.be/dQw4w9WgXcQ')?.kind).toBe('youtube')
+    expect(analyzePastedUrl('https://youtu.be/dQw4w9WgXcQ')?.kind).toBe('embed')
+    expect(analyzePastedUrl('https://youtu.be/dQw4w9WgXcQ')?.embedProvider).toBe('youtube')
+  })
+
+  it('allowlists other provider embed URLs without treating arbitrary pages as embeddable', () => {
+    expect(analyzePastedUrl('https://www.figma.com/file/abc123/Design')?.embedProvider).toBe('figma')
+    expect(analyzePastedUrl('https://example.com/articles/good-link')?.embedUrl).toBeUndefined()
   })
 
   it('recognizes current-origin Writin document URLs without treating external URLs as pages', () => {

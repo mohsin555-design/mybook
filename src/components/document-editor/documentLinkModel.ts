@@ -29,6 +29,6 @@ export function documentLinkNode(attrs: DocumentLinkAttrs): JSONContent {
 export function documentLinkTargets(files: MyBookFile[], currentFileId: string, query = '') {
   const normalized = query.trim().toLocaleLowerCase()
   return files
-    .filter((item) => item.type === 'document' && item.id !== currentFileId && !item.isDeleted)
+    .filter((item) => ['document', 'spreadsheet'].includes(item.type) && item.id !== currentFileId && !item.isDeleted)
     .filter((item) => !normalized || item.name.toLocaleLowerCase().includes(normalized))
 }

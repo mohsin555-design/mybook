@@ -1,4 +1,7 @@
 import { mergeAttributes, Node } from '@tiptap/core'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+
+import { EmbedBlockNodeView } from '../EmbedBlockNodeView'
 
 export const EmbedBlock = Node.create({
   name: 'embedBlock',
@@ -54,16 +57,29 @@ export const EmbedBlock = Node.create({
       ['a', { href: url, class: 'mybook-embed-source' }, title],
     ]
   },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(EmbedBlockNodeView)
+  },
 })
 
-export function youtubeEmbedBlockNode(attrs: { url: string; youtubeId: string; title?: string }) {
+export function embedBlockNode(attrs: { provider: string; url: string; embedUrl: string; title?: string }) {
   return {
     type: 'embedBlock',
     attrs: {
-      provider: 'youtube',
+      provider: attrs.provider,
       url: attrs.url,
-      embedUrl: `https://www.youtube.com/embed/${attrs.youtubeId}`,
-      title: attrs.title || 'YouTube video',
+      embedUrl: attrs.embedUrl,
+      title: attrs.title || 'Embedded content',
     },
   }
+}
+
+export function youtubeEmbedBlockNode(attrs: { url: string; youtubeId: string; title?: string }) {
+  return embedBlockNode({
+    provider: 'youtube',
+    url: attrs.url,
+    embedUrl: `https://www.youtube.com/embed/${attrs.youtubeId}`,
+    title: attrs.title || 'YouTube video',
+  })
 }

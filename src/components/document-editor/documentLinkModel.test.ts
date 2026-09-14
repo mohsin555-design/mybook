@@ -42,7 +42,7 @@ describe('document link model', () => {
     expect(normalizeDocumentLinkAttrs(null)).toBeNull()
   })
 
-  it('lists eligible picker targets by stable document id', () => {
+  it('lists eligible picker targets by stable page id', () => {
     const targets = documentLinkTargets([
       file('current', 'Current'),
       file('doc_a', 'Project Notes'),
@@ -51,7 +51,7 @@ describe('document link model', () => {
       file('trashed', 'Deleted Notes', 'document', true),
     ], 'current')
 
-    expect(targets.map((target) => target.id)).toEqual(['doc_a', 'doc_b'])
+    expect(targets.map((target) => target.id)).toEqual(['doc_a', 'doc_b', 'sheet_a'])
   })
 
   it('searches picker targets by title without requiring unique names', () => {

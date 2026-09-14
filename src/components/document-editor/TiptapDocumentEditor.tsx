@@ -1,5 +1,6 @@
-import { ArrowLeftIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, ArrowsRightLeftIcon, ClipboardDocumentIcon, EllipsisHorizontalIcon, LinkSlashIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 import { Dropdown } from '../ui/compat-dropdown'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
@@ -33,7 +34,7 @@ import { Callout, calloutNode } from './extensions/Callout'
 import { CodeBlock } from './extensions/CodeBlock'
 import { DatabaseBlock } from './extensions/DatabaseBlock'
 import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
-import { EmbedBlock, youtubeEmbedBlockNode } from './extensions/EmbedBlock'
+import { EmbedBlock, embedBlockNode } from './extensions/EmbedBlock'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
 import { ImageBlock, imageBlockNode } from './extensions/ImageBlock'
 import { TableOfContents } from './extensions/TableOfContents'
@@ -66,6 +67,14 @@ interface PasteAsMenuState {
   position: { left: number; top: number }
   documentTarget?: { id: string; name: string }
 }
+interface InlineLinkToolbarState {
+  href: string
+  text: string
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+  canEmbed: boolean
+  documentTarget?: { id: string; name: string }
+}
 
 function blockPosAtPoint(view: EditorView, x: number, y: number) {
   const point = view.posAtCoords({ left: x, top: y })
@@ -96,6 +105,24 @@ function emptyParagraphRangeForPaste(view: EditorView) {
     from: selection.$from.before(selection.$from.depth),
     to: selection.$from.after(selection.$from.depth),
   }
+}
+function linkRangeAtPosition(view: EditorView, position: number, href: string): { from: number; to: number; text: string } | null {
+  let range: { from: number; to: number; text: string } | null = null
+  view.state.doc.descendants((node, pos) => {
+    if (range || !node.isText || !node.text) return
+    const mark = node.marks.find((item) => item.type.name === 'link' && item.attrs.href === href)
+    if (!mark) return
+    const from = pos
+    const to = pos + node.nodeSize
+    if (position >= from && position <= to) range = { from, to, text: node.text ?? href }
+  })
+  if (range) return range
+  view.state.doc.descendants((node, pos) => {
+    if (range || !node.isText || !node.text) return
+    const mark = node.marks.find((item) => item.type.name === 'link' && item.attrs.href === href)
+    if (mark) range = { from: pos, to: pos + node.nodeSize, text: node.text ?? href }
+  })
+  return range
 }
 function clearBlankBlockHighlight(editor: NonNullable<ReturnType<typeof useEditor>>) {
   editor.view.dom.querySelectorAll('.mybook-blank-block-selected').forEach((element) => element.classList.remove('mybook-blank-block-selected'))
@@ -413,6 +440,7 @@ function DocumentLinkPicker({
   isOpen,
   onClose,
   onSelect,
+  position,
 }: {
   currentFileId: string
   files: NonNullable<ReturnType<typeof useLibraryData>['files']>
@@ -420,59 +448,78 @@ function DocumentLinkPicker({
   isOpen: boolean
   onClose: () => void
   onSelect: (target: { id: string; name: string }) => void
+  position: { left: number; top: number } | null
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
 
   useEffect(() => {
-    const dialog = dialogRef.current
-    if (!dialog) return
-    if (isOpen && !dialog.open) dialog.showModal()
-    if (!isOpen && dialog.open) dialog.close()
-    if (isOpen) setQuery('')
+    if (!isOpen) return
+    setQuery('')
+    window.requestAnimationFrame(() => pickerRef.current?.focus())
   }, [isOpen])
 
   const documents = useMemo(() => {
     return documentLinkTargets(files, currentFileId, query)
   }, [currentFileId, files, query])
+  const groupedTargets = [
+    { label: 'Documents', items: documents.filter((item) => item.type === 'document') },
+    { label: 'Databases', items: documents.filter((item) => item.type === 'spreadsheet') },
+  ].filter((group) => group.items.length)
+
+  if (!isOpen || !position) return null
 
   return (
-    <dialog
-      ref={dialogRef}
-      onCancel={(event) => {
-        event.preventDefault()
-        onClose()
-      }}
-      onClose={onClose}
-      className="w-[min(32rem,calc(100vw-1rem))] rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-0 text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.24)] backdrop:bg-black/35"
+    <div
+      ref={pickerRef}
+      tabIndex={-1}
+      role="dialog"
       aria-labelledby="document-link-picker-title"
+      className="fixed z-50 w-[min(24rem,calc(100vw-1rem))] rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-0 text-foreground shadow-[0_20px_56px_rgba(15,23,42,0.22)] outline-none"
+      style={{
+        left: Math.min(position.left, window.innerWidth - 392),
+        top: Math.min(position.top, window.innerHeight - 420),
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          onClose()
+          return
+        }
+        if (event.key === 'Backspace') {
+          event.preventDefault()
+          setQuery((value) => value.slice(0, -1))
+          return
+        }
+        if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          event.preventDefault()
+          setQuery((value) => `${value}${event.key}`)
+        }
+      }}
     >
       <div className="border-b border-[var(--app-border)] px-4 py-3">
-        <h2 id="document-link-picker-title" className="text-sm font-semibold">Link to document</h2>
-        <label className="sr-only" htmlFor="document-link-search">Search documents</label>
-        <input
-          id="document-link-search"
-          autoFocus
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search documents..."
-          className="mt-3 h-10 w-full rounded-[8px] border border-[var(--app-border)] bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        />
+        <h2 id="document-link-picker-title" className="text-sm font-semibold">Link to Page</h2>
+        <p className="mt-1 min-h-5 text-sm text-muted-foreground">{query ? `Search: ${query}` : 'Start typing to search pages'}</p>
       </div>
       <div className="max-h-[min(24rem,60vh)] overflow-y-auto p-2">
-        {documents.length ? documents.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onSelect({ id: item.id, name: item.name })}
-            className="flex min-h-12 w-full flex-col rounded-[7px] px-3 py-2 text-left transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-            aria-label={`Link to document ${item.name}`}
-          >
-            <span className="break-words text-sm font-medium">{item.name}</span>
-            <span className="text-xs text-muted-foreground">{folderLabel(item.folderId)}</span>
-          </button>
+        {groupedTargets.length ? groupedTargets.map((group) => (
+          <section key={group.label} className="py-1" aria-label={group.label}>
+            <h3 className="px-3 pb-1 text-xs font-semibold uppercase tracking-normal text-muted-foreground">{group.label}</h3>
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelect({ id: item.id, name: item.name })}
+                className="flex min-h-12 w-full flex-col rounded-[7px] px-3 py-2 text-left transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                aria-label={`Link to page ${item.name}`}
+              >
+                <span className="break-words text-sm font-medium">{item.name}</span>
+                <span className="text-xs text-muted-foreground">{folderLabel(item.folderId)}</span>
+              </button>
+            ))}
+          </section>
         )) : (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">{query.trim() ? 'No documents found.' : 'No other documents available.'}</p>
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground">{query.trim() ? 'No pages found.' : 'No other pages available.'}</p>
         )}
       </div>
       <div className="flex justify-end border-t border-[var(--app-border)] px-4 py-3">
@@ -484,7 +531,7 @@ function DocumentLinkPicker({
           Cancel
         </button>
       </div>
-    </dialog>
+    </div>
   )
 }
 
@@ -517,8 +564,45 @@ function PasteAsMenu({
       <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Paste as</div>
       <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('link')}>Link</button>
       <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('bookmark')}>Bookmark</button>
-      {menu.urlInfo.youtubeId ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('embed')}>Embed</button> : null}
+      {menu.urlInfo.embedUrl ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('embed')}>Embed</button> : null}
       {menu.documentTarget ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('document-link')}>Link to page</button> : null}
+    </div>
+  )
+}
+
+function InlineLinkToolbar({
+  toolbar,
+  onAction,
+  onClose,
+}: {
+  toolbar: InlineLinkToolbarState
+  onAction: (action: 'copy' | 'edit' | 'bookmark' | 'embed' | 'page' | 'remove') => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      className="mybook-inline-link-toolbar"
+      role="toolbar"
+      aria-label="Link actions"
+      style={{
+        left: Math.min(Math.max(8, toolbar.position.left), window.innerWidth - 220),
+        top: Math.max(8, toolbar.position.top),
+      }}
+      onMouseLeave={onClose}
+    >
+      <button type="button" title="Copy link" aria-label="Copy link" onClick={() => onAction('copy')}><ClipboardDocumentIcon aria-hidden="true" className="size-4" /></button>
+      <button type="button" title="Edit link" aria-label="Edit link" onClick={() => onAction('edit')}><PencilSquareIcon aria-hidden="true" className="size-4" /></button>
+      <DropdownMenu>
+        <DropdownMenuTrigger title="Change to" aria-label="Change link to" className="mybook-inline-link-toolbar-trigger">
+          <ArrowsRightLeftIcon aria-hidden="true" className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-40">
+          <DropdownMenuItem onClick={() => onAction('bookmark')}>Bookmark</DropdownMenuItem>
+          <DropdownMenuItem disabled={!toolbar.canEmbed} onClick={() => onAction('embed')}>Embed</DropdownMenuItem>
+          <DropdownMenuItem disabled={!toolbar.documentTarget} onClick={() => onAction('page')}>Link to Page</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <button type="button" title="Remove link" aria-label="Remove link" onClick={() => onAction('remove')}><LinkSlashIcon aria-hidden="true" className="size-4" /></button>
     </div>
   )
 }
@@ -539,7 +623,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [zoom, setZoom] = useState(100)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDocumentLinkPickerOpen, setIsDocumentLinkPickerOpen] = useState(false)
+  const [documentLinkPickerPosition, setDocumentLinkPickerPosition] = useState<{ left: number; top: number } | null>(null)
   const [pasteAsMenu, setPasteAsMenu] = useState<PasteAsMenuState | null>(null)
+  const [inlineLinkToolbar, setInlineLinkToolbar] = useState<InlineLinkToolbarState | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -553,6 +639,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const slashMenuRef = useRef<SlashMenuState | null>(null)
   const slashSelectedIndexRef = useRef(0)
   const pasteAsMenuRef = useRef<PasteAsMenuState | null>(null)
+  const inlineLinkToolbarRef = useRef<InlineLinkToolbarState | null>(null)
   const filesRef = useRef(files)
   const editorRef = useRef<NonNullable<ReturnType<typeof useEditor>> | null>(null)
   const blankOverlayRef = useRef<HTMLDivElement | null>(null)
@@ -590,9 +677,44 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     pasteAsMenuRef.current = null
     setPasteAsMenu(null)
   }, [])
+  const closeInlineLinkToolbar = useCallback(() => {
+    inlineLinkToolbarRef.current = null
+    setInlineLinkToolbar(null)
+  }, [])
+  const showInlineLinkToolbar = useCallback((anchor: HTMLAnchorElement) => {
+    const currentEditor = editorRef.current
+    const href = anchor.getAttribute('href') ?? ''
+    if (!currentEditor || !href) return
+    const domPosition = currentEditor.view.posAtDOM(anchor.firstChild ?? anchor, 0)
+    const range = linkRangeAtPosition(currentEditor.view, domPosition, href)
+    if (!range) return
+    const rect = anchor.getBoundingClientRect()
+    const info = analyzePastedUrl(href)
+    const documentTarget = info?.documentId
+      ? filesRef.current.find((candidate) => candidate.id === info.documentId && !candidate.isDeleted)
+      : undefined
+    const nextToolbar = {
+      href,
+      text: range.text,
+      range: { from: range.from, to: range.to },
+      position: { left: rect.left, top: rect.top - 42 },
+      canEmbed: Boolean(info?.embedUrl),
+      documentTarget: documentTarget ? { id: documentTarget.id, name: documentTarget.name } : undefined,
+    }
+    inlineLinkToolbarRef.current = nextToolbar
+    setInlineLinkToolbar(nextToolbar)
+  }, [])
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false, link: { openOnClick: false, autolink: true }, heading: { levels: [1, 2, 3, 4] } }),
+      StarterKit.configure({
+        codeBlock: false,
+        link: {
+          openOnClick: true,
+          autolink: true,
+          HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
+        },
+        heading: { levels: [1, 2, 3, 4] },
+      }),
       CodeBlock,
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -627,6 +749,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       handlePaste: (view, event) => {
         const rawUrl = event.clipboardData?.getData('text/plain') ?? ''
         const urlInfo = analyzePastedUrl(rawUrl)
+        if (urlInfo && !view.state.selection.empty) {
+          event.preventDefault()
+          editorRef.current?.chain().focus().setLink({ href: urlInfo.url }).run()
+          closePasteAsMenu()
+          closeInlineLinkToolbar()
+          return true
+        }
         const emptyRange = urlInfo ? emptyParagraphRangeForPaste(view) : null
         if (!urlInfo || !emptyRange) {
           closePasteAsMenu()
@@ -662,6 +791,18 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         return false
       },
       handleDOMEvents: {
+        mouseover: (_view, event) => {
+          const target = event.target
+          const anchor = target instanceof Element ? target.closest('a[href]') : null
+          if (anchor instanceof HTMLAnchorElement && editorRef.current?.view.dom.contains(anchor)) showInlineLinkToolbar(anchor)
+          return false
+        },
+        focusin: (_view, event) => {
+          const target = event.target
+          const anchor = target instanceof Element ? target.closest('a[href]') : null
+          if (anchor instanceof HTMLAnchorElement && editorRef.current?.view.dom.contains(anchor)) showInlineLinkToolbar(anchor)
+          return false
+        },
         mousedown: (view, event) => {
           if (event.target !== view.dom) return false
           const lastNode = view.state.doc.lastChild
@@ -689,6 +830,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         },
       },
       handleKeyDown: (_view, event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && editorRef.current) {
+          event.preventDefault()
+          const currentEditor = editorRef.current
+          const current = currentEditor.getAttributes('link').href as string | undefined
+          const url = window.prompt('Link URL. Markdown shortcut: [text](https://example.com)', current ?? 'https://')
+          if (url === null) return true
+          if (!url.trim()) currentEditor.chain().focus().extendMarkRange('link').unsetLink().run()
+          else currentEditor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
+          return true
+        }
+
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && editorRef.current) {
           event.preventDefault()
           const editor = editorRef.current
@@ -823,6 +975,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [openFilePicker])
 
   const openDocumentLinkPicker = useCallback(() => {
+    const currentEditor = editorRef.current
+    if (currentEditor) {
+      const coords = currentEditor.view.coordsAtPos(currentEditor.state.selection.from)
+      setDocumentLinkPickerPosition({ left: coords.left, top: coords.bottom + 8 })
+    }
     setIsDocumentLinkPickerOpen(true)
   }, [])
 
@@ -938,6 +1095,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const insertDocumentLink = (target: { id: string; name: string }) => {
     editor.chain().focus().insertContent(documentLinkNode({ targetId: target.id, label: target.name })).run()
     setIsDocumentLinkPickerOpen(false)
+    setDocumentLinkPickerPosition(null)
   }
 
   const replacePasteAsBlock = (node: object) => {
@@ -962,10 +1120,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }))
       return
     }
-    if (action === 'embed' && pasteAsMenu.urlInfo.youtubeId) {
-      replacePasteAsBlock(youtubeEmbedBlockNode({
+    if (action === 'embed' && pasteAsMenu.urlInfo.embedUrl && pasteAsMenu.urlInfo.embedProvider) {
+      replacePasteAsBlock(embedBlockNode({
+        provider: pasteAsMenu.urlInfo.embedProvider,
         url: pasteAsMenu.urlInfo.url,
-        youtubeId: pasteAsMenu.urlInfo.youtubeId,
+        embedUrl: pasteAsMenu.urlInfo.embedUrl,
         title: pasteAsMenu.urlInfo.title,
       }))
       return
@@ -975,6 +1134,57 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         targetId: pasteAsMenu.documentTarget.id,
         label: pasteAsMenu.documentTarget.name,
       }))
+    }
+  }
+
+  const runInlineLinkAction = (action: 'copy' | 'edit' | 'bookmark' | 'embed' | 'page' | 'remove') => {
+    const toolbar = inlineLinkToolbarRef.current
+    if (!toolbar) return
+    if (action === 'copy') {
+      void navigator.clipboard?.writeText(toolbar.href)
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'edit') {
+      const url = window.prompt('Link URL. Markdown shortcut: [text](https://example.com)', toolbar.href)
+      if (url !== null) editor.chain().focus().setTextSelection(toolbar.range).extendMarkRange('link').setLink({ href: url.trim() }).run()
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'remove') {
+      editor.chain().focus().setTextSelection(toolbar.range).unsetLink().run()
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'bookmark') {
+      const info = analyzePastedUrl(toolbar.href)
+      editor.commands.insertContentAt(toolbar.range, bookmarkBlockNode({
+        href: toolbar.href,
+        title: toolbar.text || info?.title || toolbar.href,
+        domain: info?.domain ?? '',
+      }))
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'embed') {
+      const info = analyzePastedUrl(toolbar.href)
+      if (info?.embedUrl && info.embedProvider) {
+        editor.commands.insertContentAt(toolbar.range, embedBlockNode({
+          provider: info.embedProvider,
+          url: info.url,
+          embedUrl: info.embedUrl,
+          title: toolbar.text || info.title,
+        }))
+      }
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'page' && toolbar.documentTarget) {
+      editor.commands.insertContentAt(toolbar.range, documentLinkNode({
+        targetId: toolbar.documentTarget.id,
+        label: toolbar.documentTarget.name,
+      }))
+      closeInlineLinkToolbar()
     }
   }
 
@@ -1350,7 +1560,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <DocumentLinkProvider
               currentFileId={file.id}
               files={files}
-              openDocument={(targetId) => navigate(`/document/${targetId}`)}
+              openDocument={(targetId) => {
+                const target = files.find((item) => item.id === targetId)
+                navigate(target?.type === 'spreadsheet' ? `/spreadsheet/${targetId}` : `/document/${targetId}`)
+              }}
             >
               <div className="mb-5">
                 <label htmlFor="page-document-title" className="sr-only">Page title</label>
@@ -1404,6 +1617,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         )
       ) : null}
       {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
+      {inlineLinkToolbar ? <InlineLinkToolbar toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
       <EditorBlockControls editor={editor} onInsertBlock={insertBlock} />
       <TableActionsMenu editor={editor} />
       <ChecklistActionsMenu editor={editor} />
@@ -1412,7 +1626,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         files={files}
         folderLabel={folderLabel}
         isOpen={isDocumentLinkPickerOpen}
-        onClose={() => setIsDocumentLinkPickerOpen(false)}
+        position={documentLinkPickerPosition}
+        onClose={() => {
+          setIsDocumentLinkPickerOpen(false)
+          setDocumentLinkPickerPosition(null)
+        }}
         onSelect={insertDocumentLink}
       />
       <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="mobile" />

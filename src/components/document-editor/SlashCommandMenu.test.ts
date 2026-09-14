@@ -87,12 +87,12 @@ describe('SlashCommandMenu database command', () => {
     expect(filterSlashCommands('contents').map((command) => command.id)).toContain('toc')
   })
 
-  it('shows Document link by title and aliases', () => {
+  it('shows Link to Page by title and aliases', () => {
     expect(slashCommands).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'document-link',
-        title: 'Document link',
-        description: 'Link to another document',
+        title: 'Link to Page',
+        description: 'Link to another workspace item',
       }),
     ]))
     expect(filterSlashCommands('document link').map((command) => command.id)).toContain('document-link')

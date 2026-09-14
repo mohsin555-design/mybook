@@ -1,15 +1,18 @@
-export type PasteUrlKind = 'normal' | 'youtube' | 'writin-document'
+export type PasteUrlKind = 'normal' | 'embed' | 'writin-document'
 
 export interface PasteUrlInfo {
   url: string
   kind: PasteUrlKind
   domain: string
   title: string
+  embedUrl?: string
+  embedProvider?: string
   youtubeId?: string
   documentId?: string
 }
 
 const youtubeHosts = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'])
+const figmaHosts = new Set(['figma.com', 'www.figma.com'])
 
 export function analyzePastedUrl(rawUrl: string, origin = globalThis.location?.origin ?? 'http://localhost'): PasteUrlInfo | null {
   const trimmed = rawUrl.trim()
@@ -25,14 +28,16 @@ export function analyzePastedUrl(rawUrl: string, origin = globalThis.location?.o
   if (!['http:', 'https:'].includes(parsed.protocol)) return null
 
   const documentId = documentIdFromUrl(parsed, origin)
-  const youtubeId = youtubeIdFromUrl(parsed)
+  const embed = supportedEmbedFromUrl(parsed)
   const domain = parsed.hostname.replace(/^www\./u, '')
   return {
     url: parsed.href,
-    kind: documentId ? 'writin-document' : youtubeId ? 'youtube' : 'normal',
+    kind: documentId ? 'writin-document' : embed ? 'embed' : 'normal',
     domain,
     title: titleFromUrl(parsed, domain),
-    youtubeId,
+    embedUrl: embed?.embedUrl,
+    embedProvider: embed?.provider,
+    youtubeId: embed?.provider === 'youtube' ? embed.id : undefined,
     documentId,
   }
 }
@@ -54,6 +59,22 @@ function youtubeIdFromUrl(url: URL) {
   if (url.pathname === '/watch') return cleanYoutubeId(url.searchParams.get('v') ?? '')
   const embedMatch = url.pathname.match(/^\/(?:embed|shorts)\/([^/?#]+)/u)
   return embedMatch?.[1] ? cleanYoutubeId(embedMatch[1]) : undefined
+}
+
+function supportedEmbedFromUrl(url: URL) {
+  const youtubeId = youtubeIdFromUrl(url)
+  if (youtubeId) return { provider: 'youtube', id: youtubeId, embedUrl: `https://www.youtube.com/embed/${youtubeId}` }
+
+  if (figmaHosts.has(url.hostname) && /^\/(?:file|design|proto)\//u.test(url.pathname)) {
+    return { provider: 'figma', embedUrl: `https://www.figma.com/embed?embed_host=writin&url=${encodeURIComponent(url.href)}` }
+  }
+
+  if (url.hostname === 'drive.google.com') {
+    const fileMatch = url.pathname.match(/^\/file\/d\/([^/]+)/u)
+    if (fileMatch?.[1]) return { provider: 'google-drive', embedUrl: `https://drive.google.com/file/d/${fileMatch[1]}/preview` }
+  }
+
+  return null
 }
 
 function cleanYoutubeId(value: string) {

@@ -1,4 +1,7 @@
 import { mergeAttributes, Node } from '@tiptap/core'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+
+import { BookmarkBlockNodeView } from '../BookmarkBlockNodeView'
 
 export const BookmarkBlock = Node.create({
   name: 'bookmarkBlock',
@@ -49,6 +52,10 @@ export const BookmarkBlock = Node.create({
         description ? ['span', { class: 'mybook-bookmark-description' }, description] : '',
       ],
     ]
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(BookmarkBlockNodeView)
   },
 })
 

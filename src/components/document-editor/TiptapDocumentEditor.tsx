@@ -436,7 +436,6 @@ function DesktopMenu({ label, children }: { label: string; children: ReactNode }
 function DocumentLinkPicker({
   currentFileId,
   files,
-  folderLabel,
   isOpen,
   onClose,
   onSelect,
@@ -444,7 +443,6 @@ function DocumentLinkPicker({
 }: {
   currentFileId: string
   files: NonNullable<ReturnType<typeof useLibraryData>['files']>
-  folderLabel: (folderId: string | null) => string
   isOpen: boolean
   onClose: () => void
   onSelect: (target: { id: string; name: string }) => void
@@ -542,6 +540,9 @@ function DocumentLinkPicker({
         }
       }}
     >
+      <div className="mx-1 mb-1 rounded-[7px] bg-[var(--app-subtle)] px-3 py-2 text-sm font-medium">
+        {query ? <span className="text-foreground">{query}</span> : <span className="text-muted-foreground">Enter page name</span>}
+      </div>
       {groupedTargets.length ? groupedTargets.map((group) => (
           <section key={group.label} aria-label={group.label}>
             <h3 className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</h3>
@@ -557,16 +558,18 @@ function DocumentLinkPicker({
                   event.preventDefault()
                   onSelect({ id: item.id, name: item.name })
                 }}
-                className={`flex min-h-10 w-full flex-col rounded-[7px] px-3 py-2 text-left ${flatTargets[selectedIndex]?.id === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
+                className={`flex min-h-10 w-full items-center rounded-[7px] px-3 py-2 text-left ${flatTargets[selectedIndex]?.id === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
                 aria-label={`Link to page ${item.name}`}
               >
                 <span className="break-words text-sm font-medium">{item.name}</span>
-                <span className={`text-xs ${flatTargets[selectedIndex]?.id === item.id ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{folderLabel(item.folderId)}</span>
               </button>
             ))}
           </section>
         )) : (
-          <p className="px-3 py-4 text-sm text-muted-foreground">No pages found</p>
+          <div className="px-3 py-6 text-center">
+            <p className="text-sm font-semibold text-foreground">No pages found</p>
+            <p className="mt-1 text-xs text-muted-foreground">Try a different page name.</p>
+          </div>
         )}
     </div>
   )
@@ -1138,11 +1141,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (result.data) navigate(`/document/${result.data.id}`)
   }
 
-  const folderLabel = (folderId: string | null) => {
-    if (!folderId) return 'MyBook root'
-    return folders.find((folder) => folder.id === folderId)?.name ?? 'Unknown folder'
-  }
-
   const insertDocumentLink = (target: { id: string; name: string }) => {
     editor.chain().focus().insertContent(documentLinkNode({ targetId: target.id, label: target.name })).run()
     setIsDocumentLinkPickerOpen(false)
@@ -1675,7 +1673,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       <DocumentLinkPicker
         currentFileId={file.id}
         files={files}
-        folderLabel={folderLabel}
         isOpen={isDocumentLinkPickerOpen}
         position={documentLinkPickerPosition}
         onClose={() => {

@@ -28,10 +28,12 @@ import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { EditorBlockControls } from './EditorBlockControls'
 import { EditorStatus } from './EditorStatus'
+import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { Callout, calloutNode } from './extensions/Callout'
 import { CodeBlock } from './extensions/CodeBlock'
 import { DatabaseBlock } from './extensions/DatabaseBlock'
 import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
+import { EmbedBlock, youtubeEmbedBlockNode } from './extensions/EmbedBlock'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
 import { ImageBlock, imageBlockNode } from './extensions/ImageBlock'
 import { TableOfContents } from './extensions/TableOfContents'
@@ -43,6 +45,7 @@ import { DocumentLinkProvider } from './DocumentLinkContext'
 import { documentLinkTargets } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
 import { MobileSlashCommandMenu, SlashCommandMenu } from './SlashCommandMenu'
+import { analyzePastedUrl, type PasteUrlInfo } from './pasteUrlModel'
 import { filterSlashCommands, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
 import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
@@ -57,6 +60,13 @@ const emptyBlockPlaceholderKey = new PluginKey<{ focused: boolean }>('emptyBlock
 const listMarkerDepthKey = new PluginKey('listMarkerDepth')
 const blankBlockSelectionKey = new PluginKey<{ anchor: number | null; head: number | null }>('blankBlockSelection')
 const blankSelectableBlockSelector = ':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > blockquote, :scope > pre, :scope > .mybook-toggle, :scope > ul > li, :scope > ol > li, :scope > [data-type="taskItem"]'
+interface PasteAsMenuState {
+  urlInfo: PasteUrlInfo
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+  documentTarget?: { id: string; name: string }
+}
+
 function blockPosAtPoint(view: EditorView, x: number, y: number) {
   const point = view.posAtCoords({ left: x, top: y })
   if (point) {
@@ -76,6 +86,16 @@ function blockPosAtPoint(view: EditorView, x: number, y: number) {
     candidates.push({ pos, distance, size: node.nodeSize })
   })
   return candidates.sort((a, b) => a.distance - b.distance || a.size - b.size)[0]?.pos ?? null
+}
+function emptyParagraphRangeForPaste(view: EditorView) {
+  const { selection } = view.state
+  if (!selection.empty || !selection.$from.parent.isTextblock || selection.$from.parent.type.name !== 'paragraph' || selection.$from.parent.content.size !== 0) return null
+  const container = selection.$from.depth > 1 ? selection.$from.node(selection.$from.depth - 1) : null
+  if (container && ['tableCell', 'tableHeader'].includes(container.type.name)) return null
+  return {
+    from: selection.$from.before(selection.$from.depth),
+    to: selection.$from.after(selection.$from.depth),
+  }
 }
 function clearBlankBlockHighlight(editor: NonNullable<ReturnType<typeof useEditor>>) {
   editor.view.dom.querySelectorAll('.mybook-blank-block-selected').forEach((element) => element.classList.remove('mybook-blank-block-selected'))
@@ -468,6 +488,41 @@ function DocumentLinkPicker({
   )
 }
 
+function PasteAsMenu({
+  menu,
+  onChoose,
+  onClose,
+}: {
+  menu: PasteAsMenuState
+  onChoose: (action: 'link' | 'bookmark' | 'embed' | 'document-link') => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      data-paste-as-menu="true"
+      role="menu"
+      aria-label="Paste as"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          onClose()
+        }
+      }}
+      className="fixed z-50 min-w-48 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-sm shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
+      style={{
+        left: Math.min(menu.position.left, window.innerWidth - 216),
+        top: Math.min(menu.position.top, window.innerHeight - 196),
+      }}
+    >
+      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Paste as</div>
+      <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('link')}>Link</button>
+      <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('bookmark')}>Bookmark</button>
+      {menu.urlInfo.youtubeId ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('embed')}>Embed</button> : null}
+      {menu.documentTarget ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('document-link')}>Link to page</button> : null}
+    </div>
+  )
+}
+
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
@@ -484,6 +539,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [zoom, setZoom] = useState(100)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDocumentLinkPickerOpen, setIsDocumentLinkPickerOpen] = useState(false)
+  const [pasteAsMenu, setPasteAsMenu] = useState<PasteAsMenuState | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -496,6 +552,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const loadedTitleFileIdRef = useRef<string | null>(null)
   const slashMenuRef = useRef<SlashMenuState | null>(null)
   const slashSelectedIndexRef = useRef(0)
+  const pasteAsMenuRef = useRef<PasteAsMenuState | null>(null)
+  const filesRef = useRef(files)
   const editorRef = useRef<NonNullable<ReturnType<typeof useEditor>> | null>(null)
   const blankOverlayRef = useRef<HTMLDivElement | null>(null)
   const blankSelectionRangeRef = useRef<{ from: number; to: number } | null>(null)
@@ -528,6 +586,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     slashSelectedIndexRef.current = nextIndex
     setSlashSelectedIndex(nextIndex)
   }, [])
+  const closePasteAsMenu = useCallback(() => {
+    pasteAsMenuRef.current = null
+    setPasteAsMenu(null)
+  }, [])
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ codeBlock: false, link: { openOnClick: false, autolink: true }, heading: { levels: [1, 2, 3, 4] } }),
@@ -541,6 +603,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       TableInteraction,
       Underline,
       Callout,
+      BookmarkBlock,
+      EmbedBlock,
       FileAttachment,
       ImageBlock,
       ToggleBlock,
@@ -560,10 +624,41 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       },
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
+      handlePaste: (view, event) => {
+        const rawUrl = event.clipboardData?.getData('text/plain') ?? ''
+        const urlInfo = analyzePastedUrl(rawUrl)
+        const emptyRange = urlInfo ? emptyParagraphRangeForPaste(view) : null
+        if (!urlInfo || !emptyRange) {
+          closePasteAsMenu()
+          return false
+        }
+
+        window.requestAnimationFrame(() => {
+          const currentEditor = editorRef.current
+          if (!currentEditor) return
+          const pastedNode = currentEditor.state.doc.nodeAt(emptyRange.from)
+          if (!pastedNode) return
+          const nextRange = { from: emptyRange.from, to: emptyRange.from + pastedNode.nodeSize }
+          const coords = currentEditor.view.coordsAtPos(Math.min(nextRange.to - 1, currentEditor.state.doc.content.size))
+          const documentTarget = urlInfo.documentId
+            ? filesRef.current.find((candidate) => candidate.id === urlInfo.documentId && candidate.type === 'document' && !candidate.isDeleted)
+            : undefined
+          const nextPasteMenu = {
+            urlInfo,
+            range: nextRange,
+            position: { left: coords.left, top: coords.bottom + 8 },
+            documentTarget: documentTarget ? { id: documentTarget.id, name: documentTarget.name } : undefined,
+          }
+          pasteAsMenuRef.current = nextPasteMenu
+          setPasteAsMenu(nextPasteMenu)
+        })
+        return false
+      },
       handleTextInput: () => {
         blankOverlayRef.current?.remove()
         blankOverlayRef.current = null
         blankSelectionRangeRef.current = null
+        closePasteAsMenu()
         return false
       },
       handleDOMEvents: {
@@ -615,6 +710,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           blankOverlayRef.current?.remove()
           blankOverlayRef.current = null
           editorRef.current.chain().focus().deleteRange(range).run()
+          return true
+        }
+
+        if (event.key === 'Escape' && pasteAsMenuRef.current) {
+          event.preventDefault()
+          closePasteAsMenu()
           return true
         }
 
@@ -684,6 +785,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   useEffect(() => {
     editorRef.current = editor
   }, [editor])
+
+  useEffect(() => {
+    filesRef.current = files
+  }, [files])
 
   useEffect(() => {
     if (!slashMenu) return
@@ -833,6 +938,44 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const insertDocumentLink = (target: { id: string; name: string }) => {
     editor.chain().focus().insertContent(documentLinkNode({ targetId: target.id, label: target.name })).run()
     setIsDocumentLinkPickerOpen(false)
+  }
+
+  const replacePasteAsBlock = (node: object) => {
+    if (!pasteAsMenu) return
+    editor.commands.insertContentAt(pasteAsMenu.range, [node, { type: 'paragraph' }])
+    editor.chain().focus().run()
+    closePasteAsMenu()
+  }
+
+  const choosePasteAs = (action: 'link' | 'bookmark' | 'embed' | 'document-link') => {
+    if (!pasteAsMenu) return
+    if (action === 'link') {
+      closePasteAsMenu()
+      editor.chain().focus().run()
+      return
+    }
+    if (action === 'bookmark') {
+      replacePasteAsBlock(bookmarkBlockNode({
+        href: pasteAsMenu.urlInfo.url,
+        title: pasteAsMenu.urlInfo.title,
+        domain: pasteAsMenu.urlInfo.domain,
+      }))
+      return
+    }
+    if (action === 'embed' && pasteAsMenu.urlInfo.youtubeId) {
+      replacePasteAsBlock(youtubeEmbedBlockNode({
+        url: pasteAsMenu.urlInfo.url,
+        youtubeId: pasteAsMenu.urlInfo.youtubeId,
+        title: pasteAsMenu.urlInfo.title,
+      }))
+      return
+    }
+    if (action === 'document-link' && pasteAsMenu.documentTarget) {
+      replacePasteAsBlock(documentLinkNode({
+        targetId: pasteAsMenu.documentTarget.id,
+        label: pasteAsMenu.documentTarget.name,
+      }))
+    }
   }
 
   const setEditorLink = () => {
@@ -1260,6 +1403,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           />
         )
       ) : null}
+      {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
       <EditorBlockControls editor={editor} onInsertBlock={insertBlock} />
       <TableActionsMenu editor={editor} />
       <ChecklistActionsMenu editor={editor} />

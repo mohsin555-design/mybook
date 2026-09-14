@@ -53,6 +53,8 @@ const databaseAttrs = (): DatabaseAttrs => ({
 const databaseBlock = (attrs = databaseAttrs()): JSONContent => ({ type: 'databaseBlock', attrs })
 const tableOfContentsBlock = (): JSONContent => ({ type: 'tableOfContents' })
 const documentLinkBlock = (targetId = 'doc_b', label = 'Project Notes'): JSONContent => ({ type: 'documentLink', attrs: { targetId, label } })
+const bookmarkBlock = (): JSONContent => ({ type: 'bookmarkBlock', attrs: { href: 'https://example.com/docs/writin-links', title: 'Writin links', domain: 'example.com', description: '' } })
+const embedBlock = (): JSONContent => ({ type: 'embedBlock', attrs: { provider: 'youtube', url: 'https://youtu.be/dQw4w9WgXcQ', embedUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', title: 'YouTube video' } })
 const markOrder = ['underline', 'strike', 'italic', 'bold', 'link', 'code']
 
 function normalize(value: JSONContent): JSONContent {
@@ -1253,6 +1255,20 @@ describe('MyBook Markdown round trips', () => {
 
     expect(secondMarkdown).toBe(markdown)
     expect(normalize(parsed)).toEqual(normalize(source))
+  })
+
+  it('round trips pasted bookmark and embed blocks', () => {
+    const source = doc(
+      paragraph(text('Before')),
+      bookmarkBlock(),
+      embedBlock(),
+      paragraph(text('After')),
+    )
+    const markdown = documentToMyBookMarkdown('Paste Blocks', source)
+
+    expect(markdown).toContain(':::bookmark')
+    expect(markdown).toContain(':::embed')
+    expectRoundTrip(source)
   })
 
   it('round trips multiple database blocks without regenerating ids', () => {

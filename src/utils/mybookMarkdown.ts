@@ -130,6 +130,8 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   }
   if (node.type === 'tableOfContents') return [':::toc', ':::'].join('\n')
   if (node.type === 'documentLink') return documentLinkMarkdown(node)
+  if (node.type === 'bookmarkBlock') return bookmarkMarkdown(node)
+  if (node.type === 'embedBlock') return embedMarkdown(node)
   if (node.type === 'databaseBlock') return databaseMarkdown(node)
   return (node.content ?? []).map((child) => blockMarkdown(child, depth)).join('\n\n')
 }
@@ -151,7 +153,7 @@ export function documentToMyBookMarkdown(title: string, json: JSONContent, optio
 }
 
 type InlineMark = NonNullable<JSONContent['marks']>[number]
-type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'unknown'
+type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'unknown'
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 function findUnescaped(value: string, needle: string, start: number) {
@@ -324,6 +326,28 @@ function documentLinkMarkdown(node: JSONContent) {
   return [':::document-link', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
 }
 
+function bookmarkMarkdown(node: JSONContent) {
+  if (typeof node.attrs?.href !== 'string') return ''
+  const attrs = {
+    href: node.attrs.href,
+    title: typeof node.attrs.title === 'string' ? node.attrs.title : node.attrs.href,
+    domain: typeof node.attrs.domain === 'string' ? node.attrs.domain : '',
+    description: typeof node.attrs.description === 'string' ? node.attrs.description : '',
+  }
+  return [':::bookmark', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
+}
+
+function embedMarkdown(node: JSONContent) {
+  if (typeof node.attrs?.url !== 'string' || typeof node.attrs?.embedUrl !== 'string') return ''
+  const attrs = {
+    provider: typeof node.attrs.provider === 'string' ? node.attrs.provider : 'youtube',
+    url: node.attrs.url,
+    embedUrl: node.attrs.embedUrl,
+    title: typeof node.attrs.title === 'string' ? node.attrs.title : 'Embedded content',
+  }
+  return [':::embed', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
+}
+
 function rawParagraph(lines: string[]): JSONContent {
   const value = lines.join('\n')
   return { type: 'paragraph', ...(value ? { content: [{ type: 'text', text: value }] } : {}) }
@@ -340,7 +364,7 @@ function customBlockKind(line: string): CustomBlockKind | null {
   if (trimmed === ':::') return null
   const name = /^:::([A-Za-z][\w-]*)(?:\s|$)/u.exec(trimmed)?.[1]
   if (!name) return null
-  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link') return name
+  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed') return name
   return 'unknown'
 }
 
@@ -419,6 +443,43 @@ function parseStructuredDocumentLink(lines: string[]): JSONContent | null {
     const parsed: unknown = JSON.parse(lines.join('\n'))
     const attrs = normalizeDocumentLinkAttrs(parsed)
     return attrs ? { type: 'documentLink', attrs } : null
+  } catch {
+    return null
+  }
+}
+
+function parseStructuredBookmark(lines: string[]): JSONContent | null {
+  try {
+    const parsed: unknown = JSON.parse(lines.join('\n'))
+    if (!isRecord(parsed) || typeof parsed.href !== 'string' || !parsed.href.trim()) return null
+    return {
+      type: 'bookmarkBlock',
+      attrs: {
+        href: parsed.href,
+        title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title : parsed.href,
+        domain: typeof parsed.domain === 'string' ? parsed.domain : '',
+        description: typeof parsed.description === 'string' ? parsed.description : '',
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseStructuredEmbed(lines: string[]): JSONContent | null {
+  try {
+    const parsed: unknown = JSON.parse(lines.join('\n'))
+    if (!isRecord(parsed) || typeof parsed.url !== 'string' || typeof parsed.embedUrl !== 'string') return null
+    if (!parsed.url.trim() || !parsed.embedUrl.trim()) return null
+    return {
+      type: 'embedBlock',
+      attrs: {
+        provider: typeof parsed.provider === 'string' ? parsed.provider : 'youtube',
+        url: parsed.url,
+        embedUrl: parsed.embedUrl,
+        title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title : 'Embedded content',
+      },
+    }
   } catch {
     return null
   }
@@ -683,6 +744,22 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       lineIndex = collected.index - 1
       const documentLink = collected.closed ? parseStructuredDocumentLink(collected.lines.slice(1, -1)) : null
       content.push(documentLink ?? rawParagraph(collected.lines))
+      continue
+    }
+    if (blockKind === 'bookmark') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      const bookmark = collected.closed ? parseStructuredBookmark(collected.lines.slice(1, -1)) : null
+      content.push(bookmark ?? rawParagraph(collected.lines))
+      continue
+    }
+    if (blockKind === 'embed') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      const embed = collected.closed ? parseStructuredEmbed(collected.lines.slice(1, -1)) : null
+      content.push(embed ?? rawParagraph(collected.lines))
       continue
     }
     if (blockKind === 'file') {

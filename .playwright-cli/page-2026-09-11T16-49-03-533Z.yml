@@ -1,0 +1,61 @@
+- generic [ref=e1]:
+  - generic [ref=e19]:
+    - generic [ref=e22]:
+      - list [ref=e24]:
+        - listitem [ref=e25]:
+          - link [ref=e88] [cursor=pointer]:
+            - /url: /home
+            - generic [ref=e29]: MyBook
+      - generic [ref=e30]:
+        - list [ref=e33]:
+          - listitem [ref=e34]:
+            - link [ref=e89] [cursor=pointer]:
+              - /url: /home
+              - generic [ref=e37]: Home
+          - listitem [ref=e38]:
+            - link [ref=e90] [cursor=pointer]:
+              - /url: /folders
+              - generic [ref=e41]: Library
+          - listitem [ref=e42]:
+            - link [ref=e91] [cursor=pointer]:
+              - /url: /settings
+              - generic [ref=e45]: Preferences
+          - listitem [ref=e46]:
+            - link [ref=e92] [cursor=pointer]:
+              - /url: /search
+              - generic [ref=e49]: Search
+        - generic [ref=e50]: Favorites
+      - list [ref=e53]:
+        - listitem [ref=e54]:
+          - link [ref=e93] [cursor=pointer]:
+            - /url: /trash
+            - generic [ref=e58]: Trash
+      - button [ref=e94]
+    - main [ref=e60]:
+      - generic [ref=e63]:
+        - generic [ref=e64]: Local workspace
+        - button [ref=e95]
+      - main [ref=e66]:
+        - generic [ref=e68]:
+          - heading [level=1] [ref=e96]: Home
+          - generic [ref=e73]:
+            - tablist [ref=e97]:
+              - tab [selected] [ref=e98]: Recent
+              - tab [ref=e99]: Favorites
+              - tab [ref=e100]: All files
+            - tabpanel [ref=e101]:
+              - region [ref=e102]:
+                - heading [level=2] [ref=e103]: No recent files
+                - paragraph [ref=e85]: Files you open or edit will appear here.
+          - button [expanded] [ref=e104]
+  - generic:
+    - region "Notifications"
+  - dialog [ref=e108]:
+    - generic [ref=e109]:
+      - heading "Create new" [level=2] [ref=e110]
+      - paragraph [ref=e111]: Create new
+    - menu "Create options" [ref=e113]:
+      - menuitem "New document" [active] [ref=e114]
+      - menuitem "New spreadsheet" [ref=e116]
+      - menuitem "New folder" [ref=e118]
+    - button "Close" [ref=e120]

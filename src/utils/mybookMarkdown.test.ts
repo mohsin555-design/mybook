@@ -7,7 +7,7 @@ import { documentToMyBookMarkdown, myBookMarkdownToDocument, parseMyBookMarkdown
 const doc = (...content: JSONContent[]): JSONContent => ({ type: 'doc', content })
 const text = (value: string, marks?: JSONContent['marks']): JSONContent => ({ type: 'text', text: value, ...(marks ? { marks } : {}) })
 const paragraph = (...content: JSONContent[]): JSONContent => ({ type: 'paragraph', ...(content.length ? { content } : {}) })
-const heading = (level: 1 | 2 | 3, value: string): JSONContent => ({ type: 'heading', attrs: { level }, content: [text(value)] })
+const heading = (level: 1 | 2 | 3 | 4, value: string): JSONContent => ({ type: 'heading', attrs: { level }, content: [text(value)] })
 const listItem = (...content: JSONContent[]): JSONContent => ({ type: 'listItem', content })
 const taskItem = (checked: boolean, ...content: JSONContent[]): JSONContent => ({ type: 'taskItem', attrs: { checked }, content })
 const tableCell = (...content: JSONContent[]): JSONContent => ({ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: null }, content })
@@ -86,6 +86,7 @@ describe('MyBook Markdown serialization', () => {
       heading(1, 'Heading 1'),
       heading(2, 'Heading 2'),
       heading(3, 'Heading 3'),
+      heading(4, 'Heading 4'),
     ))).toBe([
       '---',
       'mybook_version: 1',
@@ -100,6 +101,8 @@ describe('MyBook Markdown serialization', () => {
       '## Heading 2',
       '',
       '### Heading 3',
+      '',
+      '#### Heading 4',
       '',
     ].join('\n'))
   })
@@ -431,6 +434,17 @@ describe('MyBook Markdown serialization', () => {
     expect(markdown).toContain('```ts\nconst value = `tick`\n  return value\n```')
     expect(markdown).toContain('\n---\n')
     expect(markdown).toContain('Line one  \nLine two')
+  })
+
+  it('exports auto code blocks with the detected language when available', () => {
+    const markdown = documentToMyBookMarkdown('Auto Code', doc(
+      { type: 'codeBlock', attrs: { language: 'auto', detectedLanguage: 'javascript' }, content: [text('const value = 1')] },
+      { type: 'codeBlock', attrs: { language: 'auto', detectedLanguage: 'text' }, content: [text('plain notes')] },
+    ))
+
+    expect(markdown).toContain('```javascript\nconst value = 1\n```')
+    expect(markdown).toContain('```\nplain notes\n```')
+    expect(markdown).not.toContain('```auto')
   })
 
   it('exports MyBook custom blocks with all current attributes', () => {

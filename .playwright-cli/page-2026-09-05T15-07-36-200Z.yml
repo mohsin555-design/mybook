@@ -1,0 +1,154 @@
+- generic [ref=f3e1]:
+  - main [ref=f3e6]:
+    - generic [ref=f3e8]:
+      - generic [ref=f3e9]:
+        - generic [ref=f3e10]:
+          - button "Close document" [ref=f3e11]
+          - generic [ref=f3e14]:
+            - generic [ref=f3e15]: Document title
+            - textbox "Document title" [ref=f3e16]: Untitled Document
+            - 'status "Editor status: Saved" [ref=f3e17]': Saved
+            - navigation "Folder path" [ref=f3e19]:
+              - list [ref=f3e20]:
+                - listitem [ref=f3e21]:
+                  - link "Library" [ref=f3e22] [cursor=pointer]:
+                    - /url: /folders
+                - listitem [aria-hidden] [ref=f3e23]
+                - listitem [ref=f3e26]:
+                  - link "Untitled Document" [disabled] [ref=f3e27]
+          - button "More document actions" [ref=f3e28]
+          - button "Save" [ref=f3e31]
+          - button "Sync now" [ref=f3e32]
+          - button "Open backup" [disabled]
+        - navigation "Desktop document commands" [ref=f3e33]:
+          - button "Document menu" [ref=f3e34]: Document
+          - button "Edit menu" [ref=f3e35]: Edit
+          - button "View menu" [ref=f3e36]: View
+          - button "Insert menu" [ref=f3e37]: Insert
+          - button "Format menu" [ref=f3e38]: Format
+          - group "Document view controls" [ref=f3e39]:
+            - button "Page" [pressed] [ref=f3e40]
+            - button "Full" [ref=f3e41]
+            - generic [ref=f3e42]: Document zoom
+            - combobox "Document zoom" [ref=f3e43]:
+              - option "75%"
+              - option "100%" [selected]
+              - option "125%"
+              - option "150%"
+        - toolbar "Document formatting" [ref=f3e44]:
+          - generic [ref=f3e45]:
+            - group "Text style" [ref=f3e46]:
+              - button "Bold" [ref=f3e47]
+              - button "Italic" [ref=f3e50]
+              - button "Underline" [ref=f3e53]
+            - group "Block type" [ref=f3e56]:
+              - generic [ref=f3e57]: Heading level
+              - combobox "Heading level" [ref=f3e58]:
+                - option "Text" [selected]
+                - option "H1"
+                - option "H2"
+                - option "H3"
+            - group "Lists" [ref=f3e59]:
+              - button "Bulleted list" [ref=f3e60]
+              - button "Numbered list" [ref=f3e63]
+              - button "Checklist" [ref=f3e66]
+            - group "History and more formatting" [ref=f3e69]:
+              - button "Undo" [ref=f3e70]
+              - button "Redo" [disabled] [ref=f3e73]
+              - button "Blockquote" [ref=f3e76]
+              - button "Link" [ref=f3e79]
+              - button "Callout" [ref=f3e82]
+              - button "Toggle" [ref=f3e85]
+              - button "Image" [ref=f3e88]
+              - button "File attachment" [ref=f3e91]
+              - button "Table" [ref=f3e94]
+              - button "Horizontal rule" [ref=f3e97]
+              - button "Inline code" [ref=f3e99]
+              - button "Code block" [ref=f3e102]
+              - button "Strikethrough" [ref=f3e105]
+              - button "Clear formatting" [ref=f3e108]
+      - button "Import document file" [ref=f3e111]
+      - button "Attach file" [ref=f3e112]
+      - button "Insert image" [ref=f3e113]
+      - textbox "Document content" [active] [ref=f3e118]:
+        - generic [ref=f3e120]:
+          - generic [ref=f3e121]:
+            - textbox "Database title" [ref=f3e123]: Untitled database
+            - button "Add row" [ref=f3e124]: + New
+            - group [ref=f3e125]:
+              - generic "Filter" [ref=f3e126] [cursor=pointer]
+            - group [ref=f3e127]:
+              - generic "Sort" [ref=f3e128] [cursor=pointer]
+              - option "No sort" [selected]
+              - option "Name"
+              - option "Status"
+              - option "A to Z" [selected]
+              - option "Z to A"
+            - button "Search database" [ref=f3e129]: Search
+            - generic [ref=f3e130]: Add property
+            - combobox "Add property" [ref=f3e131]:
+              - option "+ Property" [selected]
+              - option "Text"
+              - option "Number"
+              - option "Select"
+              - option "Status"
+              - option "Date"
+              - option "Checkbox"
+          - table [ref=f3e133]:
+            - rowgroup [ref=f3e134]:
+              - row [ref=f3e135]:
+                - columnheader "Name Text" [ref=f3e136]:
+                  - generic [ref=f3e137]:
+                    - generic [ref=f3e138]:
+                      - generic "Name" [ref=f3e139]
+                      - generic [ref=f3e140]: Text
+                    - group [ref=f3e141]:
+                      - generic "Open property menu for Name" [ref=f3e142] [cursor=pointer]: ⋯
+                - columnheader "Status Status" [ref=f3e143]:
+                  - generic [ref=f3e144]:
+                    - generic [ref=f3e145]:
+                      - generic "Status" [ref=f3e146]
+                      - generic [ref=f3e147]: Status
+                    - group [ref=f3e148]:
+                      - generic "Open property menu for Status" [ref=f3e149] [cursor=pointer]: ⋯
+                      - option "gray" [selected]
+                      - option "red"
+                      - option "orange"
+                      - option "yellow"
+                      - option "green"
+                      - option "blue"
+                      - option "purple"
+                      - option "pink"
+                      - option "gray"
+                      - option "red"
+                      - option "orange"
+                      - option "yellow"
+                      - option "green"
+                      - option "blue" [selected]
+                      - option "purple"
+                      - option "pink"
+                      - option "gray"
+                      - option "red"
+                      - option "orange"
+                      - option "yellow"
+                      - option "green" [selected]
+                      - option "blue"
+                      - option "purple"
+                      - option "pink"
+                - columnheader "Row actions" [ref=f3e150]
+            - rowgroup [ref=f3e151]:
+              - row [ref=f3e152]:
+                - cell [ref=f3e153]:
+                  - textbox "Name value" [ref=f3e154]
+                - cell [ref=f3e155]:
+                  - combobox "Status status" [ref=f3e157]:
+                    - option "Empty" [selected]
+                    - option "Not started"
+                    - option "In progress"
+                    - option "Done"
+                - cell [ref=f3e158]:
+                  - group [ref=f3e159]:
+                    - generic "Open row actions" [ref=f3e160] [cursor=pointer]: ⋯
+        - paragraph [ref=f3e161]
+  - generic:
+    - region "Notifications"

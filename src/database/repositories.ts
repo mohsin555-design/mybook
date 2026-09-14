@@ -337,7 +337,7 @@ export const fileRepository = {
     try {
       const now = new Date().toISOString()
       if (!(await folderIsInActiveWorkspace(folderId))) return { success: false, error: 'Folder could not be found in this workspace.' }
-      const name = await nextFileName(type === 'document' ? 'Untitled Document' : 'Untitled Spreadsheet', folderId)
+      const name = await nextFileName(type === 'document' ? 'Untitled' : 'Untitled Spreadsheet', folderId)
       const file: MyBookFile = { id: crypto.randomUUID(), driveFileId: null, workspaceType: activeWorkspaceType(), name, type, folderId, content: '', mimeType: type === 'document' ? 'application/x-mybook-document' : 'application/x-mybook-spreadsheet', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: initialSyncStatus(), isDeleted: false }
       await db.files.add(file)
       await persistLocalFile(file)

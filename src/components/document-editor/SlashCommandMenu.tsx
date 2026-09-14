@@ -1,82 +1,62 @@
-import type { Editor } from '@tiptap/react'
+import {
+  Bars3BottomLeftIcon,
+  ChatBubbleBottomCenterTextIcon,
+  CheckCircleIcon,
+  ChevronRightIcon,
+  CircleStackIcon,
+  CommandLineIcon,
+  DocumentIcon,
+  DocumentTextIcon,
+  HashtagIcon,
+  ListBulletIcon,
+  MinusIcon,
+  NumberedListIcon,
+  PaperClipIcon,
+  PhotoIcon,
+  QueueListIcon,
+  TableCellsIcon,
+} from '@heroicons/react/24/outline'
+import { useEffect, useRef } from 'react'
 
-import { calloutNode } from './extensions/Callout'
-import { databaseBlockNode } from './extensions/DatabaseBlock'
-import { tableOfContentsNode } from './extensions/TableOfContents'
-import { toggleBlockNode } from './extensions/ToggleBlock'
+import { commandMenuTop, filterSlashCommands, groupSlashCommands, type SlashCommand, type SlashMenuState } from './slashCommands'
 
-export interface SlashCommand {
-  id: string
-  title: string
-  description: string
-  keywords: string[]
+const DESKTOP_MENU_HEIGHT = 352
+const MOBILE_MENU_HEIGHT = 320
+const commandIcons = {
+  paragraph: DocumentTextIcon,
+  h1: HashtagIcon,
+  h2: HashtagIcon,
+  h3: HashtagIcon,
+  h4: HashtagIcon,
+  quote: ChatBubbleBottomCenterTextIcon,
+  hr: MinusIcon,
+  bullet: ListBulletIcon,
+  numbered: NumberedListIcon,
+  task: CheckCircleIcon,
+  toggle: ChevronRightIcon,
+  image: PhotoIcon,
+  file: PaperClipIcon,
+  'document-link': DocumentIcon,
+  table: TableCellsIcon,
+  database: CircleStackIcon,
+  callout: ChatBubbleBottomCenterTextIcon,
+  toc: QueueListIcon,
+  'code-block': CommandLineIcon,
+} as const
+
+function CommandIcon({ command, className }: { command: SlashCommand; className: string }) {
+  const Icon = commandIcons[command.id as keyof typeof commandIcons] ?? Bars3BottomLeftIcon
+  return <Icon aria-hidden="true" className={className} />
 }
 
-export interface SlashMenuState {
-  query: string
-  range: { from: number; to: number }
-  rect: DOMRect
-}
-
-export const slashCommands: SlashCommand[] = [
-  { id: 'paragraph', title: 'Text', description: 'Start with plain text', keywords: ['paragraph', 'text'] },
-  { id: 'h1', title: 'Heading 1', description: 'Large section heading', keywords: ['h1', 'heading', 'title'] },
-  { id: 'h2', title: 'Heading 2', description: 'Medium section heading', keywords: ['h2', 'heading', 'subtitle'] },
-  { id: 'h3', title: 'Heading 3', description: 'Small section heading', keywords: ['h3', 'heading'] },
-  { id: 'bullet', title: 'Bulleted list', description: 'Create a simple list', keywords: ['bullet', 'list', 'ul'] },
-  { id: 'numbered', title: 'Numbered list', description: 'Create an ordered list', keywords: ['numbered', 'ordered', 'list', 'ol'] },
-  { id: 'task', title: 'Checklist', description: 'Track tasks and todos', keywords: ['task', 'check', 'todo', 'checklist'] },
-  { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'] },
-  { id: 'toggle', title: 'Toggle', description: 'Hide details under a title', keywords: ['toggle', 'details', 'collapse'] },
-  { id: 'toc', title: 'Table of contents', description: 'Show document headings', keywords: ['toc', 'table of contents', 'contents', 'outline'] },
-  { id: 'document-link', title: 'Document link', description: 'Link to another document', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document'] },
-  { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'] },
-  { id: 'image', title: 'Image', description: 'Upload an image', keywords: ['image', 'photo', 'picture', 'media'] },
-  { id: 'file', title: 'File attachment', description: 'Attach a file block', keywords: ['file', 'attachment', 'upload', 'pdf', 'doc'] },
-  { id: 'quote', title: 'Blockquote', description: 'Highlight quoted text', keywords: ['quote', 'blockquote'] },
-  { id: 'code-block', title: 'Code block', description: 'Insert multiline code', keywords: ['code', 'pre', 'block'] },
-  { id: 'table', title: 'Table', description: 'Insert a 3 x 3 table', keywords: ['table', 'grid'] },
-  { id: 'hr', title: 'Divider', description: 'Separate sections', keywords: ['divider', 'rule', 'hr', 'line'] },
-]
-
-export function filterSlashCommands(query: string) {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return slashCommands
-  return slashCommands.filter((command) => {
-    const haystack = [command.title, command.description, ...command.keywords].join(' ').toLowerCase()
-    return haystack.includes(normalized)
-  })
-}
-
-export function runSlashCommand(editor: Editor, commandId: string, range: SlashMenuState['range']) {
-  const chain = editor.chain().focus().deleteRange(range)
-  if (commandId === 'paragraph') chain.setParagraph().run()
-  else if (commandId === 'h1') chain.setHeading({ level: 1 }).run()
-  else if (commandId === 'h2') chain.setHeading({ level: 2 }).run()
-  else if (commandId === 'h3') chain.setHeading({ level: 3 }).run()
-  else if (commandId === 'bullet') chain.toggleBulletList().run()
-  else if (commandId === 'numbered') chain.toggleOrderedList().run()
-  else if (commandId === 'task') chain.toggleTaskList().run()
-  else if (commandId === 'callout') chain.insertContent(calloutNode()).run()
-  else if (commandId === 'toggle') chain.insertContent(toggleBlockNode()).run()
-  else if (commandId === 'toc') chain.insertContent(tableOfContentsNode()).run()
-  else if (commandId === 'database') chain.insertContent(databaseBlockNode()).run()
-  else if (commandId === 'document-link') {
-    chain.run()
-    window.dispatchEvent(new CustomEvent('mybook:insert-document-link'))
-  }
-  else if (commandId === 'image') {
-    chain.run()
-    window.dispatchEvent(new CustomEvent('mybook:insert-image'))
-  }
-  else if (commandId === 'file') {
-    chain.run()
-    window.dispatchEvent(new CustomEvent('mybook:insert-file'))
-  }
-  else if (commandId === 'quote') chain.toggleBlockquote().run()
-  else if (commandId === 'code-block') chain.toggleCodeBlock().run()
-  else if (commandId === 'table') chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-  else if (commandId === 'hr') chain.setHorizontalRule().run()
+function scrollOptionIntoMenuView(option: HTMLElement | null) {
+  if (!option) return
+  const scroller = option.closest<HTMLElement>('[data-command-menu-scroller="true"]')
+  if (!scroller) return
+  const optionRect = option.getBoundingClientRect()
+  const scrollerRect = scroller.getBoundingClientRect()
+  if (optionRect.top < scrollerRect.top) scroller.scrollTop -= scrollerRect.top - optionRect.top
+  else if (optionRect.bottom > scrollerRect.bottom) scroller.scrollTop += optionRect.bottom - scrollerRect.bottom
 }
 
 interface SlashCommandMenuProps {
@@ -86,40 +66,151 @@ interface SlashCommandMenuProps {
   onRun: (command: SlashCommand) => void
 }
 
+export function BlockCommandMenu({
+  ariaLabel,
+  commands,
+  selectedIndex,
+  onSelectIndex,
+  onRun,
+  className = '',
+}: {
+  ariaLabel: string
+  commands: SlashCommand[]
+  selectedIndex: number
+  onSelectIndex: (index: number) => void
+  onRun: (command: SlashCommand) => void
+  className?: string
+}) {
+  const selectedOptionRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    scrollOptionIntoMenuView(selectedOptionRef.current)
+  }, [selectedIndex])
+
+  return (
+    <div role="listbox" aria-label={ariaLabel} className={className}>
+      {commands.length ? groupSlashCommands(commands).map((group) => (
+        <section key={group.category} aria-label={group.category}>
+          <h3 className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</h3>
+          {group.commands.map((command) => {
+            const index = commands.indexOf(command)
+            const isSelected = index === selectedIndex
+            return (
+              <button
+                key={command.id}
+                ref={isSelected ? selectedOptionRef : undefined}
+                type="button"
+                tabIndex={-1}
+                role="option"
+                aria-selected={isSelected}
+                onMouseEnter={() => onSelectIndex(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  onRun(command)
+                }}
+                className={`flex min-h-10 w-full items-center gap-3 rounded-[7px] px-3 py-2 text-left ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
+              >
+                <CommandIcon command={command} className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1 text-sm font-semibold">{command.title}</span>
+                {command.shortcut ? <span className={`text-xs font-medium ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{command.shortcut}</span> : null}
+              </button>
+            )
+          })}
+        </section>
+      )) : (
+        <p className="px-3 py-2 text-sm text-muted-foreground">No matching blocks</p>
+      )}
+    </div>
+  )
+}
+
 export function SlashCommandMenu({ menu, selectedIndex, onSelectIndex, onRun }: SlashCommandMenuProps) {
   const commands = filterSlashCommands(menu.query)
-  const top = Math.min(menu.rect.bottom + 8, window.innerHeight - 340)
+  const top = commandMenuTop(menu.rect, DESKTOP_MENU_HEIGHT, 0)
   const left = Math.min(menu.rect.left, window.innerWidth - 320)
 
   return (
     <div
-      className="fixed z-50 w-[min(20rem,calc(100vw-1rem))] rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
+      className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
+      data-slash-command-menu="true"
+      data-command-menu-scroller="true"
       style={{ top: Math.max(8, top), left: Math.max(8, left) }}
-      role="listbox"
-      aria-label="Slash command menu"
     >
-      {commands.length ? commands.map((command, index) => {
-        const isSelected = index === selectedIndex
-        return (
-          <button
-            key={command.id}
-            type="button"
-            role="option"
-            aria-selected={isSelected}
-            onMouseEnter={() => onSelectIndex(index)}
-            onMouseDown={(event) => {
-              event.preventDefault()
-              onRun(command)
-            }}
-            className={`flex w-full flex-col rounded-[7px] px-3 py-2 text-left ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
-          >
-            <span className="text-sm font-semibold">{command.title}</span>
-            <span className={`text-xs ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{command.description}</span>
-          </button>
-        )
-      }) : (
-        <p className="px-3 py-2 text-sm text-muted-foreground">No matching blocks</p>
-      )}
+      <BlockCommandMenu ariaLabel="Slash command options" commands={commands} selectedIndex={selectedIndex} onSelectIndex={onSelectIndex} onRun={onRun} />
+    </div>
+  )
+}
+
+export function MobileSlashCommandMenu({ menu, selectedIndex, onSelectIndex, onRun }: SlashCommandMenuProps) {
+  const commands = filterSlashCommands(menu.query)
+  const selectedOptionRef = useRef<HTMLButtonElement>(null)
+  const hasRunCommandRef = useRef(false)
+  const top = commandMenuTop(menu.rect, MOBILE_MENU_HEIGHT, 0)
+
+  useEffect(() => {
+    scrollOptionIntoMenuView(selectedOptionRef.current)
+  }, [selectedIndex])
+
+  useEffect(() => {
+    hasRunCommandRef.current = false
+  }, [menu.range.from, menu.range.to, menu.query])
+
+  return (
+    <div
+      className="fixed z-50 w-[min(22rem,calc(100vw-1rem))] rounded-[10px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.18)] md:hidden"
+      data-slash-command-menu="true"
+      style={{
+        top,
+        left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 360)),
+      }}
+      role="presentation"
+    >
+      <div className="mb-1 px-2 py-1">
+        <p className="text-xs font-semibold text-muted-foreground">Insert block</p>
+      </div>
+      <div role="listbox" aria-label="Slash command menu" className="max-h-[min(18rem,45dvh)] overflow-y-auto overscroll-contain" data-command-menu-scroller="true">
+        {commands.length ? groupSlashCommands(commands).map((group) => (
+          <section key={group.category} aria-label={group.category}>
+            <h3 className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.category}</h3>
+            {group.commands.map((command) => {
+              const index = commands.indexOf(command)
+              const isSelected = index === selectedIndex
+              const runCommand = () => {
+                if (hasRunCommandRef.current) return
+                hasRunCommandRef.current = true
+                onRun(command)
+              }
+              return (
+                <button
+                  key={command.id}
+                  ref={isSelected ? selectedOptionRef : undefined}
+                  type="button"
+                  tabIndex={-1}
+                  role="option"
+                  aria-selected={isSelected}
+                  onMouseEnter={() => onSelectIndex(index)}
+                  onPointerDownCapture={(event) => { event.preventDefault(); runCommand() }}
+                  onPointerDown={(event) => { event.preventDefault(); runCommand() }}
+                  onMouseDownCapture={(event) => { event.preventDefault(); runCommand() }}
+                  onMouseDown={(event) => { event.preventDefault(); runCommand() }}
+                  onTouchStartCapture={(event) => { event.preventDefault(); runCommand() }}
+                  onTouchStart={(event) => { event.preventDefault(); runCommand() }}
+                  onClick={runCommand}
+                  className={`flex min-h-12 w-full items-center gap-3 rounded-[8px] px-3 py-2 text-left transition ${
+                    isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'
+                  }`}
+                >
+                  <CommandIcon command={command} className="size-5 shrink-0" />
+                  <span className="min-w-0 flex-1 text-sm font-semibold">{command.title}</span>
+                  {command.shortcut ? <span className={`text-xs font-medium ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{command.shortcut}</span> : null}
+                </button>
+              )
+            })}
+          </section>
+        )) : (
+          <p className="px-3 py-4 text-sm text-muted-foreground">No matching blocks</p>
+        )}
+      </div>
     </div>
   )
 }

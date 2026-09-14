@@ -1,3 +1,4 @@
+- Headings H1-H4.
 # Advanced Editor and MyBook Markdown Spec
 
 ## Purpose
@@ -128,7 +129,7 @@ Goal: make common writing features solid.
 Scope:
 
 - Bold, italic, underline, strikethrough.
-- Headings H1-H3.
+- Headings H1-H4.
 - Bulleted, numbered, and task lists.
 - Blockquote.
 - Inline code and code blocks.

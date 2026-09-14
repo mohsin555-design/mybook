@@ -1,3 +1,4 @@
+- headings 1-4
 # Document Editor
 
 ## Purpose
@@ -15,7 +16,7 @@ Supported editor actions include:
 - bold
 - italic
 - underline
-- headings 1-3
+- headings 1-4
 - bulleted lists
 - numbered lists
 - checklists

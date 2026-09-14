@@ -41,7 +41,7 @@ describe('table of contents block', () => {
       paragraphNode('Body'),
       headingNode(2, 'Product goals'),
       headingNode(3, 'Requirements'),
-      headingNode(4, 'Unsupported'),
+      headingNode(4, 'Details'),
       headingNode(2, '   '),
     ]) as never)
 
@@ -49,6 +49,7 @@ describe('table of contents block', () => {
       { id: 'toc-0-0', level: 1, pos: 0, text: 'Introduction' },
       { id: 'toc-20-1', level: 2, pos: 20, text: 'Product goals' },
       { id: 'toc-30-2', level: 3, pos: 30, text: 'Requirements' },
+      { id: 'toc-40-3', level: 4, pos: 40, text: 'Details' },
     ])
   })
 

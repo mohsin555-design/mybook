@@ -26,9 +26,13 @@ function file(id: string, name: string, isDeleted = false): MyBookFile {
 }
 
 function renderLink(attrs: { label: string; targetId: string }, files: MyBookFile[], openDocument = vi.fn()) {
+  const editor = {
+    commands: { insertContentAt: vi.fn() },
+    chain: () => ({ focus: () => ({ deleteRange: () => ({ run: vi.fn() }) }) }),
+  }
   render(
     <DocumentLinkProvider currentFileId="doc_a" files={files} openDocument={openDocument}>
-      <DocumentLinkNodeView node={{ attrs } as never} selected={false} editor={{} as never} view={{} as never} getPos={vi.fn()} decorations={[]} innerDecorations={{} as never} updateAttributes={vi.fn()} deleteNode={vi.fn()} extension={{} as never} HTMLAttributes={{}} />
+      <DocumentLinkNodeView node={{ attrs, nodeSize: 1, toJSON: () => ({ type: 'documentLink', attrs }) } as never} selected={false} editor={editor as never} view={{} as never} getPos={vi.fn(() => 1)} decorations={[]} innerDecorations={{} as never} updateAttributes={vi.fn()} deleteNode={vi.fn()} extension={{} as never} HTMLAttributes={{}} />
     </DocumentLinkProvider>,
   )
   return openDocument
@@ -40,7 +44,7 @@ describe('DocumentLinkNodeView', () => {
   it('resolves the current target title by stable id', () => {
     renderLink({ targetId: 'doc_b', label: 'Old Project Notes' }, [file('doc_b', 'Project Plan')])
 
-    expect(screen.getByRole('button', { name: 'Open document Project Plan' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open page Project Plan' })).toBeInTheDocument()
   })
 
   it('navigates using target id for duplicate titles', () => {
@@ -49,7 +53,7 @@ describe('DocumentLinkNodeView', () => {
       file('doc_b', 'Project Notes'),
     ])
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open document Project Notes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open page Project Notes' }))
     expect(openDocument).toHaveBeenCalledWith('doc_b')
   })
 

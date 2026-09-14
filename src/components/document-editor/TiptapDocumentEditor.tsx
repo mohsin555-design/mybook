@@ -1,13 +1,17 @@
-import { ArrowLeftIcon, EllipsisHorizontalIcon } from '@heroicons/react/24/outline'
+import { EllipsisHorizontalIcon, ShareIcon, StarIcon } from '@heroicons/react/24/outline'
+import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { Dropdown } from '../ui/compat-dropdown'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu'
+import { SidebarTrigger } from '../ui/sidebar'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import Underline from '@tiptap/extension-underline'
-import { Extension } from '@tiptap/core'
+import { Extension, InputRule } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { AllSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { AllSelection, NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -20,7 +24,6 @@ import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
 import { documentToMyBookMarkdown, downloadMyBookMarkdown, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
-import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
 import { DeleteFileDialog } from '../files/DeleteFileDialog'
 import { FolderBreadcrumb } from '../files/FolderBreadcrumb'
@@ -28,10 +31,12 @@ import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { EditorBlockControls } from './EditorBlockControls'
 import { EditorStatus } from './EditorStatus'
+import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { Callout, calloutNode } from './extensions/Callout'
 import { CodeBlock } from './extensions/CodeBlock'
 import { DatabaseBlock } from './extensions/DatabaseBlock'
 import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
+import { EmbedBlock, embedBlockNode } from './extensions/EmbedBlock'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
 import { ImageBlock, imageBlockNode } from './extensions/ImageBlock'
 import { TableOfContents } from './extensions/TableOfContents'
@@ -40,15 +45,17 @@ import { FixedTable } from './extensions/FixedTable'
 import { TableInteraction } from './extensions/TableInteraction'
 import { StyledTableCell, StyledTableHeader } from './extensions/TableCellStyles'
 import { DocumentLinkProvider } from './DocumentLinkContext'
-import { documentLinkTargets } from './documentLinkModel'
+import { documentLinkLocation, documentLinkTargets } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
 import { MobileSlashCommandMenu, SlashCommandMenu } from './SlashCommandMenu'
+import { analyzePastedUrl, type PasteUrlInfo } from './pasteUrlModel'
 import { filterSlashCommands, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
 import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
 import { deletedToast } from '../../utils/deleteToast'
 import { toast } from '../ui/toast'
-
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const documentViewModeStorageKey = 'mybook-document-view-mode'
 const emptyBlockPlaceholderClass = 'mybook-empty-block-placeholder'
@@ -57,6 +64,43 @@ const emptyBlockPlaceholderKey = new PluginKey<{ focused: boolean }>('emptyBlock
 const listMarkerDepthKey = new PluginKey('listMarkerDepth')
 const blankBlockSelectionKey = new PluginKey<{ anchor: number | null; head: number | null }>('blankBlockSelection')
 const blankSelectableBlockSelector = ':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > blockquote, :scope > pre, :scope > .mybook-toggle, :scope > ul > li, :scope > ol > li, :scope > [data-type="taskItem"]'
+
+const MarkdownLinkShortcut = Extension.create({
+  name: 'markdownLinkShortcut',
+  addInputRules() {
+    return [new InputRule({
+      find: /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)$/,
+      handler: ({ state, range, match }) => {
+        const label = match[1]
+        const href = match[2]
+        const linkMark = label && href ? state.schema.marks.link?.create({ href }) : null
+        if (!linkMark || !label) return
+        state.tr.replaceWith(range.from, range.to, state.schema.text(label, [linkMark]))
+      },
+    })]
+  },
+})
+interface PasteAsMenuState {
+  urlInfo: PasteUrlInfo
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+  documentTarget?: { id: string; name: string }
+}
+interface InlineLinkToolbarState {
+  href: string
+  text: string
+  anchor: HTMLAnchorElement
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+  canEmbed: boolean
+  documentTarget?: { id: string; name: string }
+}
+interface DocumentLinkPickerState {
+  query: string
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+}
+
 function blockPosAtPoint(view: EditorView, x: number, y: number) {
   const point = view.posAtCoords({ left: x, top: y })
   if (point) {
@@ -77,6 +121,56 @@ function blockPosAtPoint(view: EditorView, x: number, y: number) {
   })
   return candidates.sort((a, b) => a.distance - b.distance || a.size - b.size)[0]?.pos ?? null
 }
+function emptyParagraphRangeForPaste(view: EditorView) {
+  const { selection } = view.state
+  if (!selection.empty || !selection.$from.parent.isTextblock || selection.$from.parent.type.name !== 'paragraph' || selection.$from.parent.content.size !== 0) return null
+  const container = selection.$from.depth > 1 ? selection.$from.node(selection.$from.depth - 1) : null
+  if (container && ['tableCell', 'tableHeader'].includes(container.type.name)) return null
+  return {
+    from: selection.$from.before(selection.$from.depth),
+    to: selection.$from.after(selection.$from.depth),
+  }
+}
+function linkRangeAtPosition(view: EditorView, position: number, href: string): { from: number; to: number; text: string } | null {
+  let range: { from: number; to: number; text: string } | null = null
+  view.state.doc.descendants((node, pos) => {
+    if (range || !node.isText || !node.text) return
+    const mark = node.marks.find((item) => item.type.name === 'link' && item.attrs.href === href)
+    if (!mark) return
+    const from = pos
+    const to = pos + node.nodeSize
+    if (position >= from && position <= to) range = { from, to, text: node.text ?? href }
+  })
+  if (range) return range
+  view.state.doc.descendants((node, pos) => {
+    if (range || !node.isText || !node.text) return
+    const mark = node.marks.find((item) => item.type.name === 'link' && item.attrs.href === href)
+    if (mark) range = { from: pos, to: pos + node.nodeSize, text: node.text ?? href }
+  })
+  return range
+}
+
+function documentLinkInsertionRange(editor: NonNullable<ReturnType<typeof useEditor>>, range: { from: number; to: number }) {
+  const { doc } = editor.state
+  const $from = doc.resolve(range.from)
+  const $to = doc.resolve(range.to)
+  if ($from.parent === $to.parent && $from.parent.isTextblock) {
+    const query = doc.textBetween(range.from, range.to, '\n', '\0')
+    if ($from.parent.textContent === query) return { from: $from.before($from.depth), to: $from.after($from.depth) }
+  }
+  return range
+}
+
+function insertDocumentLinkAt(editor: NonNullable<ReturnType<typeof useEditor>>, range: { from: number; to: number }, target: { id: string; name: string }) {
+  editor.chain().focus().insertContentAt(range, [documentLinkNode({ targetId: target.id, label: target.name }), { type: 'paragraph' }]).run()
+  const link = editor.state.doc.nodeAt(range.from)
+  const paragraphPos = range.from + (link?.nodeSize ?? 1)
+  const paragraph = editor.state.doc.nodeAt(paragraphPos)
+  if (paragraph?.type.name !== 'paragraph') return
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, paragraphPos + 1)).scrollIntoView())
+  editor.view.focus()
+}
+
 function clearBlankBlockHighlight(editor: NonNullable<ReturnType<typeof useEditor>>) {
   editor.view.dom.querySelectorAll('.mybook-blank-block-selected').forEach((element) => element.classList.remove('mybook-blank-block-selected'))
 }
@@ -372,99 +466,284 @@ function titleInputValue(fileName: string) {
   return /^Untitled(?: Document)?(?: \d+)?$/u.test(fileName.trim()) ? '' : fileName
 }
 
+function DocumentLinkPicker({
+  currentFileId,
+  files,
+  folders,
+  onClose,
+  onSelect,
+  onSelectIndex,
+  position,
+  query,
+  selectedIndex,
+}: {
+  currentFileId: string
+  files: NonNullable<ReturnType<typeof useLibraryData>['files']>
+  folders: NonNullable<ReturnType<typeof useLibraryData>['folders']>
+  onClose: () => void
+  onSelectIndex: (index: number) => void
+  onSelect: (target: { id: string; name: string }) => void
+  position: { left: number; top: number } | null
+  query: string
+  selectedIndex: number
+}) {
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const selectedOptionRef = useRef<HTMLButtonElement>(null)
+
+  const documents = useMemo(() => {
+    return documentLinkTargets(files, currentFileId, query)
+  }, [currentFileId, files, query])
+  const groupedTargets = [
+    { label: 'Documents', items: documents.filter((item) => item.type === 'document') },
+    { label: 'Databases', items: documents.filter((item) => item.type === 'spreadsheet') },
+  ].filter((group) => group.items.length)
+  const flatTargets = groupedTargets.flatMap((group) => group.items)
+
+  useEffect(() => {
+    onSelectIndex(Math.min(selectedIndex, Math.max(0, flatTargets.length - 1)))
+  }, [flatTargets.length, onSelectIndex, selectedIndex])
+
+  useEffect(() => {
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && pickerRef.current?.contains(target)) return
+      onClose()
+    }
+    window.addEventListener('pointerdown', closeOnPointerDown)
+    return () => window.removeEventListener('pointerdown', closeOnPointerDown)
+  }, [onClose])
+
+  useEffect(() => {
+    if (!selectedOptionRef.current) return
+    const scroller = selectedOptionRef.current.closest<HTMLElement>('[data-command-menu-scroller="true"]')
+    if (!scroller) return
+    const optionRect = selectedOptionRef.current.getBoundingClientRect()
+    const scrollerRect = scroller.getBoundingClientRect()
+    if (optionRect.top < scrollerRect.top) scroller.scrollTop -= scrollerRect.top - optionRect.top
+    else if (optionRect.bottom > scrollerRect.bottom) scroller.scrollTop += optionRect.bottom - scrollerRect.bottom
+  }, [selectedIndex])
+
+  if (!position) return null
+
+  return (
+    <div
+      ref={pickerRef}
+      role="listbox"
+      aria-label="Link to Page options"
+      className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.14)] outline-none"
+      data-document-link-picker="true"
+      data-command-menu-scroller="true"
+      style={{
+        left: Math.max(8, Math.min(position.left, window.innerWidth - 320)),
+        top: Math.max(8, Math.min(position.top, window.innerHeight - 360)),
+      }}
+    >
+      {groupedTargets.length ? groupedTargets.map((group) => (
+          <section key={group.label} aria-label={group.label}>
+            <h3 className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</h3>
+            {group.items.map((item) => {
+              const location = documentLinkLocation(item, folders)
+              const isSelected = flatTargets[selectedIndex]?.id === item.id
+              return (
+                <button
+                  key={item.id}
+                  ref={isSelected ? selectedOptionRef : undefined}
+                  type="button"
+                  tabIndex={-1}
+                  role="option"
+                  aria-selected={isSelected}
+                  onMouseEnter={() => onSelectIndex(flatTargets.findIndex((target) => target.id === item.id))}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    onSelect({ id: item.id, name: item.name })
+                  }}
+                  className={`flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 py-2 text-left ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
+                  aria-label={`Link to page ${item.name}`}
+                >
+                  <img src={item.type === 'spreadsheet' ? '/icons/sheet.svg' : '/icons/file.svg'} alt="" aria-hidden="true" className="size-4 shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block break-words text-sm font-medium">{item.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground" title={location.isTruncated ? location.fullPath : undefined}>{location.displayPath}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </section>
+        )) : (
+          <div className="px-3 py-6 text-center">
+            <p className="text-sm font-semibold text-foreground">No pages found</p>
+            <p className="mt-1 text-xs text-muted-foreground">Try a different page name.</p>
+          </div>
+        )}
+    </div>
+  )
+}
+
 function DesktopMenu({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Dropdown>
-      <Dropdown.Trigger
-        className="h-9 rounded-[8px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-        aria-label={`${label} menu`}
-      >
-        {label}
-      </Dropdown.Trigger>
+      <Dropdown.Trigger aria-label={`${label} menu`}>{label}</Dropdown.Trigger>
       <Dropdown.Popover placement="bottom start">{children}</Dropdown.Popover>
     </Dropdown>
   )
 }
 
-function DocumentLinkPicker({
-  currentFileId,
-  files,
-  folderLabel,
-  isOpen,
+function PasteAsMenu({
+  menu,
+  onChoose,
   onClose,
-  onSelect,
 }: {
-  currentFileId: string
-  files: NonNullable<ReturnType<typeof useLibraryData>['files']>
-  folderLabel: (folderId: string | null) => string
-  isOpen: boolean
+  menu: PasteAsMenuState
+  onChoose: (action: 'link' | 'bookmark' | 'mention' | 'embed' | 'document-link') => void
   onClose: () => void
-  onSelect: (target: { id: string; name: string }) => void
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
-  const [query, setQuery] = useState('')
+  return (
+    <div
+      data-paste-as-menu="true"
+      role="menu"
+      aria-label="Paste as"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          onClose()
+        }
+      }}
+      className="fixed z-20 min-w-48 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-sm shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
+      style={{
+        left: Math.min(menu.position.left, window.innerWidth - 216),
+        top: Math.min(menu.position.top, window.innerHeight - 196),
+      }}
+    >
+      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Paste as</div>
+      <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('link')}>Link</button>
+      <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('bookmark')}>Bookmark</button>
+      <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('mention')}>Mention</button>
+      {menu.urlInfo.embedUrl ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('embed')}>Embed</button> : null}
+      {menu.documentTarget ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('document-link')}>Link to page</button> : null}
+    </div>
+  )
+}
 
+function InlineLinkToolbar({
+  toolbar,
+  onAction,
+  onClose,
+}: {
+  toolbar: InlineLinkToolbarState
+  onAction: (action: 'copy' | 'edit' | 'bookmark' | 'mention' | 'embed' | 'page' | 'remove', values?: { href: string; text: string }) => void
+  onClose: () => void
+}) {
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isChangeOpen, setIsChangeOpen] = useState(false)
+  const [href, setHref] = useState(toolbar.href)
+  const [text, setText] = useState(toolbar.text)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const editRef = useRef<HTMLFormElement>(null)
+  const closeTimerRef = useRef<number | null>(null)
+  const cancelScheduledClose = useCallback(() => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = null
+  }, [])
+  const scheduleClose = useCallback((delay = 100) => {
+    cancelScheduledClose()
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null
+      onClose()
+    }, delay)
+  }, [cancelScheduledClose, onClose])
   useEffect(() => {
-    const dialog = dialogRef.current
-    if (!dialog) return
-    if (isOpen && !dialog.open) dialog.showModal()
-    if (!isOpen && dialog.open) dialog.close()
-    if (isOpen) setQuery('')
-  }, [isOpen])
-
-  const documents = useMemo(() => {
-    return documentLinkTargets(files, currentFileId, query)
-  }, [currentFileId, files, query])
+    const closeOnPointerMove = (event: PointerEvent) => {
+      if (isEditOpen || isChangeOpen) {
+        cancelScheduledClose()
+        return
+      }
+      const target = event.target
+      if (target instanceof Node && (toolbar.anchor.contains(target) || toolbarRef.current?.contains(target))) {
+        cancelScheduledClose()
+        return
+      }
+      scheduleClose()
+    }
+    const closeOnPointerOut = (event: PointerEvent) => {
+      const target = event.target
+      const related = event.relatedTarget
+      const isInLinkOrToolbar = target instanceof Node && (toolbar.anchor.contains(target) || toolbarRef.current?.contains(target))
+      const isMovingIntoLinkOrToolbar = related instanceof Node && (toolbar.anchor.contains(related) || toolbarRef.current?.contains(related))
+      if (isInLinkOrToolbar && !isMovingIntoLinkOrToolbar && !isEditOpen && !isChangeOpen) {
+        cancelScheduledClose()
+        const anchorRect = toolbar.anchor.getBoundingClientRect()
+        if (toolbar.anchor.contains(target) && event.clientY <= anchorRect.top + 4) scheduleClose(300)
+        else onClose()
+      }
+    }
+    document.addEventListener('pointermove', closeOnPointerMove)
+    document.addEventListener('pointerout', closeOnPointerOut)
+    return () => {
+      document.removeEventListener('pointermove', closeOnPointerMove)
+      document.removeEventListener('pointerout', closeOnPointerOut)
+      cancelScheduledClose()
+    }
+  }, [cancelScheduledClose, isChangeOpen, isEditOpen, onClose, scheduleClose, toolbar.anchor])
+  const closeIfOutside = (event: React.PointerEvent) => {
+    const related = event.relatedTarget
+    if (related instanceof Node && (toolbar.anchor.contains(related) || toolbarRef.current?.contains(related) || editRef.current?.contains(related))) return
+    if (isEditOpen || isChangeOpen) return
+    scheduleClose()
+  }
+  const submitEdit = (event: React.FormEvent) => {
+    event.preventDefault()
+    onAction('edit', { href: href.trim(), text: text.trim() || href.trim() })
+    setIsEditOpen(false)
+  }
 
   return (
-    <dialog
-      ref={dialogRef}
-      onCancel={(event) => {
-        event.preventDefault()
-        onClose()
+    <div
+      ref={toolbarRef}
+      className="mybook-inline-link-toolbar"
+      role="toolbar"
+      aria-label="Link actions"
+      style={{
+        left: Math.min(Math.max(8, toolbar.position.left), window.innerWidth - 220),
+        top: Math.max(8, toolbar.position.top),
       }}
-      onClose={onClose}
-      className="w-[min(32rem,calc(100vw-1rem))] rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-0 text-foreground shadow-[0_24px_80px_rgba(0,0,0,0.24)] backdrop:bg-black/35"
-      aria-labelledby="document-link-picker-title"
+      onPointerLeave={closeIfOutside}
+      onPointerEnter={cancelScheduledClose}
     >
-      <div className="border-b border-[var(--app-border)] px-4 py-3">
-        <h2 id="document-link-picker-title" className="text-sm font-semibold">Link to document</h2>
-        <label className="sr-only" htmlFor="document-link-search">Search documents</label>
-        <input
-          id="document-link-search"
-          autoFocus
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search documents..."
-          className="mt-3 h-10 w-full rounded-[8px] border border-[var(--app-border)] bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        />
-      </div>
-      <div className="max-h-[min(24rem,60vh)] overflow-y-auto p-2">
-        {documents.length ? documents.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onSelect({ id: item.id, name: item.name })}
-            className="flex min-h-12 w-full flex-col rounded-[7px] px-3 py-2 text-left transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-            aria-label={`Link to document ${item.name}`}
-          >
-            <span className="break-words text-sm font-medium">{item.name}</span>
-            <span className="text-xs text-muted-foreground">{folderLabel(item.folderId)}</span>
-          </button>
-        )) : (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">{query.trim() ? 'No documents found.' : 'No other documents available.'}</p>
-        )}
-      </div>
-      <div className="flex justify-end border-t border-[var(--app-border)] px-4 py-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-9 rounded-[8px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+      {!isEditOpen ? (
+        <>
+          <Button type="button" variant="ghost" size="icon-sm" title="Copy link" aria-label="Copy link" onClick={() => onAction('copy')}><HugeiconsIcon icon={CopyLinkIcon} strokeWidth={2} className="size-4" /></Button>
+          <Button type="button" variant="ghost" size="icon-sm" title="Edit link" aria-label="Edit link" onClick={() => { setHref(toolbar.href); setText(toolbar.text); setIsEditOpen((open) => !open); setIsChangeOpen(false) }}><HugeiconsIcon icon={Edit02Icon} strokeWidth={2} className="size-4" /></Button>
+          <DropdownMenu onOpenChange={setIsChangeOpen}>
+            <DropdownMenuTrigger title="Change to" aria-label="Change link to" className="mybook-inline-link-toolbar-trigger" onClick={() => { setIsChangeOpen(true); setIsEditOpen(false) }}>
+              <HugeiconsIcon icon={ArrowReloadHorizontalIcon} strokeWidth={2} className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-40">
+              <DropdownMenuItem onClick={() => onAction('bookmark')}>Bookmark</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAction('mention')}>Mention</DropdownMenuItem>
+              <DropdownMenuItem disabled={!toolbar.canEmbed} onClick={() => onAction('embed')}>Embed</DropdownMenuItem>
+              {toolbar.documentTarget ? <DropdownMenuItem onClick={() => onAction('page')}>Link to Page</DropdownMenuItem> : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button type="button" variant="ghost" size="icon-sm" title="Remove link" aria-label="Remove link" onClick={() => onAction('remove')}><HugeiconsIcon icon={Unlink02Icon} strokeWidth={2} className="size-4" /></Button>
+        </>
+      ) : null}
+      {isEditOpen ? (
+        <form
+          ref={editRef}
+          className="mybook-inline-link-edit-popover"
+          style={{ top: toolbar.anchor.getBoundingClientRect().bottom - toolbar.position.top + 8 }}
+          onSubmit={submitEdit}
         >
-          Cancel
-        </button>
-      </div>
-    </dialog>
+          <label>Page or URL<Input value={href} onChange={(event) => setHref(event.target.value)} autoFocus /></label>
+          <label>Link Name<Input value={text} onChange={(event) => setText(event.target.value)} /></label>
+          <div className="mybook-inline-link-edit-actions">
+            <Button type="button" variant="destructive" size="sm" className="mybook-inline-link-remove" onClick={() => { onAction('remove'); setIsEditOpen(false) }}>Remove link</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="default" size="sm" className="mybook-inline-link-apply">Apply</Button>
+          </div>
+        </form>
+      ) : null}
+    </div>
   )
 }
 
@@ -473,7 +752,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const isMobile = useIsMobile()
   const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-  const { content, isHydrated, save, setContent, status } = useAutosave(file)
+    const { content, isHydrated, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
   const [loadedId, setLoadedId] = useState<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
@@ -483,7 +762,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [isFullWidth, setIsFullWidth] = useState(() => window.localStorage.getItem(documentViewModeStorageKey) === 'full')
   const [zoom, setZoom] = useState(100)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [isDocumentLinkPickerOpen, setIsDocumentLinkPickerOpen] = useState(false)
+  const [documentLinkPicker, setDocumentLinkPicker] = useState<DocumentLinkPickerState | null>(null)
+  const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState(0)
+  const [pasteAsMenu, setPasteAsMenu] = useState<PasteAsMenuState | null>(null)
+  const [inlineLinkToolbar, setInlineLinkToolbar] = useState<InlineLinkToolbarState | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -495,7 +777,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const lastSavedTitleRef = useRef('')
   const loadedTitleFileIdRef = useRef<string | null>(null)
   const slashMenuRef = useRef<SlashMenuState | null>(null)
+  const slashMenuDismissedRef = useRef(false)
   const slashSelectedIndexRef = useRef(0)
+  const documentLinkPickerRef = useRef<DocumentLinkPickerState | null>(null)
+  const documentLinkSelectedIndexRef = useRef(0)
+  const pasteAsMenuRef = useRef<PasteAsMenuState | null>(null)
+  const inlineLinkToolbarRef = useRef<InlineLinkToolbarState | null>(null)
+  const filesRef = useRef(files)
   const editorRef = useRef<NonNullable<ReturnType<typeof useEditor>> | null>(null)
   const blankOverlayRef = useRef<HTMLDivElement | null>(null)
   const blankSelectionRangeRef = useRef<{ from: number; to: number } | null>(null)
@@ -515,6 +803,16 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setTitle(nextTitle)
   }, [])
   const updateSlashMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    if (slashMenuDismissedRef.current) {
+      slashMenuRef.current = null
+      setSlashMenu(null)
+      return
+    }
+    if (documentLinkPickerRef.current) {
+      slashMenuRef.current = null
+      setSlashMenu(null)
+      return
+    }
     const next = getSlashMenuState(currentEditor)
     slashMenuRef.current = next
     setSlashMenu(next)
@@ -528,9 +826,84 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     slashSelectedIndexRef.current = nextIndex
     setSlashSelectedIndex(nextIndex)
   }, [])
+  const closePasteAsMenu = useCallback(() => {
+    pasteAsMenuRef.current = null
+    setPasteAsMenu(null)
+  }, [])
+  const closeInlineLinkToolbar = useCallback(() => {
+    inlineLinkToolbarRef.current = null
+    setInlineLinkToolbar(null)
+  }, [])
+  const closeDocumentLinkPicker = useCallback(() => {
+    documentLinkPickerRef.current = null
+    setDocumentLinkPicker(null)
+    documentLinkSelectedIndexRef.current = 0
+    setDocumentLinkSelectedIndex(0)
+  }, [])
+  const updateDocumentLinkPicker = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    const picker = documentLinkPickerRef.current
+    if (!picker) return
+    const { selection, doc } = currentEditor.state
+    if (!selection.empty || selection.from < picker.range.from) {
+      closeDocumentLinkPicker()
+      return
+    }
+    const $start = doc.resolve(picker.range.from)
+    const $cursor = doc.resolve(selection.from)
+    if (!$cursor.parent.isTextblock || $start.start() !== $cursor.start()) {
+      closeDocumentLinkPicker()
+      return
+    }
+    const query = doc.textBetween(picker.range.from, selection.from, '\n', '\0')
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const next = {
+      query,
+      range: { from: picker.range.from, to: selection.from },
+      position: { left: coords.left, top: coords.bottom + 8 },
+    }
+    documentLinkPickerRef.current = next
+    setDocumentLinkPicker(next)
+    const resultCount = documentLinkTargets(filesRef.current, fileId, query).length
+    const nextIndex = Math.min(documentLinkSelectedIndexRef.current, Math.max(0, resultCount - 1))
+    documentLinkSelectedIndexRef.current = nextIndex
+    setDocumentLinkSelectedIndex(nextIndex)
+  }, [closeDocumentLinkPicker, fileId])
+  const showInlineLinkToolbar = useCallback((anchor: HTMLAnchorElement) => {
+    const currentEditor = editorRef.current
+    const href = anchor.getAttribute('href') ?? ''
+    if (!currentEditor || !href) return
+    const domPosition = currentEditor.view.posAtDOM(anchor.firstChild ?? anchor, 0)
+    const range = linkRangeAtPosition(currentEditor.view, domPosition, href)
+    if (!range) return
+    const rect = anchor.getBoundingClientRect()
+    const info = analyzePastedUrl(href)
+    const documentTarget = info?.documentId
+      ? filesRef.current.find((candidate) => candidate.id === info.documentId && !candidate.isDeleted)
+      : undefined
+    const nextToolbar = {
+      href,
+      text: range.text,
+      anchor,
+      range: { from: range.from, to: range.to },
+      position: { left: rect.left, top: rect.top - 42 },
+      canEmbed: Boolean(info?.embedUrl),
+      documentTarget: documentTarget ? { id: documentTarget.id, name: documentTarget.name } : undefined,
+    }
+    inlineLinkToolbarRef.current = nextToolbar
+    setInlineLinkToolbar(nextToolbar)
+  }, [])
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false, link: { openOnClick: false, autolink: true }, heading: { levels: [1, 2, 3, 4] } }),
+      StarterKit.configure({
+        codeBlock: false,
+        link: {
+          openOnClick: true,
+          autolink: true,
+          HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
+        },
+        heading: { levels: [1, 2, 3, 4] },
+      }),
+      MarkdownLinkShortcut,
       CodeBlock,
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -541,6 +914,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       TableInteraction,
       Underline,
       Callout,
+      BookmarkBlock,
+      EmbedBlock,
       FileAttachment,
       ImageBlock,
       ToggleBlock,
@@ -560,13 +935,87 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       },
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
-      handleTextInput: () => {
+      handlePaste: (view, event) => {
+        const rawUrl = event.clipboardData?.getData('text/plain') ?? ''
+        const urlInfo = analyzePastedUrl(rawUrl)
+        if (urlInfo && !view.state.selection.empty) {
+          event.preventDefault()
+          editorRef.current?.chain().focus().setLink({ href: urlInfo.url }).run()
+          closePasteAsMenu()
+          closeInlineLinkToolbar()
+          return true
+        }
+        const emptyRange = urlInfo ? emptyParagraphRangeForPaste(view) : null
+        if (!urlInfo || !emptyRange) {
+          closePasteAsMenu()
+          return false
+        }
+
+        window.requestAnimationFrame(() => {
+          const currentEditor = editorRef.current
+          if (!currentEditor) return
+          const pastedNode = currentEditor.state.doc.nodeAt(emptyRange.from)
+          if (!pastedNode) return
+          const nextRange = { from: emptyRange.from, to: emptyRange.from + pastedNode.nodeSize }
+          const coords = currentEditor.view.coordsAtPos(Math.min(nextRange.to - 1, currentEditor.state.doc.content.size))
+          const documentTarget = urlInfo.documentId
+            ? filesRef.current.find((candidate) => candidate.id === urlInfo.documentId && candidate.type === 'document' && !candidate.isDeleted)
+            : undefined
+          const nextPasteMenu = {
+            urlInfo,
+            range: nextRange,
+            position: { left: coords.left, top: coords.bottom + 8 },
+            documentTarget: documentTarget ? { id: documentTarget.id, name: documentTarget.name } : undefined,
+          }
+          pasteAsMenuRef.current = nextPasteMenu
+          setPasteAsMenu(nextPasteMenu)
+        })
+        return false
+      },
+      handleTextInput: (view, from, to, text) => {
+        slashMenuDismissedRef.current = false
+        if (text === '[' && from === to) {
+          const $from = view.state.doc.resolve(from)
+          const textBeforeCursor = $from.parent.textBetween(0, $from.parentOffset, '\n', '\0')
+          if (textBeforeCursor.endsWith('[')) {
+            const shortcutFrom = Math.max($from.start(), from - 1)
+            const transaction = view.state.tr.delete(shortcutFrom, from)
+            transaction.setSelection(TextSelection.create(transaction.doc, shortcutFrom))
+            view.dispatch(transaction)
+            const coords = view.coordsAtPos(shortcutFrom)
+            const nextPicker = {
+              query: '',
+              range: { from: shortcutFrom, to: shortcutFrom },
+              position: { left: coords.left, top: coords.bottom + 8 },
+            }
+            documentLinkPickerRef.current = nextPicker
+            setDocumentLinkPicker(nextPicker)
+            documentLinkSelectedIndexRef.current = 0
+            setDocumentLinkSelectedIndex(0)
+            slashMenuRef.current = null
+            setSlashMenu(null)
+            return true
+          }
+        }
         blankOverlayRef.current?.remove()
         blankOverlayRef.current = null
         blankSelectionRangeRef.current = null
+        closePasteAsMenu()
         return false
       },
       handleDOMEvents: {
+        mouseover: (_view, event) => {
+          const target = event.target
+          const anchor = target instanceof Element ? target.closest('a[href]') : null
+          if (anchor instanceof HTMLAnchorElement && editorRef.current?.view.dom.contains(anchor)) showInlineLinkToolbar(anchor)
+          return false
+        },
+        focusin: (_view, event) => {
+          const target = event.target
+          const anchor = target instanceof Element ? target.closest('a[href]') : null
+          if (anchor instanceof HTMLAnchorElement && editorRef.current?.view.dom.contains(anchor)) showInlineLinkToolbar(anchor)
+          return false
+        },
         mousedown: (view, event) => {
           if (event.target !== view.dom) return false
           const lastNode = view.state.doc.lastChild
@@ -589,11 +1038,36 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             }
           }
           event.preventDefault()
+          if (view.state.selection instanceof NodeSelection) {
+            view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(view.state.selection.to))))
+            view.focus()
+            return true
+          }
           restoreLastActiveSelection()
           return true
         },
+        blur: () => {
+          if (!slashMenuRef.current) return false
+          slashMenuDismissedRef.current = true
+          slashMenuRef.current = null
+          setSlashMenu(null)
+          slashSelectedIndexRef.current = 0
+          setSlashSelectedIndex(0)
+          return false
+        },
       },
       handleKeyDown: (_view, event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && editorRef.current) {
+          event.preventDefault()
+          const currentEditor = editorRef.current
+          const current = currentEditor.getAttributes('link').href as string | undefined
+          const url = window.prompt('Link URL. Markdown shortcut: [text](https://example.com)', current ?? 'https://')
+          if (url === null) return true
+          if (!url.trim()) currentEditor.chain().focus().extendMarkRange('link').unsetLink().run()
+          else currentEditor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
+          return true
+        }
+
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && editorRef.current) {
           event.preventDefault()
           const editor = editorRef.current
@@ -616,6 +1090,46 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           blankOverlayRef.current = null
           editorRef.current.chain().focus().deleteRange(range).run()
           return true
+        }
+
+        if (event.key === 'Escape' && pasteAsMenuRef.current) {
+          event.preventDefault()
+          closePasteAsMenu()
+          return true
+        }
+
+        const documentPicker = documentLinkPickerRef.current
+        if (documentPicker) {
+          const targets = documentLinkTargets(filesRef.current, fileId, documentPicker.query)
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            closeDocumentLinkPicker()
+            return true
+          }
+          if (event.key === 'ArrowDown') {
+            event.preventDefault()
+            const next = targets.length ? (documentLinkSelectedIndexRef.current + 1) % targets.length : 0
+            documentLinkSelectedIndexRef.current = next
+            setDocumentLinkSelectedIndex(next)
+            return true
+          }
+          if (event.key === 'ArrowUp') {
+            event.preventDefault()
+            const next = targets.length ? (documentLinkSelectedIndexRef.current - 1 + targets.length) % targets.length : 0
+            documentLinkSelectedIndexRef.current = next
+            setDocumentLinkSelectedIndex(next)
+            return true
+          }
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            const selected = targets[documentLinkSelectedIndexRef.current] ?? targets[0]
+            const currentEditor = editorRef.current
+            if (!selected || !currentEditor) return true
+            const insertRange = documentLinkInsertionRange(currentEditor, documentPicker.range)
+            closeDocumentLinkPicker()
+            insertDocumentLinkAt(currentEditor, insertRange, { id: selected.id, name: selected.name })
+            return true
+          }
         }
 
         if ((event.key === 'Backspace' || event.key === 'Delete') && editorRef.current && isWholeDocumentSelection(editorRef.current)) {
@@ -665,6 +1179,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       const next = JSON.stringify(currentEditor.getJSON())
       editorContentRef.current = next
       setContent(next)
+      updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
     },
     onSelectionUpdate: ({ editor: currentEditor }) => {
@@ -677,6 +1192,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         from: currentEditor.state.selection.from,
         to: currentEditor.state.selection.to,
       }
+      updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
     },
   })
@@ -684,6 +1200,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   useEffect(() => {
     editorRef.current = editor
   }, [editor])
+
+  useEffect(() => {
+    filesRef.current = files
+  }, [files])
 
   useEffect(() => {
     if (!slashMenu) return
@@ -697,6 +1217,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     window.addEventListener('scroll', closeOnScroll, true)
     return () => window.removeEventListener('scroll', closeOnScroll, true)
+  }, [slashMenu])
+
+  useEffect(() => {
+    if (!slashMenu) return
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-slash-command-menu="true"]')) return
+      slashMenuDismissedRef.current = true
+      slashMenuRef.current = null
+      setSlashMenu(null)
+      slashSelectedIndexRef.current = 0
+      setSlashSelectedIndex(0)
+    }
+    window.addEventListener('pointerdown', closeOnOutsidePointerDown)
+    return () => window.removeEventListener('pointerdown', closeOnOutsidePointerDown)
   }, [slashMenu])
 
   const openImagePicker = useCallback(() => {
@@ -718,7 +1253,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [openFilePicker])
 
   const openDocumentLinkPicker = useCallback(() => {
-    setIsDocumentLinkPickerOpen(true)
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker = {
+      query: '',
+      range: { from: selection.from, to: selection.from },
+      position: { left: coords.left, top: coords.bottom + 8 },
+    }
+    documentLinkPickerRef.current = nextPicker
+    setDocumentLinkPicker(nextPicker)
+    documentLinkSelectedIndexRef.current = 0
+    setDocumentLinkSelectedIndex(0)
+    slashMenuRef.current = null
+    setSlashMenu(null)
   }, [])
 
   useEffect(() => {
@@ -825,14 +1374,111 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (result.data) navigate(`/document/${result.data.id}`)
   }
 
-  const folderLabel = (folderId: string | null) => {
-    if (!folderId) return 'MyBook root'
-    return folders.find((folder) => folder.id === folderId)?.name ?? 'Unknown folder'
+  const insertDocumentLink = (target: { id: string; name: string }) => {
+    const picker = documentLinkPickerRef.current
+    const insertRange = picker ? documentLinkInsertionRange(editor, picker.range) : undefined
+    closeDocumentLinkPicker()
+    if (insertRange) insertDocumentLinkAt(editor, insertRange, target)
+    else insertDocumentLinkAt(editor, { from: editor.state.selection.from, to: editor.state.selection.to }, target)
   }
 
-  const insertDocumentLink = (target: { id: string; name: string }) => {
-    editor.chain().focus().insertContent(documentLinkNode({ targetId: target.id, label: target.name })).run()
-    setIsDocumentLinkPickerOpen(false)
+  const replacePasteAsBlock = (node: object) => {
+    if (!pasteAsMenu) return
+    editor.commands.insertContentAt(pasteAsMenu.range, [node, { type: 'paragraph' }])
+    editor.chain().focus().run()
+    closePasteAsMenu()
+  }
+
+  const choosePasteAs = (action: 'link' | 'bookmark' | 'mention' | 'embed' | 'document-link') => {
+    if (!pasteAsMenu) return
+    if (action === 'link') {
+      closePasteAsMenu()
+      editor.chain().focus().run()
+      return
+    }
+    if (action === 'bookmark' || action === 'mention') {
+      replacePasteAsBlock(bookmarkBlockNode({
+        appearance: action,
+        href: pasteAsMenu.urlInfo.url,
+        title: pasteAsMenu.urlInfo.title,
+        domain: pasteAsMenu.urlInfo.domain,
+      }))
+      return
+    }
+    if (action === 'embed' && pasteAsMenu.urlInfo.embedUrl && pasteAsMenu.urlInfo.embedProvider) {
+      replacePasteAsBlock(embedBlockNode({
+        provider: pasteAsMenu.urlInfo.embedProvider,
+        url: pasteAsMenu.urlInfo.url,
+        embedUrl: pasteAsMenu.urlInfo.embedUrl,
+        title: pasteAsMenu.urlInfo.title,
+      }))
+      return
+    }
+    if (action === 'document-link' && pasteAsMenu.documentTarget) {
+      replacePasteAsBlock(documentLinkNode({
+        targetId: pasteAsMenu.documentTarget.id,
+        label: pasteAsMenu.documentTarget.name,
+      }))
+    }
+  }
+
+  const runInlineLinkAction = (action: 'copy' | 'edit' | 'bookmark' | 'mention' | 'embed' | 'page' | 'remove', values?: { href: string; text: string }) => {
+    const toolbar = inlineLinkToolbarRef.current
+    if (!toolbar) return
+    if (action === 'copy') {
+      void navigator.clipboard?.writeText(toolbar.href)
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'edit') {
+      const url = values?.href.trim() ?? toolbar.href
+      const text = values?.text.trim() || toolbar.text
+      if (url) {
+        editor.chain().focus().insertContentAt(toolbar.range, {
+          type: 'text',
+          text,
+          marks: [{ type: 'link', attrs: { href: url } }],
+        }).run()
+      }
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'remove') {
+      editor.chain().focus().setTextSelection(toolbar.range).unsetLink().run()
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'bookmark' || action === 'mention') {
+      const info = analyzePastedUrl(toolbar.href)
+      editor.commands.insertContentAt(toolbar.range, bookmarkBlockNode({
+        appearance: action,
+        href: toolbar.href,
+        title: toolbar.text || info?.title || toolbar.href,
+        domain: info?.domain ?? '',
+      }))
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'embed') {
+      const info = analyzePastedUrl(toolbar.href)
+      if (info?.embedUrl && info.embedProvider) {
+        editor.commands.insertContentAt(toolbar.range, embedBlockNode({
+          provider: info.embedProvider,
+          url: info.url,
+          embedUrl: info.embedUrl,
+          title: toolbar.text || info.title,
+        }))
+      }
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'page' && toolbar.documentTarget) {
+      editor.commands.insertContentAt(toolbar.range, documentLinkNode({
+        targetId: toolbar.documentTarget.id,
+        label: toolbar.documentTarget.name,
+      }))
+      closeInlineLinkToolbar()
+    }
   }
 
   const setEditorLink = () => {
@@ -1012,33 +1658,81 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setIsFullWidth(fullWidth)
     window.localStorage.setItem(documentViewModeStorageKey, fullWidth ? 'full' : 'page')
   }
+  const shareDocument = async () => {
+    const shareData = { title: documentTitle, text: documentTitle, url: window.location.href }
+    if (navigator.share) {
+      try { await navigator.share(shareData) } catch { /* User cancelled sharing. */ }
+      return
+    }
+    await navigator.clipboard?.writeText(window.location.href)
+    toast.add({ title: 'Link copied', description: 'Document link copied to clipboard.', type: 'success', priority: 'low' })
+  }
+  const toggleDocumentFavorite = async () => {
+    const result = await fileRepository.setFavorite(file.id, !file.isFavorite)
+    if (!result.success) toast.add({ title: 'Could not update favorite', description: result.error, type: 'error', priority: 'low' })
+  }
 
   return (
     <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
-      <header className="sticky top-0 z-30 border-b border-[var(--app-border)] bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-[70] border-b border-[var(--app-border)] bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8">
         <div className="flex min-h-16 items-center gap-2">
-          <button type="button" onClick={() => void close()} aria-label="Close document" className="flex size-11 shrink-0 items-center justify-center rounded-[10px] transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"><ArrowLeftIcon aria-hidden="true" className="size-5" /></button>
-          <div className="min-w-0 flex-1">
-            <label htmlFor="document-title" className="sr-only">Document title</label>
-            <input
-              id="document-title"
-              value={title}
-              onChange={(event) => updateTitle(event.target.value)}
-              onBlur={() => void saveTitle()}
-              placeholder={placeholderTitle}
-                  className="h-8 w-full truncate rounded-[6px] bg-transparent text-base font-semibold outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            />
-            <EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} />
-            <div className="mt-1">
-              <FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={title.trim() || placeholderTitle} onNavigate={navigate} />
+          <SidebarTrigger aria-label="Open navigation" title="Open navigation" className="hidden shrink-0 md:inline-flex" />
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+              <FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={documentTitle} onNavigate={navigate} />
+              <EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} />
             </div>
           </div>
-          <Dropdown><Dropdown.Trigger aria-label="More document actions" className="flex size-11 items-center justify-center rounded-[10px]"><EllipsisHorizontalIcon aria-hidden="true" className="size-6" /></Dropdown.Trigger><Dropdown.Popover placement="bottom end"><Dropdown.Menu aria-label="Document actions" onAction={handleDocumentAction}><Dropdown.Item id="save">Save now</Dropdown.Item><Dropdown.Item id="backup">Sync now</Dropdown.Item><Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item><Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item><Dropdown.Item id="duplicate">Duplicate</Dropdown.Item><Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item><Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item><Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item><Dropdown.Item id="import">Import document</Dropdown.Item><Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item><Dropdown.Item id="close">Close document</Dropdown.Item></Dropdown.Menu></Dropdown.Popover></Dropdown>
-          <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void saveAll()}>Save</AppButton>
-          <AppButton className="hidden sm:flex" variant="secondary" onPress={() => void backupNow()}>Sync now</AppButton>
-          <AppButton className="hidden sm:flex" variant="secondary" isDisabled={!file.driveFileId} onPress={() => file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined}>Open backup</AppButton>
+          <Button type="button" variant="ghost" size="icon" aria-label="Share document" title="Share document" onClick={() => void shareDocument()}><ShareIcon aria-hidden="true" className="size-4" /></Button>
+          <Button type="button" variant="ghost" size="icon" aria-label={file.isFavorite ? 'Remove from favorites' : 'Add to favorites'} title={file.isFavorite ? 'Remove from favorites' : 'Add to favorites'} onClick={() => void toggleDocumentFavorite()}><StarIcon aria-hidden="true" className={`size-4 ${file.isFavorite ? 'fill-current text-amber-500' : ''}`} /></Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />} aria-label="More document actions" title="More document actions"><EllipsisHorizontalIcon aria-hidden="true" className="size-5" /></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onClick={() => void saveAll()}>Save now</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void backupNow()}>Sync now</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={!file.driveFileId} onClick={() => file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined}>Open backup in Drive</DropdownMenuItem>
+              <DropdownMenuItem disabled={!file.driveFileId} onClick={() => void copyDriveLink()}>Copy backup link</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void duplicateDocument()}>Duplicate</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDocumentViewMode(false)}>Page width</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDocumentViewMode(true)}>Full width</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setZoom(75)}>Zoom 75%</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setZoom(100)}>Zoom 100%</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setZoom(125)}>Zoom 125%</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setZoom(150)}>Zoom 150%</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => editor.chain().focus().undo().run()}>Undo</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().redo().run()}>Redo</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={setEditorLink}>Link</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(calloutNode()).run()}>Callout</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(toggleBlockNode()).run()}>Toggle</DropdownMenuItem>
+              <DropdownMenuItem onClick={openImagePicker}>Image</DropdownMenuItem>
+              <DropdownMenuItem onClick={openFilePicker}>File attachment</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()}>Basic Table</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().insertContent({ type: 'paragraph' }).run()}>Horizontal rule</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>Paragraph</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 1 }).run()}>Heading 1</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 2 }).run()}>Heading 2</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 3 }).run()}>Heading 3</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().toggleBold().run()}>Bold</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().toggleItalic().run()}>Italic</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().toggleUnderline().run()}>Underline</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => editor.chain().focus().toggleStrike().run()}>Strikethrough</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Export MyBook Markdown</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void exportDocx(true)}>Download DOCX</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void exportDocx(false)}>Prepare DOCX</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Move to Trash</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void close()}>Close document</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <nav aria-label="Desktop document commands" className="hidden min-h-10 items-center gap-1 border-t border-[var(--app-border)] md:flex">
+        <nav aria-label="Desktop document commands" className="hidden">
           <DesktopMenu label="Document">
             <Dropdown.Menu aria-label="Document menu" onAction={handleDocumentAction}>
               <Dropdown.Item id="save">Save now</Dropdown.Item>
@@ -1133,7 +1827,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             </select>
           </div>
         </nav>
-        <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="desktop" />
+        <div className="hidden"><DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="desktop" /></div>
       </header>
       <input ref={importInputRef} type="file" accept=".docx,.md,.mybook.md,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" aria-label="Import document file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void importDocumentFile(selectedFile); event.target.value = '' }} />
       <input ref={fileInputRef} type="file" className="sr-only" aria-label="Attach file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertAttachmentFile(selectedFile); event.target.value = '' }} />
@@ -1207,7 +1901,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <DocumentLinkProvider
               currentFileId={file.id}
               files={files}
-              openDocument={(targetId) => navigate(`/document/${targetId}`)}
+              openDocument={(targetId) => {
+                const target = files.find((item) => item.id === targetId)
+                navigate(target?.type === 'spreadsheet' ? `/spreadsheet/${targetId}` : `/document/${targetId}`)
+              }}
             >
               <div className="mb-5">
                 <label htmlFor="page-document-title" className="sr-only">Page title</label>
@@ -1260,17 +1957,27 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           />
         )
       ) : null}
+      {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
+      {inlineLinkToolbar ? <InlineLinkToolbar toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
       <EditorBlockControls editor={editor} onInsertBlock={insertBlock} />
       <TableActionsMenu editor={editor} />
       <ChecklistActionsMenu editor={editor} />
-      <DocumentLinkPicker
-        currentFileId={file.id}
-        files={files}
-        folderLabel={folderLabel}
-        isOpen={isDocumentLinkPickerOpen}
-        onClose={() => setIsDocumentLinkPickerOpen(false)}
-        onSelect={insertDocumentLink}
-      />
+      {documentLinkPicker ? (
+        <DocumentLinkPicker
+          currentFileId={file.id}
+          files={files}
+          folders={folders}
+          position={documentLinkPicker.position}
+          query={documentLinkPicker.query}
+          selectedIndex={documentLinkSelectedIndex}
+          onSelectIndex={(index) => {
+            documentLinkSelectedIndexRef.current = index
+            setDocumentLinkSelectedIndex(index)
+          }}
+          onClose={closeDocumentLinkPicker}
+          onSelect={insertDocumentLink}
+        />
+      ) : null}
       <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="mobile" />
       <DeleteFileDialog
         isOpen={isDeleteDialogOpen}

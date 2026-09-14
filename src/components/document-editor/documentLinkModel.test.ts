@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { MyBookFile } from '../../types/files'
-import { documentLinkNode, documentLinkTargets, normalizeDocumentLinkAttrs } from './documentLinkModel'
+import type { MyBookFile, MyBookFolder } from '../../types/files'
+import { documentLinkLocation, documentLinkNode, documentLinkTargets, normalizeDocumentLinkAttrs } from './documentLinkModel'
 
 function file(id: string, name: string, type: MyBookFile['type'] = 'document', isDeleted = false): MyBookFile {
   return {
@@ -18,6 +18,19 @@ function file(id: string, name: string, type: MyBookFile['type'] = 'document', i
     lastSyncedAt: null,
     syncStatus: 'local',
     isDeleted,
+  }
+}
+
+function folder(id: string, name: string, parentId: string | null): MyBookFolder {
+  return {
+    id,
+    driveFolderId: null,
+    workspaceType: 'local',
+    name,
+    parentId,
+    createdAt: '2026-09-04T00:00:00.000Z',
+    updatedAt: '2026-09-04T00:00:00.000Z',
+    isDeleted: false,
   }
 }
 
@@ -42,7 +55,7 @@ describe('document link model', () => {
     expect(normalizeDocumentLinkAttrs(null)).toBeNull()
   })
 
-  it('lists eligible picker targets by stable document id', () => {
+  it('lists eligible picker targets by stable page id', () => {
     const targets = documentLinkTargets([
       file('current', 'Current'),
       file('doc_a', 'Project Notes'),
@@ -51,7 +64,7 @@ describe('document link model', () => {
       file('trashed', 'Deleted Notes', 'document', true),
     ], 'current')
 
-    expect(targets.map((target) => target.id)).toEqual(['doc_a', 'doc_b'])
+    expect(targets.map((target) => target.id)).toEqual(['doc_a', 'doc_b', 'sheet_a'])
   })
 
   it('searches picker targets by title without requiring unique names', () => {
@@ -62,5 +75,15 @@ describe('document link model', () => {
     ], 'current', 'project')
 
     expect(targets.map((target) => target.id)).toEqual(['doc_a', 'doc_b'])
+  })
+
+  it('formats root and nested locations and truncates from the beginning', () => {
+    const folders = [folder('one', 'Folder 1', null), folder('two', 'Folder 2', 'one'), folder('three', 'Folder 3', 'two')]
+    expect(documentLinkLocation(file('root', 'Home'), []).displayPath).toBe('Root / Home')
+    expect(documentLinkLocation({ ...file('nested', 'File name'), folderId: 'three' }, folders, 32)).toEqual({
+      fullPath: 'Root / Folder 1 / Folder 2 / Folder 3 / File name',
+      displayPath: '... / Folder 3 / File name',
+      isTruncated: true,
+    })
   })
 })

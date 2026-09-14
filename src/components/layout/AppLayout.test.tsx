@@ -69,7 +69,7 @@ describe('AppLayout sidebar favorites', () => {
     expect(screen.getByRole('link', { name: 'Open favorite folder Favorite folder' })).toBeInTheDocument()
     expect(screen.queryByText('Trashed favorite')).not.toBeInTheDocument()
     expect(screen.queryByText('Trashed folder')).not.toBeInTheDocument()
-    expect(screen.queryByText('Plain doc')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open favorite document Plain doc' })).not.toBeInTheDocument()
   })
 
   it('shows at most five favorites directly and exposes More when more exist', () => {
@@ -113,7 +113,7 @@ describe('AppLayout sidebar favorites', () => {
 
     mockLibraryData.files = [file({ id: 'doc-1', name: 'Renamed draft', isFavorite: true, isDeleted: true })]
     rerender(layoutTree())
-    expect(screen.queryByText('Renamed draft')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open favorite document Renamed draft' })).not.toBeInTheDocument()
 
     mockLibraryData.files = [file({ id: 'doc-1', name: 'Renamed draft', isFavorite: true, isDeleted: false })]
     rerender(layoutTree())
@@ -121,7 +121,7 @@ describe('AppLayout sidebar favorites', () => {
 
     mockLibraryData.files = [file({ id: 'doc-1', name: 'Renamed draft', isFavorite: false })]
     rerender(layoutTree())
-    expect(screen.queryByText('Renamed draft')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open favorite document Renamed draft' })).not.toBeInTheDocument()
   })
 
   it('opens the full Favorites surface from More', () => {

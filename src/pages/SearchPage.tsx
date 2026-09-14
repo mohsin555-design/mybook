@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState } from '../components/common/EmptyState'
 import { PageHeader } from '../components/common/PageHeader'
@@ -26,9 +26,10 @@ type SearchResult =
 
 export function SearchPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { files, folders } = useLibraryData()
   const workspaceMode = useWorkspaceStore((state) => state.mode)
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(() => searchParams.get('query') ?? '')
   const [renameTarget, setRenameTarget] = useState<MyBookFile | null>(null)
   const [folderRenameTarget, setFolderRenameTarget] = useState<MyBookFolder | null>(null)
   const [folderDeleteTarget, setFolderDeleteTarget] = useState<MyBookFolder | null>(null)

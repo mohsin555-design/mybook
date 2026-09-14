@@ -356,7 +356,7 @@ export function DocumentToolbar({ editor, onInsertFile, onInsertImage, onInsertB
   }
 
   return (
-    <div role="toolbar" aria-label="Document formatting" className="mybook-mobile-document-toolbar fixed inset-x-0 z-40 border-t border-[var(--app-border)] bg-[var(--app-surface)] pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_rgba(0,0,0,0.06)] transition-[bottom] duration-150 md:hidden" style={{ bottom: keyboardOffset }}>
+    <div role="toolbar" aria-label="Document formatting" className="mybook-mobile-document-toolbar fixed inset-x-0 z-20 border-t border-[var(--app-border)] bg-[var(--app-surface)] pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_20px_rgba(0,0,0,0.06)] transition-[bottom] duration-150 md:hidden" style={{ bottom: keyboardOffset }}>
       <div className="scrollbar mx-auto flex h-16 max-w-4xl items-center gap-1 overflow-x-auto overscroll-x-contain px-2 [scrollbar-width:thin]">
         <ToolbarControls editor={editor} idPrefix="mobile" onInsertFile={onInsertFile} onInsertImage={onInsertImage} onInsertBlock={onInsertBlock} variant="mobile" />
       </div>

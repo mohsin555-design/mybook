@@ -30,6 +30,7 @@ describe('SlashCommandMenu grouping', () => {
     expect(slashCommands.find((command) => command.id === 'h4')).toMatchObject({ title: 'Heading 4', shortcut: '####' })
     expect(slashCommands.find((command) => command.id === 'quote')).toMatchObject({ shortcut: '>' })
     expect(slashCommands.find((command) => command.id === 'bullet')).toMatchObject({ shortcut: '- or *' })
+    expect(slashCommands.find((command) => command.id === 'document-link')).toMatchObject({ title: 'Link to Page', shortcut: '[[' })
     expect(slashCommands.find((command) => command.id === 'callout')?.shortcut).toBeUndefined()
   })
 })
@@ -87,12 +88,12 @@ describe('SlashCommandMenu database command', () => {
     expect(filterSlashCommands('contents').map((command) => command.id)).toContain('toc')
   })
 
-  it('shows Document link by title and aliases', () => {
+  it('shows Link to Page by title and aliases', () => {
     expect(slashCommands).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'document-link',
-        title: 'Document link',
-        description: 'Link to another document',
+        title: 'Link to Page',
+        description: 'Link to another workspace item',
       }),
     ]))
     expect(filterSlashCommands('document link').map((command) => command.id)).toContain('document-link')

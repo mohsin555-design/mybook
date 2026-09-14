@@ -450,7 +450,7 @@ function GripMenuContent({
                 <span aria-hidden="true">›</span>
               </button>
               {openSubmenu === submenu ? (
-                <div role="menu" aria-label={label === 'Color' ? 'Background color' : 'Align'} className="absolute left-full top-0 z-50 ml-1 min-w-44 rounded-lg border border-[var(--app-border)] bg-popover p-1 shadow-lg">
+                <div role="menu" aria-label={label === 'Color' ? 'Background color' : 'Align'} className="absolute left-full top-0 z-20 ml-1 min-w-44 rounded-lg border border-[var(--app-border)] bg-popover p-1 shadow-lg">
                   {label === 'Color' ? tableColors.map((color) => (
                     <button
                       key={color.name}
@@ -967,7 +967,7 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
       {isManualMenuOpen && selection ? (
         <div
           ref={selection.axis === 'column' ? columnMenuRef : rowMenuRef}
-          className="mybook-table-manual-menu fixed z-50 w-64 rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
+          className="mybook-table-manual-menu fixed z-20 w-64 rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
           style={selection.axis === 'row'
             ? {
                 top: rowMenuTop ?? tableMenuTop(selection.rect.top + selection.rect.height / 2 - 9, selection.rect.top + selection.rect.height / 2 + 9, 360),

@@ -1,6 +1,7 @@
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewWrapper } from '@tiptap/react'
 
+import { Card, CardAction, CardContent } from '../ui/card'
 import { LinkBlockActions } from './LinkBlockActions'
 
 export function BookmarkBlockNodeView({ editor, getPos, node, selected }: NodeViewProps) {
@@ -17,27 +18,33 @@ export function BookmarkBlockNodeView({ editor, getPos, node, selected }: NodeVi
     <NodeViewWrapper
       as="section"
       data-drag-handle
-      className={`mybook-bookmark-block ${selected ? 'ProseMirror-selectednode' : ''}`}
+      className="mybook-link-node-view"
       contentEditable={false}
     >
-      <button type="button" className="mybook-bookmark-card" onClick={open} aria-label={`Open ${title}`}>
-        <span className="mybook-bookmark-logo" aria-hidden="true">
-          {favicon ? <img src={favicon} alt="" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
-          <span>{domain.slice(0, 1).toUpperCase() || 'L'}</span>
-        </span>
-        <span className="mybook-bookmark-body">
-          <span className="mybook-bookmark-title">{title}</span>
-          {description ? <span className="mybook-bookmark-description">{description}</span> : null}
-          <span className="mybook-bookmark-domain">{domain || href}</span>
-        </span>
-      </button>
-      <LinkBlockActions
-        editor={editor}
-        getPos={getPos}
-        metadata={{ kind: 'bookmark', url: href, title, domain, description }}
-        node={node}
-        onOpen={open}
-      />
+      <Card size="sm" className={`mybook-bookmark-block ${selected ? 'ProseMirror-selectednode' : ''}`}>
+        <CardContent className="mybook-bookmark-content">
+          <button type="button" className="mybook-bookmark-card" onClick={open} aria-label={`Open ${title}`}>
+            <span className="mybook-bookmark-logo" aria-hidden="true">
+              {favicon ? <img src={favicon} alt="" onError={(event) => { event.currentTarget.style.display = 'none' }} /> : null}
+              <span>{domain.slice(0, 1).toUpperCase() || 'L'}</span>
+            </span>
+            <span className="mybook-bookmark-body">
+              <span className="mybook-bookmark-title">{title}</span>
+              {description ? <span className="mybook-bookmark-description">{description}</span> : null}
+              <span className="mybook-bookmark-domain">{domain || href}</span>
+            </span>
+          </button>
+        </CardContent>
+        <CardAction className="mybook-link-card-action-slot">
+          <LinkBlockActions
+            editor={editor}
+            getPos={getPos}
+            metadata={{ kind: 'bookmark', url: href, title, domain, description }}
+            node={node}
+            onOpen={open}
+          />
+        </CardAction>
+      </Card>
     </NodeViewWrapper>
   )
 }

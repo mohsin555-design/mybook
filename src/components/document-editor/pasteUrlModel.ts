@@ -65,16 +65,17 @@ function supportedEmbedFromUrl(url: URL) {
   const youtubeId = youtubeIdFromUrl(url)
   if (youtubeId) return { provider: 'youtube', id: youtubeId, embedUrl: `https://www.youtube.com/embed/${youtubeId}` }
 
-  if (figmaHosts.has(url.hostname) && /^\/(?:file|design|proto)\//u.test(url.pathname)) {
+  if (figmaHosts.has(url.hostname) && /^\/(?:file|design|proto|board)\//u.test(url.pathname)) {
     return { provider: 'figma', embedUrl: `https://www.figma.com/embed?embed_host=writin&url=${encodeURIComponent(url.href)}` }
   }
 
   if (url.hostname === 'drive.google.com') {
-    const fileMatch = url.pathname.match(/^\/file\/d\/([^/]+)/u)
-    if (fileMatch?.[1]) return { provider: 'google-drive', embedUrl: `https://drive.google.com/file/d/${fileMatch[1]}/preview` }
+    const fileId = url.pathname.match(/^\/file\/d\/([^/]+)/u)?.[1]
+      ?? url.searchParams.get('id')
+    if (fileId) return { provider: 'google-drive', embedUrl: `https://drive.google.com/file/d/${fileId}/preview` }
   }
 
-  return null
+  return { provider: 'web', embedUrl: url.href }
 }
 
 function cleanYoutubeId(value: string) {

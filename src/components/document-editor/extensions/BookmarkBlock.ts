@@ -11,6 +11,21 @@ export const BookmarkBlock = Node.create({
 
   addAttributes() {
     return {
+      appearance: {
+        default: 'bookmark',
+        parseHTML: (element) => element.getAttribute('data-appearance') === 'mention' ? 'mention' : 'bookmark',
+        renderHTML: (attributes) => ({ 'data-appearance': attributes.appearance ?? 'bookmark' }),
+      },
+      siteName: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-site-name') ?? '',
+        renderHTML: (attributes) => ({ 'data-site-name': attributes.siteName ?? '' }),
+      },
+      image: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-image') ?? '',
+        renderHTML: (attributes) => ({ 'data-image': attributes.image ?? '' }),
+      },
       href: {
         default: '',
         parseHTML: (element) => element.getAttribute('data-href') ?? element.querySelector('a')?.getAttribute('href') ?? '',
@@ -41,15 +56,14 @@ export const BookmarkBlock = Node.create({
   renderHTML({ node, HTMLAttributes }) {
     const href = String(node.attrs.href ?? '')
     const title = String(node.attrs.title ?? '') || href
-    const domain = String(node.attrs.domain ?? '')
     const description = String(node.attrs.description ?? '')
     return [
       'section',
       mergeAttributes({ 'data-type': 'bookmark', class: 'mybook-bookmark-block' }, HTMLAttributes),
       ['a', { href, class: 'mybook-bookmark-link' },
         ['span', { class: 'mybook-bookmark-title' }, title],
-        domain ? ['span', { class: 'mybook-bookmark-domain' }, domain] : ['span', { class: 'mybook-bookmark-domain' }, href],
         description ? ['span', { class: 'mybook-bookmark-description' }, description] : '',
+        ['span', { class: 'mybook-bookmark-domain' }, href],
       ],
     ]
   },
@@ -59,7 +73,7 @@ export const BookmarkBlock = Node.create({
   },
 })
 
-export function bookmarkBlockNode(attrs: { href: string; title: string; domain: string; description?: string }) {
+export function bookmarkBlockNode(attrs: { href: string; title: string; domain: string; description?: string; appearance?: 'bookmark' | 'mention' }) {
   return {
     type: 'bookmarkBlock',
     attrs: {
@@ -67,6 +81,7 @@ export function bookmarkBlockNode(attrs: { href: string; title: string; domain: 
       title: attrs.title,
       domain: attrs.domain,
       description: attrs.description ?? '',
+      ...(attrs.appearance === 'mention' ? { appearance: 'mention' } : {}),
     },
   }
 }

@@ -1,8 +1,11 @@
 import type { Editor } from '@tiptap/react'
-import { AllSelection, TextSelection } from '@tiptap/pm/state'
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state'
 
 export function keepEditorFocusedOnBlankClick(editor: Editor, event: Pick<MouseEvent, 'preventDefault'>) {
   event.preventDefault()
+  if (editor.state.selection instanceof NodeSelection) {
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(editor.state.selection.to))))
+  }
   editor.view.focus()
 }
 

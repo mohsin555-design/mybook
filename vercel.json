@@ -15,5 +15,5 @@
       "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
     }
   ],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/api/bookmark-metadata", "destination": "/api/bookmark-metadata" }, { "source": "/(.*)", "destination": "/index.html" }]
 }

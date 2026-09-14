@@ -3,8 +3,9 @@ import {
   ArrowUpIcon,
   DocumentDuplicateIcon,
   EllipsisHorizontalIcon,
-  TrashIcon,
 } from '@heroicons/react/24/outline'
+import { Delete02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import type { JSONContent } from '@tiptap/core'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
@@ -12,6 +13,7 @@ import { NodeSelection } from '@tiptap/pm/state'
 import { useEffect, useState, type ReactNode } from 'react'
 import { cloneDatabaseAttrs } from './databaseModel'
 import { MobileBottomSheet } from '../common/MobileBottomSheet'
+import { Button } from '../ui/button'
 
 const actionableBlocks = new Set(['callout', 'toggleBlock', 'tableOfContents', 'documentLink', 'databaseBlock', 'imageBlock', 'fileAttachment', 'table', 'codeBlock'])
 
@@ -104,8 +106,10 @@ function ActionButton({
   onClick: () => void
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-lg"
       aria-label={label}
       title={label}
       disabled={disabled}
@@ -116,7 +120,7 @@ function ActionButton({
       className="flex size-9 items-center justify-center rounded-[8px] text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-35"
     >
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -134,8 +138,10 @@ function SheetActionButton({
   onClick: () => void
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="lg"
       disabled={disabled}
       onClick={onClick}
       className={`flex min-h-12 w-full items-center gap-3 rounded-[8px] border border-[var(--app-border)] px-4 text-left text-sm font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-40 ${
@@ -146,7 +152,7 @@ function SheetActionButton({
     >
       {children}
       <span>{label}</span>
-    </button>
+    </Button>
   )
 }
 
@@ -187,7 +193,7 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
     <>
       {target ? (
         <div
-          className="fixed z-40 hidden gap-1 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.12)] md:flex"
+          className="fixed z-20 hidden gap-1 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.12)] md:flex"
           style={{ top, left }}
           role="toolbar"
           aria-label="Block actions"
@@ -202,13 +208,13 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
             <DocumentDuplicateIcon aria-hidden="true" className="size-4" />
           </ActionButton>
           <ActionButton label="Delete block" onClick={() => deleteBlock(editor, target)}>
-            <TrashIcon aria-hidden="true" className="size-4" />
+            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
           </ActionButton>
         </div>
       ) : null}
 
       {target ? (
-      <div className="fixed right-4 z-40 md:hidden" style={{ bottom: 'calc(var(--mybook-keyboard-offset, 0px) + 5.5rem + env(safe-area-inset-bottom))' }}>
+      <div className="fixed right-4 z-20 md:hidden" style={{ bottom: 'calc(var(--mybook-keyboard-offset, 0px) + 5.5rem + env(safe-area-inset-bottom))' }}>
         <MobileBottomSheet
           title="Block actions"
           triggerLabel="Open block actions"
@@ -232,7 +238,7 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
               <DocumentDuplicateIcon aria-hidden="true" className="size-5 shrink-0" />
             </SheetActionButton>
             <SheetActionButton label="Delete block" destructive onClick={() => runMobileAction(() => deleteBlock(editor, target))}>
-              <TrashIcon aria-hidden="true" className="size-5 shrink-0" />
+              <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-5 shrink-0" />
             </SheetActionButton>
           </div>
         </MobileBottomSheet>

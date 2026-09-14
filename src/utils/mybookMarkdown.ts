@@ -329,6 +329,9 @@ function documentLinkMarkdown(node: JSONContent) {
 function bookmarkMarkdown(node: JSONContent) {
   if (typeof node.attrs?.href !== 'string') return ''
   const attrs = {
+    ...(node.attrs.appearance === 'mention' ? { appearance: 'mention' } : {}),
+    ...(typeof node.attrs.siteName === 'string' && node.attrs.siteName ? { siteName: node.attrs.siteName } : {}),
+    ...(typeof node.attrs.image === 'string' && node.attrs.image ? { image: node.attrs.image } : {}),
     href: node.attrs.href,
     title: typeof node.attrs.title === 'string' ? node.attrs.title : node.attrs.href,
     domain: typeof node.attrs.domain === 'string' ? node.attrs.domain : '',
@@ -340,6 +343,7 @@ function bookmarkMarkdown(node: JSONContent) {
 function embedMarkdown(node: JSONContent) {
   if (typeof node.attrs?.url !== 'string' || typeof node.attrs?.embedUrl !== 'string') return ''
   const attrs = {
+    ...(typeof node.attrs.description === 'string' && node.attrs.description ? { description: node.attrs.description } : {}),
     provider: typeof node.attrs.provider === 'string' ? node.attrs.provider : 'youtube',
     url: node.attrs.url,
     embedUrl: node.attrs.embedUrl,
@@ -455,6 +459,9 @@ function parseStructuredBookmark(lines: string[]): JSONContent | null {
     return {
       type: 'bookmarkBlock',
       attrs: {
+        ...(parsed.appearance === 'mention' ? { appearance: 'mention' } : {}),
+        ...(typeof parsed.siteName === 'string' && parsed.siteName ? { siteName: parsed.siteName } : {}),
+        ...(typeof parsed.image === 'string' && parsed.image ? { image: parsed.image } : {}),
         href: parsed.href,
         title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title : parsed.href,
         domain: typeof parsed.domain === 'string' ? parsed.domain : '',
@@ -474,6 +481,7 @@ function parseStructuredEmbed(lines: string[]): JSONContent | null {
     return {
       type: 'embedBlock',
       attrs: {
+        ...(typeof parsed.description === 'string' && parsed.description ? { description: parsed.description } : {}),
         provider: typeof parsed.provider === 'string' ? parsed.provider : 'youtube',
         url: parsed.url,
         embedUrl: parsed.embedUrl,

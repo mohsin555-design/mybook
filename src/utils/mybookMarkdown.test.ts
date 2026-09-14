@@ -54,7 +54,25 @@ const databaseBlock = (attrs = databaseAttrs()): JSONContent => ({ type: 'databa
 const tableOfContentsBlock = (): JSONContent => ({ type: 'tableOfContents' })
 const documentLinkBlock = (targetId = 'doc_b', label = 'Project Notes'): JSONContent => ({ type: 'documentLink', attrs: { targetId, label } })
 const bookmarkBlock = (): JSONContent => ({ type: 'bookmarkBlock', attrs: { href: 'https://example.com/docs/writin-links', title: 'Writin links', domain: 'example.com', description: '' } })
+it('preserves bookmark preview images and the original query in Markdown', () => {
+  const bookmark = bookmarkBlock()
+  bookmark.attrs = { ...bookmark.attrs, href: 'https://example.com/icons?search=delete', image: 'https://example.com/preview.png' }
+  const markdown = documentToMyBookMarkdown('Bookmarks', doc(bookmark))
+  expect(myBookMarkdownToDocument(markdown).content?.[0]?.attrs).toMatchObject(bookmark.attrs!)
+})
+it('preserves website mention appearance and site name in Markdown', () => {
+  const mention = bookmarkBlock()
+  mention.attrs = { ...mention.attrs, appearance: 'mention', siteName: 'Example' }
+  const markdown = documentToMyBookMarkdown('Mentions', doc(mention))
+  expect(myBookMarkdownToDocument(markdown).content?.[0]?.attrs).toMatchObject(mention.attrs!)
+})
 const embedBlock = (): JSONContent => ({ type: 'embedBlock', attrs: { provider: 'youtube', url: 'https://youtu.be/dQw4w9WgXcQ', embedUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', title: 'YouTube video' } })
+it('preserves embed descriptions in Markdown', () => {
+  const embed = embedBlock()
+  embed.attrs = { ...embed.attrs, description: 'Page description' }
+  const markdown = documentToMyBookMarkdown('Embeds', doc(embed))
+  expect(myBookMarkdownToDocument(markdown).content?.[0]?.attrs).toMatchObject(embed.attrs!)
+})
 const markOrder = ['underline', 'strike', 'italic', 'bold', 'link', 'code']
 
 function normalize(value: JSONContent): JSONContent {

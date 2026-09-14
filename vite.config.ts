@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import bookmarkMetadata from './server/bookmarkMetadata'
 
 export default defineConfig({
   resolve: {
@@ -9,7 +10,15 @@ export default defineConfig({
       '@': new URL('./src', import.meta.url).pathname,
     },
   },
-  plugins: [react(), tailwindcss(), VitePWA({
+  plugins: [{
+    name: 'bookmark-metadata',
+    configureServer(server) {
+      server.middlewares.use('/api/bookmark-metadata', bookmarkMetadata)
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use('/api/bookmark-metadata', bookmarkMetadata)
+    },
+  }, react(), tailwindcss(), VitePWA({
     registerType: 'prompt',
     includeAssets: ['pwa-192.svg', 'pwa-512.svg', 'pwa-maskable.svg'],
     manifest: {

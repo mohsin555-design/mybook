@@ -11,6 +11,11 @@ export const EmbedBlock = Node.create({
 
   addAttributes() {
     return {
+      description: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-description') ?? '',
+        renderHTML: (attributes) => ({ 'data-description': attributes.description ?? '' }),
+      },
       provider: {
         default: 'youtube',
         parseHTML: (element) => element.getAttribute('data-provider') ?? 'youtube',

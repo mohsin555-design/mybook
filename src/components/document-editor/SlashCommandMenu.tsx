@@ -131,7 +131,7 @@ export function SlashCommandMenu({ menu, selectedIndex, onSelectIndex, onRun }: 
 
   return (
     <div
-      className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
+      className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
       data-slash-command-menu="true"
       data-command-menu-scroller="true"
       style={{ top: Math.max(8, top), left: Math.max(8, left) }}
@@ -157,7 +157,7 @@ export function MobileSlashCommandMenu({ menu, selectedIndex, onSelectIndex, onR
 
   return (
     <div
-      className="fixed z-50 w-[min(22rem,calc(100vw-1rem))] rounded-[10px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.18)] md:hidden"
+      className="fixed z-20 w-[min(22rem,calc(100vw-1rem))] rounded-[10px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.18)] md:hidden"
       data-slash-command-menu="true"
       style={{
         top,

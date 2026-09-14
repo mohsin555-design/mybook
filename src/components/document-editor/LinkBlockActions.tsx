@@ -1,4 +1,6 @@
-import { ArrowTopRightOnSquareIcon, ClipboardDocumentIcon, DocumentDuplicateIcon, EllipsisHorizontalIcon, LinkSlashIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { EllipsisHorizontalIcon } from '@heroicons/react/24/outline'
+import { ArrowReloadHorizontalIcon, Copy02Icon, CopyLinkIcon, Delete02Icon, ReloadIcon, SquareArrowOutUpRightIcon, Unlink02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { Editor } from '@tiptap/react'
 
@@ -16,7 +18,7 @@ import { bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { embedBlockNode } from './extensions/EmbedBlock'
 import { analyzePastedUrl } from './pasteUrlModel'
 
-export type LinkBlockKind = 'bookmark' | 'embed' | 'page'
+export type LinkBlockKind = 'bookmark' | 'embed' | 'page' | 'mention'
 
 export interface LinkBlockMetadata {
   kind: LinkBlockKind
@@ -32,12 +34,14 @@ export function LinkBlockActions({
   metadata,
   node,
   onOpen,
+  onReload,
 }: {
   editor: Editor
   getPos: (() => number | undefined) | boolean
   metadata: LinkBlockMetadata
   node: ProseMirrorNode
   onOpen: () => void
+  onReload?: () => void
 }) {
   const range = blockRange(getPos, node)
   const canEmbed = Boolean(analyzePastedUrl(metadata.url)?.embedUrl)
@@ -70,7 +74,7 @@ export function LinkBlockActions({
       }],
     })
   }
-  const changeToBookmark = () => {
+  const changeToBookmark = (appearance: 'bookmark' | 'mention' = 'bookmark') => {
     if (!range) return
     const info = analyzePastedUrl(metadata.url)
     editor.commands.insertContentAt(range, bookmarkBlockNode({
@@ -78,6 +82,7 @@ export function LinkBlockActions({
       title: metadata.title || info?.title || metadata.url,
       domain: metadata.domain || info?.domain || '',
       description: metadata.description ?? '',
+      appearance,
     }))
   }
   const changeToEmbed = () => {
@@ -104,20 +109,22 @@ export function LinkBlockActions({
         <EllipsisHorizontalIcon aria-hidden="true" className="size-5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem onClick={onOpen}><ArrowTopRightOnSquareIcon aria-hidden="true" className="size-4" />Open</DropdownMenuItem>
-        <DropdownMenuItem onClick={copyLink}><ClipboardDocumentIcon aria-hidden="true" className="size-4" />Copy link</DropdownMenuItem>
-        <DropdownMenuItem onClick={duplicate}><DocumentDuplicateIcon aria-hidden="true" className="size-4" />Duplicate</DropdownMenuItem>
+        <DropdownMenuItem onClick={onOpen}><HugeiconsIcon icon={SquareArrowOutUpRightIcon} strokeWidth={2} className="size-4" />Open</DropdownMenuItem>
+        {metadata.kind === 'embed' && onReload ? <DropdownMenuItem onClick={onReload}><HugeiconsIcon icon={ReloadIcon} strokeWidth={2} className="size-4" />Reload</DropdownMenuItem> : null}
+        <DropdownMenuItem onClick={copyLink}><HugeiconsIcon icon={CopyLinkIcon} strokeWidth={2} className="size-4" />Copy link</DropdownMenuItem>
+        <DropdownMenuItem onClick={duplicate}><HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4" />Duplicate</DropdownMenuItem>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Change to</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger><HugeiconsIcon icon={ArrowReloadHorizontalIcon} strokeWidth={2} />Change to</DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
-            <DropdownMenuItem onClick={changeToLink}>Link</DropdownMenuItem>
-            <DropdownMenuItem onClick={changeToBookmark}>Bookmark</DropdownMenuItem>
-            <DropdownMenuItem disabled={!canEmbed} onClick={changeToEmbed}>Embed</DropdownMenuItem>
+            {metadata.kind !== 'page' ? <DropdownMenuItem onClick={changeToLink}>Link</DropdownMenuItem> : null}
+            {metadata.kind !== 'bookmark' ? <DropdownMenuItem onClick={() => changeToBookmark()}>Bookmark</DropdownMenuItem> : null}
+            {metadata.kind !== 'mention' ? <DropdownMenuItem onClick={() => changeToBookmark('mention')}>Mention</DropdownMenuItem> : null}
+            {metadata.kind !== 'embed' ? <DropdownMenuItem disabled={!canEmbed} onClick={changeToEmbed}>Embed</DropdownMenuItem> : null}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        <DropdownMenuItem onClick={removeLink}><LinkSlashIcon aria-hidden="true" className="size-4" />Remove link</DropdownMenuItem>
+        <DropdownMenuItem onClick={removeLink}><HugeiconsIcon icon={Unlink02Icon} strokeWidth={2} />Remove link</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={deleteBlock}><TrashIcon aria-hidden="true" className="size-4" />Delete</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={deleteBlock}><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />Delete</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

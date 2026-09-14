@@ -18,6 +18,7 @@ interface AuthState {
   isLoading: boolean
   error: string | null
   email: string | null
+  displayName: string | null
   accessToken: string | null
   accessTokenExpiresAt: number | null
   initializeSession: () => Promise<void>
@@ -64,9 +65,10 @@ export function getFriendlyGoogleAuthError(error: unknown) {
   return error instanceof Error ? error.message : 'We could not sign you in.'
 }
 
-function safeStoredState(state: Pick<AuthState, 'email' | 'accessToken' | 'accessTokenExpiresAt'>) {
+function safeStoredState(state: Pick<AuthState, 'email' | 'displayName' | 'accessToken' | 'accessTokenExpiresAt'>) {
   return {
     email: state.email,
+    displayName: state.displayName,
     accessToken: isBackendAuthEnabled ? null : state.accessToken,
     accessTokenExpiresAt: isBackendAuthEnabled ? null : state.accessTokenExpiresAt,
   }
@@ -183,6 +185,7 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
 
   return {
     email,
+    displayName: typeof payload.name === 'string' ? payload.name.trim() || null : null,
     accessToken,
     accessTokenExpiresAt: Date.now() + expiresIn * 1000,
   }
@@ -195,6 +198,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: isBackendAuthEnabled,
       error: null,
       email: null,
+      displayName: null,
       accessToken: null,
       accessTokenExpiresAt: null,
       clearError: () => set({ error: null }),
@@ -208,6 +212,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
             email: session.email ?? get().email,
+            displayName: get().displayName,
           })
         } catch (error) {
           set({
@@ -229,6 +234,7 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
             email: session.email,
+            displayName: session.displayName,
             accessToken: session.accessToken,
             accessTokenExpiresAt: session.accessTokenExpiresAt,
           })
@@ -377,6 +383,7 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           error: null,
           email: null,
+          displayName: null,
           accessToken: null,
           accessTokenExpiresAt: null,
         })

@@ -1,4 +1,6 @@
-import { EllipsisHorizontalIcon, FolderArrowDownIcon, PencilSquareIcon, StarIcon as StarOutlineIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { EllipsisHorizontalIcon, FolderArrowDownIcon, PencilSquareIcon, StarIcon as StarOutlineIcon } from '@heroicons/react/24/outline'
+import { Delete02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid'
 import { Dropdown } from '../ui/compat-dropdown'
 
@@ -49,7 +51,7 @@ export function FolderActionsMenu({ folderName, folders, folderId, currentParent
           {onToggleFavorite ? <Dropdown.Item id="favorite" aria-label={`${isFavorite ? 'Remove from' : 'Add to'} favorites`}><FavoriteIcon aria-hidden="true" className="size-5" />{isFavorite ? 'Remove from favorites' : 'Add to favorites'}</Dropdown.Item> : null}
           {currentParentId ? <Dropdown.Item id="root"><FolderArrowDownIcon aria-hidden="true" className="size-5" />Move to MyBook root</Dropdown.Item> : null}
           {destinations.map((folder) => <Dropdown.Item key={folder.id} id={`move:${folder.id}`}><FolderArrowDownIcon aria-hidden="true" className="size-5" />Move to {folder.name}</Dropdown.Item>)}
-          <Dropdown.Item id="delete" variant="danger"><TrashIcon aria-hidden="true" className="size-5" />Delete</Dropdown.Item>
+          <Dropdown.Item id="delete" variant="danger"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-5" />Delete</Dropdown.Item>
         </Dropdown.Menu>
       </Dropdown.Popover>
     </Dropdown>

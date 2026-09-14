@@ -1,9 +1,12 @@
-import { ClipboardDocumentIcon, DocumentDuplicateIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { ClipboardDocumentIcon, DocumentDuplicateIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { Delete02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import { useEffect, useRef, useState } from 'react'
 
+import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, slashCommands, type SlashCommand } from './slashCommands'
 
@@ -14,7 +17,7 @@ interface BlockTarget {
   controlRect: DOMRect
 }
 
-const CENTERED_BLOCK_CONTROLS = new Set(['bookmarkBlock', 'documentLink', 'embedBlock'])
+const CENTERED_BLOCK_CONTROLS = new Set(['bookmarkBlock', 'documentLink', 'embedBlock', 'horizontalRule'])
 
 function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): BlockTarget {
   const { view } = editor
@@ -84,6 +87,26 @@ function findSelectionTarget(editor: Editor): BlockTarget | null {
 }
 
 function findPointerTarget(editor: Editor, event: PointerEvent): BlockTarget | null {
+  const pointerElement = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-document-link-block="true"]') : null
+  if (pointerElement) {
+    let match: BlockTarget | null = null
+    editor.state.doc.descendants((node, pos) => {
+      if (match || node.type.name !== 'documentLink') return
+      const nodeElement = editor.view.nodeDOM(pos)
+      if (nodeElement === pointerElement || (nodeElement instanceof Node && nodeElement.contains(pointerElement))) {
+        match = targetAtBlockPos(editor, node, pos)
+      }
+    })
+    if (match) return match
+
+    const domPosition = editor.view.posAtDOM(pointerElement, 0)
+    const resolved = editor.state.doc.resolve(Math.min(domPosition, editor.state.doc.content.size))
+    for (let depth = resolved.depth; depth > 0; depth -= 1) {
+      const node = resolved.node(depth)
+      if (node.type.name !== 'documentLink') continue
+      return targetAtBlockPos(editor, node, resolved.before(depth))
+    }
+  }
   const result = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
   if (!result) return null
   return blockTargetAtResolvedPos(editor, result.pos)
@@ -145,6 +168,7 @@ async function copyTarget(target: BlockTarget) {
 
 function deleteTarget(editor: Editor, target: BlockTarget) {
   editor.chain().focus().deleteRange({ from: target.pos, to: target.pos + target.node.nodeSize }).run()
+  editor.view.dom.blur()
 }
 
 function blockControlsTop(target: BlockTarget | null) {
@@ -338,14 +362,15 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
 
   const top = blockControlsTop(target)
   const left = Math.max(8, (target?.controlRect.left ?? 76) - 68)
-  const bridgeTop = Math.max(8, Math.min(top, target?.rect.top ?? top))
-  const bridgeLeft = Math.max(0, left)
-  const bridgeWidth = Math.max(0, (target?.controlRect.left ?? left) - bridgeLeft)
-  const bridgeHeight = Math.max(32, target?.rect.height ?? 32)
-  const menuRect = new DOMRect(left, top, 56, 28)
   const header = document.querySelector<HTMLElement>('.mybook-document-editor > header')
   const headerBottom = header?.getBoundingClientRect().bottom ?? 0
   const menuBoundary = Math.max(8, headerBottom + 8)
+  const controlsTop = Math.max(top, menuBoundary)
+  const bridgeTop = Math.max(8, Math.min(controlsTop, target?.rect.top ?? controlsTop))
+  const bridgeLeft = Math.max(0, left)
+  const bridgeWidth = Math.max(0, (target?.controlRect.left ?? left) - bridgeLeft)
+  const bridgeHeight = Math.max(32, target?.rect.height ?? 32)
+  const menuRect = new DOMRect(left, controlsTop, 56, 28)
   const insertMenuTop = commandMenuTop(menuRect, 352, 8, menuBoundary)
   const actionsMenuTop = commandMenuTop(menuRect, 128, 8, menuBoundary)
   const actionsMenuWidth = 176
@@ -369,7 +394,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
       {gutterTargets.map((gutterTarget) => (
         <div
           key={`${gutterTarget.pos}-${gutterTarget.node.type.name}`}
-          className="mybook-editor-block-gutter fixed z-20 bg-transparent"
+          className="mybook-editor-block-gutter fixed z-10 bg-transparent"
           style={{
             top: Math.max(8, gutterTarget.rect.top - 8),
             left: Math.max(0, gutterTarget.controlRect.left - 96),
@@ -391,7 +416,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
         <>
       <div
         ref={hoverBridgeRef}
-        className="mybook-editor-block-hover-bridge fixed z-30 bg-transparent"
+        className="mybook-editor-block-hover-bridge fixed z-10 bg-transparent"
         style={{ top: bridgeTop, left: bridgeLeft, width: bridgeWidth, height: bridgeHeight }}
         aria-hidden="true"
         onPointerEnter={() => setTarget(target)}
@@ -404,8 +429,8 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
       />
       <div
         ref={rootRef}
-        className={`mybook-editor-block-controls fixed z-40 flex items-center gap-1 ${isDragging ? 'opacity-70' : ''}`}
-        style={{ top, left }}
+        className={`mybook-editor-block-controls fixed z-20 flex items-center gap-1 ${isDragging ? 'opacity-70' : ''}`}
+        style={{ top: controlsTop, left }}
         aria-label="Block controls"
         onPointerLeave={(event) => {
           if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
@@ -414,8 +439,10 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
           setTarget(null)
         }}
       >
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label="Add block"
           title="Add block"
           onMouseDown={(event) => event.preventDefault()}
@@ -427,9 +454,11 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
           className="flex size-7 items-center justify-center rounded-[7px] text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
         >
           <PlusIcon aria-hidden="true" className="size-4" />
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           aria-label="Open block actions"
           title="Open block actions"
           onPointerDown={(event) => {
@@ -446,25 +475,25 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
           className="flex size-7 cursor-grab items-center justify-center rounded-[7px] text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
         >
           <GripHandleIcon className="size-4" />
-        </button>
+        </Button>
       </div>
 
       {isInsertOpen ? (
-        <div ref={insertMenuRef} className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: insertMenuTop, left: Math.max(8, left) }} data-command-menu-scroller="true">
+        <div ref={insertMenuRef} className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: insertMenuTop, left: Math.max(8, left) }} data-command-menu-scroller="true">
           <BlockCommandMenu ariaLabel="Insert block options" commands={slashCommands} selectedIndex={selectedInsertIndex} onSelectIndex={setSelectedInsertIndex} onRun={runInsertCommand} />
         </div>
       ) : null}
 
       {isActionsOpen ? (
-        <div ref={actionsMenuRef} className="fixed z-50 w-44 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: actionsMenuTop, left: actionsMenuLeft }} role="menu" aria-label="Block actions">
+        <div ref={actionsMenuRef} className="fixed z-20 w-44 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: actionsMenuTop, left: actionsMenuLeft }} role="menu" aria-label="Block actions">
           <button type="button" role="menuitem" onClick={() => { void copyTarget(target); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><ClipboardDocumentIcon aria-hidden="true" className="size-4" />Copy</button>
           <button type="button" role="menuitem" onClick={() => { duplicateTarget(editor, target); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><DocumentDuplicateIcon aria-hidden="true" className="size-4" />Duplicate</button>
-          <button type="button" role="menuitem" onClick={() => { deleteTarget(editor, target); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm text-red-600 hover:bg-red-50"><TrashIcon aria-hidden="true" className="size-4" />Delete</button>
+          <button type="button" role="menuitem" onClick={() => { deleteTarget(editor, target); setIsActionsOpen(false); setTarget(null); setDragState(null) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm text-red-600 hover:bg-red-50"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />Delete</button>
         </div>
       ) : null}
       {dragState?.isDragging && dragState.drop ? (
         <div
-          className="pointer-events-none fixed z-50 h-0.5 rounded-full bg-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]"
+          className="pointer-events-none fixed z-20 h-0.5 rounded-full bg-primary shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]"
           style={{
             left: Math.max(8, dragState.drop.rect.left),
             top: dragState.drop.side === 'before' ? dragState.drop.rect.top : dragState.drop.rect.bottom,

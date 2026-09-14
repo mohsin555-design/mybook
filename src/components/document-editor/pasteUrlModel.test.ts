@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { analyzePastedUrl, isSingleUrlPaste } from './pasteUrlModel'
 
 describe('pasteUrlModel', () => {
-  it('recognizes normal website URLs as link and bookmark candidates', () => {
-    expect(analyzePastedUrl('https://example.com/articles/good-link')?.kind).toBe('normal')
+  it('recognizes normal website URLs as link, bookmark, and embed candidates', () => {
+    expect(analyzePastedUrl('https://example.com/articles/good-link')?.kind).toBe('embed')
     expect(analyzePastedUrl('https://example.com/articles/good-link')?.title).toBe('good link')
   })
 
@@ -14,14 +14,18 @@ describe('pasteUrlModel', () => {
     expect(analyzePastedUrl('https://youtu.be/dQw4w9WgXcQ')?.embedProvider).toBe('youtube')
   })
 
-  it('allowlists other provider embed URLs without treating arbitrary pages as embeddable', () => {
+  it('recognizes provider and generic webpage embed URLs', () => {
     expect(analyzePastedUrl('https://www.figma.com/file/abc123/Design')?.embedProvider).toBe('figma')
-    expect(analyzePastedUrl('https://example.com/articles/good-link')?.embedUrl).toBeUndefined()
+    expect(analyzePastedUrl('https://www.figma.com/board/abc123/Whiteboard')?.embedProvider).toBe('figma')
+    expect(analyzePastedUrl('https://drive.google.com/open?id=file_123')?.embedProvider).toBe('google-drive')
+    expect(analyzePastedUrl('https://mohsinali.in/resources.html')?.embedProvider).toBe('web')
+    expect(analyzePastedUrl('https://drive.google.com/drive/u/1/home')?.embedProvider).toBe('web')
+    expect(analyzePastedUrl('https://www.figma.com/login')?.embedProvider).toBe('web')
   })
 
   it('recognizes current-origin Writin document URLs without treating external URLs as pages', () => {
     expect(analyzePastedUrl('https://writin.test/document/doc_123', 'https://writin.test')?.documentId).toBe('doc_123')
-    expect(analyzePastedUrl('https://example.com/document/doc_123', 'https://writin.test')?.kind).toBe('normal')
+    expect(analyzePastedUrl('https://example.com/document/doc_123', 'https://writin.test')?.kind).toBe('embed')
   })
 
   it('keeps the paste menu limited to single URL paste content', () => {

@@ -14,6 +14,8 @@ interface BlockTarget {
   controlRect: DOMRect
 }
 
+const CENTERED_BLOCK_CONTROLS = new Set(['bookmarkBlock', 'documentLink', 'embedBlock'])
+
 function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): BlockTarget {
   const { view } = editor
   const blockElement = view.nodeDOM(pos)
@@ -143,6 +145,12 @@ async function copyTarget(target: BlockTarget) {
 
 function deleteTarget(editor: Editor, target: BlockTarget) {
   editor.chain().focus().deleteRange({ from: target.pos, to: target.pos + target.node.nodeSize }).run()
+}
+
+function blockControlsTop(target: BlockTarget | null) {
+  if (!target) return 8
+  if (CENTERED_BLOCK_CONTROLS.has(target.node.type.name)) return Math.max(8, target.rect.top + target.rect.height / 2 - 14)
+  return Math.max(8, target.rect.top)
 }
 
 function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; side: 'before' | 'after' }) {
@@ -328,7 +336,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
     }
   }, [dragState, editor])
 
-  const top = Math.max(8, target?.rect.top ?? 8)
+  const top = blockControlsTop(target)
   const left = Math.max(8, (target?.controlRect.left ?? 76) - 68)
   const bridgeTop = Math.max(8, Math.min(top, target?.rect.top ?? top))
   const bridgeLeft = Math.max(0, left)

@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ArrowsRightLeftIcon, ClipboardDocumentIcon, EllipsisHorizontalIcon, LinkSlashIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
+import { ArrowLeftIcon, ArrowsRightLeftIcon, CircleStackIcon, ClipboardDocumentIcon, DocumentTextIcon, EllipsisHorizontalIcon, LinkSlashIcon, PencilSquareIcon } from '@heroicons/react/24/outline'
 import { Dropdown } from '../ui/compat-dropdown'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
 import { TableKit } from '@tiptap/extension-table'
@@ -546,24 +546,29 @@ function DocumentLinkPicker({
       {groupedTargets.length ? groupedTargets.map((group) => (
           <section key={group.label} aria-label={group.label}>
             <h3 className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</h3>
-            {group.items.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                tabIndex={-1}
-                role="option"
-                aria-selected={flatTargets[selectedIndex]?.id === item.id}
-                onMouseEnter={() => setSelectedIndex(flatTargets.findIndex((target) => target.id === item.id))}
-                onMouseDown={(event) => {
-                  event.preventDefault()
-                  onSelect({ id: item.id, name: item.name })
-                }}
-                className={`flex min-h-10 w-full items-center rounded-[7px] px-3 py-2 text-left ${flatTargets[selectedIndex]?.id === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
-                aria-label={`Link to page ${item.name}`}
-              >
-                <span className="break-words text-sm font-medium">{item.name}</span>
-              </button>
-            ))}
+            {group.items.map((item) => {
+              const ItemIcon = item.type === 'spreadsheet' ? CircleStackIcon : DocumentTextIcon
+              const isSelected = flatTargets[selectedIndex]?.id === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  tabIndex={-1}
+                  role="option"
+                  aria-selected={isSelected}
+                  onMouseEnter={() => setSelectedIndex(flatTargets.findIndex((target) => target.id === item.id))}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    onSelect({ id: item.id, name: item.name })
+                  }}
+                  className={`flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 py-2 text-left ${isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
+                  aria-label={`Link to page ${item.name}`}
+                >
+                  <ItemIcon aria-hidden="true" className={`size-4 shrink-0 ${isSelected ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
+                  <span className="min-w-0 flex-1 break-words text-sm font-medium">{item.name}</span>
+                </button>
+              )
+            })}
           </section>
         )) : (
           <div className="px-3 py-6 text-center">

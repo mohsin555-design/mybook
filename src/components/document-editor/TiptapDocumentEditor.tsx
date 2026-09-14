@@ -820,7 +820,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         })
         return false
       },
-      handleTextInput: () => {
+      handleTextInput: (view, from, to, text) => {
+        if (text === '[' && from === to) {
+          const $from = view.state.doc.resolve(from)
+          const textBeforeCursor = $from.parent.textBetween(0, $from.parentOffset, '\n', '\0')
+          if (textBeforeCursor.endsWith('[')) {
+            const shortcutFrom = Math.max($from.start(), from - 1)
+            const transaction = view.state.tr.delete(shortcutFrom, from)
+            transaction.setSelection(TextSelection.create(transaction.doc, shortcutFrom))
+            view.dispatch(transaction)
+            const coords = view.coordsAtPos(shortcutFrom)
+            setDocumentLinkPickerPosition({ left: coords.left, top: coords.bottom + 8 })
+            setIsDocumentLinkPickerOpen(true)
+            return true
+          }
+        }
         blankOverlayRef.current?.remove()
         blankOverlayRef.current = null
         blankSelectionRangeRef.current = null

@@ -30,6 +30,7 @@ describe('SlashCommandMenu grouping', () => {
     expect(slashCommands.find((command) => command.id === 'h4')).toMatchObject({ title: 'Heading 4', shortcut: '####' })
     expect(slashCommands.find((command) => command.id === 'quote')).toMatchObject({ shortcut: '>' })
     expect(slashCommands.find((command) => command.id === 'bullet')).toMatchObject({ shortcut: '- or *' })
+    expect(slashCommands.find((command) => command.id === 'document-link')).toMatchObject({ title: 'Link to Page', shortcut: '[[' })
     expect(slashCommands.find((command) => command.id === 'callout')?.shortcut).toBeUndefined()
   })
 })

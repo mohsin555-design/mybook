@@ -69,7 +69,7 @@ export const slashCommands: SlashCommand[] = [
   { id: 'toggle', title: 'Toggle', description: 'Hide details under a title', keywords: ['toggle', 'details', 'collapse'], category: 'Lists' },
   { id: 'image', title: 'Image', description: 'Upload an image', keywords: ['image', 'photo', 'picture', 'media'], category: 'Media' },
   { id: 'file', title: 'File attachment', description: 'Attach a file block', keywords: ['file', 'attachment', 'upload', 'pdf', 'doc'], category: 'Media' },
-  { id: 'document-link', title: 'Link to Page', description: 'Link to another workspace item', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document', 'database', 'spreadsheet'], category: 'Media' },
+  { id: 'document-link', title: 'Link to Page', description: 'Link to another workspace item', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document', 'database', 'spreadsheet'], category: 'Media', shortcut: '[[' },
   { id: 'table', title: 'Basic Table', description: 'Insert a basic table', keywords: ['table', 'basic table', 'grid'], category: 'Data' },
   { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data' },
   { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'], category: 'Advanced' },

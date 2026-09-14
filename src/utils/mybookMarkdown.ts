@@ -101,7 +101,9 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   if (node.type === 'codeBlock') {
     const code = (node.content ?? []).map((child) => child.text ?? '').join('')
     const fence = codeFence(code)
-    const language = typeof node.attrs?.language === 'string' ? node.attrs.language : ''
+    const selectedLanguage = typeof node.attrs?.language === 'string' ? node.attrs.language : ''
+    const detectedLanguage = typeof node.attrs?.detectedLanguage === 'string' ? node.attrs.detectedLanguage : ''
+    const language = selectedLanguage === 'auto' ? (detectedLanguage === 'text' ? '' : detectedLanguage) : selectedLanguage
     return `${fence}${language}\n${code}\n${fence}`
   }
   if (node.type === 'horizontalRule') return '---'
@@ -133,7 +135,7 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
 }
 
 export function documentToMyBookMarkdown(title: string, json: JSONContent, options: { documentId?: string | null } = {}) {
-  const safeTitle = title.trim() || 'Untitled document'
+  const safeTitle = title.trim() || 'Untitled'
   const body = (json.content ?? []).map((node) => blockMarkdown(node)).filter(Boolean).join('\n\n')
   const documentId = isValidPortableDocumentId(options.documentId) ? options.documentId.trim() : null
   return [
@@ -774,7 +776,7 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       flushParagraph()
       const marker = heading[1] ?? '#'
       const text = heading[2] ?? ''
-      content.push({ type: 'heading', attrs: { level: Math.min(marker.length, 3) }, content: parseInline(text) })
+      content.push({ type: 'heading', attrs: { level: Math.min(marker.length, 4) }, content: parseInline(text) })
       continue
     }
     const pipeTable = parsePipeTable(lines, lineIndex)
@@ -807,7 +809,7 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
 }
 
 export function downloadMyBookMarkdown(markdown: string, title: string) {
-  const safeName = (title.trim() || 'Untitled document').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120)
+  const safeName = (title.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120)
   const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')

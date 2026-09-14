@@ -1,0 +1,59 @@
+- generic [active] [ref=e1]:
+  - main [ref=e124]:
+    - generic [ref=e125]:
+      - generic [ref=e126]:
+        - button "Close spreadsheet" [ref=e127]
+        - generic [ref=e130]:
+          - heading "Untitled Spreadsheet" [level=1] [ref=e131]
+          - 'status "Editor status: Saved" [ref=e132]': Saved
+          - navigation "Folder path" [ref=e134]:
+            - list [ref=e135]:
+              - listitem [ref=e136]:
+                - link "Library" [ref=e137] [cursor=pointer]:
+                  - /url: /folders
+              - listitem [aria-hidden] [ref=e138]
+              - listitem [ref=e141]:
+                - link "Untitled Spreadsheet" [disabled] [ref=e142]
+        - button "More spreadsheet actions" [ref=e143]
+        - button "Save" [ref=e146]
+        - button "Sync now" [ref=e147]
+        - button "Open backup" [disabled]
+      - button "Import XLSX file" [ref=e148]
+      - region "Spreadsheet editor. Use the spreadsheet toolbar and cell controls to edit." [ref=e149]:
+        - generic [ref=e151]:
+          - generic [ref=e152]:
+            - complementary
+            - complementary:
+              - complementary "Sidebar panel":
+                - button "Close sidebar" [ref=e157] [cursor=pointer]
+          - generic [ref=e162]:
+            - generic [ref=e163]:
+              - generic [ref=e164]:
+                - button [ref=e165] [cursor=pointer]
+                - button [ref=e167] [cursor=pointer]
+              - tablist "Sheet tabs" [ref=e169]:
+                - tab "Sheet1" [selected] [ref=e170] [cursor=pointer]
+            - button [ref=e176] [cursor=pointer]
+            - generic [ref=e181]:
+              - button [ref=e182] [cursor=pointer]
+              - generic [ref=e184]:
+                - button [ref=e185] [cursor=pointer]
+                - button [ref=e186] [cursor=pointer]
+              - button [ref=e187] [cursor=pointer]
+              - button "100%" [ref=e188] [cursor=pointer]
+        - generic:
+          - region "Notifications alt+T"
+          - region "Notifications alt+T"
+  - generic:
+    - region "Notifications"
+  - generic [ref=e193]:
+    - button "Delete" [disabled] [ref=e195]
+    - button "Copy" [ref=e199] [cursor=pointer]
+    - button "Rename" [ref=e203] [cursor=pointer]
+    - button "Change color" [ref=e207] [cursor=pointer]
+    - button "Hide" [disabled] [ref=e213]
+    - button "Unhide" [disabled] [ref=e217]
+    - button "Protect Worksheet" [ref=e221] [cursor=pointer]
+    - button "Unprotect Worksheet" [disabled] [ref=e225]
+    - button "Change Worksheet Permissions" [disabled] [ref=e229]
+    - button "View All Protection Ranges" [ref=e233] [cursor=pointer]

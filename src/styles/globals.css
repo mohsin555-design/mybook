@@ -163,43 +163,128 @@
     line-height: 1.8;
     scroll-padding-block: 8rem;
     overflow-wrap: anywhere;
-    caret-color: var(--accent);
+    caret-color: var(--primary);
+  }
+
+  .tiptap > * {
+    margin-block: 0;
+    padding-block: 0;
   }
 
   .tiptap > * + * {
-    margin-top: 1rem;
+    margin-top: 0.75rem;
   }
 
-  .tiptap p.is-editor-empty:first-child::before {
-    color: var(--muted);
-    content: "Start writing...";
-    float: left;
-    height: 0;
+  .tiptap .mybook-empty-block-placeholder::before {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block;
+    color: var(--muted-foreground);
+    content: "Type '/' to insert a block, or start typing";
+    font-weight: 400;
+    opacity: 0.6;
     pointer-events: none;
+    white-space: nowrap;
   }
 
-  .tiptap h1 { font-size: 2rem; line-height: 1.25; font-weight: 700; }
-  .tiptap h2 { font-size: 1.5rem; line-height: 1.35; font-weight: 650; }
-  .tiptap h3 { font-size: 1.25rem; line-height: 1.4; font-weight: 650; }
-  .tiptap ul:not([data-type="taskList"]) { list-style: disc; padding-left: 1.5rem; }
-  .tiptap ol { list-style: decimal; padding-left: 1.5rem; }
-  .tiptap blockquote { border-left: 3px solid var(--app-border); padding-left: 1rem; color: var(--muted); }
+  .tiptap .mybook-heading-placeholder::before { content: attr(data-placeholder); font-weight: inherit; }
+
+  .tiptap .mybook-empty-block-placeholder {
+    position: relative;
+  }
+
+  .tiptap pre.mybook-empty-block-placeholder::before {
+    content: none;
+  }
+
+  .tiptap h1 { font-size: 2.5rem; line-height: 1.2; font-weight: 700; }
+  .tiptap h2 { font-size: 2rem; line-height: 1.25; font-weight: 650; }
+  .tiptap h3 { font-size: 1.5rem; line-height: 1.35; font-weight: 650; }
+  .tiptap h4 { font-size: 1.25rem; line-height: 1.4; font-weight: 650; }
+  .tiptap ul:not([data-type="taskList"]) { list-style-type: disc; padding-left: 1.5rem; }
+  .tiptap ol { list-style-type: decimal; padding-left: 1.5rem; }
+  .tiptap ol[data-list-marker="alpha"] { list-style-type: lower-alpha; }
+  .tiptap ol[data-list-marker="roman"] { list-style-type: lower-roman; }
+  .tiptap ul:not([data-type="taskList"])[data-list-marker="circle"] { list-style-type: circle; }
+  .tiptap ul:not([data-type="taskList"])[data-list-marker="square"] { list-style-type: square; }
+  .tiptap blockquote { border-left: 3px solid var(--primary); padding-left: 1rem; color: var(--foreground); }
+  .tiptap blockquote p:has(> br.ProseMirror-trailingBreak) { position: relative; }
+  .tiptap blockquote .mybook-empty-block-placeholder::before,
+  .tiptap blockquote .mybook-quote-empty-placeholder::before,
+  .tiptap blockquote p:has(> br.ProseMirror-trailingBreak)::before {
+    color: var(--muted-foreground);
+    font-weight: 400;
+    opacity: 0.6;
+    pointer-events: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    white-space: nowrap;
+  }
+  .tiptap blockquote .mybook-empty-block-placeholder::before,
+  .tiptap blockquote .mybook-quote-empty-placeholder::before {
+    content: attr(data-placeholder);
+  }
+  .tiptap blockquote p:has(> br.ProseMirror-trailingBreak)::before {
+    content: "Quote";
+  }
   .tiptap hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--app-border); }
   .tiptap a { color: var(--accent); text-decoration: underline; }
   .tiptap code { border-radius: 6px; background: var(--app-subtle); padding: 0.125rem 0.35rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.9em; }
   .tiptap pre { overflow-x: auto; border-radius: 8px; background: var(--app-subtle); padding: 1rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; line-height: 1.6; }
   .tiptap pre code { display: block; background: transparent; padding: 0; font-size: 0.9rem; }
+  .tiptap pre.mybook-code-block { position: relative; min-height: 5.25rem; overflow-x: auto; border: 1px solid color-mix(in srgb, var(--app-border) 78%, transparent); background: color-mix(in srgb, var(--app-subtle) 78%, var(--app-surface)); padding: 1rem; }
+  .tiptap pre.mybook-code-block code { min-height: 1.5rem; outline: none; tab-size: 2; }
+  .tiptap pre.mybook-code-block-wrap code { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
+  .tiptap pre.mybook-code-block-scroll code { width: max-content; min-width: 100%; white-space: pre; overflow-wrap: normal; }
+  .mybook-code-block-toolbar { position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2; display: flex; max-width: calc(100% - 1rem); align-items: center; justify-content: flex-end; gap: 0.25rem; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+  .tiptap pre.mybook-code-block:hover .mybook-code-block-toolbar,
+  .tiptap pre.mybook-code-block:focus-within .mybook-code-block-toolbar,
+  .tiptap pre.mybook-code-block.ProseMirror-selectednode .mybook-code-block-toolbar { opacity: 1; pointer-events: auto; }
+  .mybook-code-language-trigger { height: 2rem; min-width: 5.75rem; max-width: 9rem; border: 1px solid transparent; border-radius: 6px; background: transparent; padding-inline: 0.5rem; color: #111827; font-size: 0.75rem; font-weight: 650; box-shadow: none; }
+  .mybook-code-language-trigger:hover,
+  .mybook-code-language-trigger:focus-visible,
+  .mybook-code-toolbar-button:hover,
+  .mybook-code-toolbar-button:focus-visible { border-color: color-mix(in srgb, var(--accent) 45%, var(--app-border)); background: color-mix(in srgb, #fff 86%, var(--app-subtle)); color: #111827; }
+  .mybook-code-toolbar-button { width: 2rem; height: 2rem; min-width: 2rem; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #111827; box-shadow: none; }
+  .mybook-code-toolbar-button svg { width: 1rem; height: 1rem; color: currentColor; }
+  .mybook-code-toolbar-button[aria-pressed="true"] { background: color-mix(in srgb, var(--muted-foreground) 18%, transparent); color: #111827; }
+  .mybook-code-toolbar-button[aria-pressed="true"]:hover,
+  .mybook-code-toolbar-button[aria-pressed="true"]:focus-visible { background: color-mix(in srgb, var(--muted-foreground) 24%, transparent); color: #111827; }
+  .mybook-code-language-content { overflow-y: auto; }
+  .mybook-code-token-comment { color: #64748b; font-style: italic; }
+  .mybook-code-token-keyword { color: #7c3aed; font-weight: 650; }
+  .mybook-code-token-string { color: #047857; }
+  .mybook-code-token-number { color: #b45309; }
+  .mybook-code-token-attribute { color: #0369a1; }
   .tiptap .mybook-callout { border: 1px solid var(--app-border); border-left-width: 4px; border-radius: 8px; padding: 0.875rem 1rem; background: var(--app-subtle); }
   .tiptap .mybook-callout[data-kind="info"] { border-left-color: #2563eb; }
   .tiptap .mybook-callout[data-kind="success"] { border-left-color: #16a34a; }
   .tiptap .mybook-callout[data-kind="warning"] { border-left-color: #d97706; }
   .tiptap .mybook-callout-content > * + * { margin-top: 0.75rem; }
-  .tiptap .mybook-toggle { border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); }
-  .tiptap .mybook-toggle-summary { cursor: pointer; padding: 0.75rem 0.875rem; font-weight: 650; }
-  .tiptap .mybook-toggle-title { min-width: 0; width: calc(100% - 1.5rem); border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
-  .tiptap .mybook-toggle-title:focus-visible { border-radius: 6px; outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-  .tiptap .mybook-toggle-content { border-top: 1px solid var(--app-border); padding: 0.875rem 1rem; }
+  .tiptap .mybook-toggle { background: transparent; }
+  .tiptap .mybook-toggle-summary { display: flex; align-items: center; gap: 0.5rem; cursor: text; padding: 0; font-weight: 650; list-style: none; }
+  .tiptap .mybook-toggle-summary::-webkit-details-marker { display: none; }
+  .tiptap .mybook-toggle-caret { display: inline-flex; width: 1.25rem; height: 1.25rem; flex: 0 0 auto; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); cursor: pointer; font-size: 1.1rem; line-height: 1; }
+  .tiptap .mybook-toggle-caret:hover { background: var(--app-subtle); color: var(--foreground); }
+  .tiptap .mybook-toggle-title { min-width: 0; flex: 1; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
+  .tiptap .mybook-toggle-title::placeholder { color: var(--muted-foreground); opacity: 0.6; }
+  .tiptap .mybook-toggle-content { margin-left: 1.75rem; padding: 0; }
   .tiptap .mybook-toggle-content > * + * { margin-top: 0.75rem; }
+  .tiptap .mybook-toggle-content > p:only-child:has(> br.ProseMirror-trailingBreak)::before { content: "Empty toggle. Click or drop blocks inside."; color: var(--muted-foreground); opacity: 0.6; pointer-events: none; }
+  .tiptap .mybook-table-of-contents { text-align: left; }
+  .tiptap .mybook-table-of-contents-header { display: flex; align-items: center; gap: 0.5rem; }
+  .tiptap .mybook-table-of-contents-list { margin-top: 0.75rem; margin-left: 0.625rem; list-style: none; border-left: 2px solid color-mix(in srgb, var(--app-border) 85%, transparent); padding: 0 0 0 1rem; text-align: left; }
+  .tiptap .mybook-table-of-contents-list > li + li { margin-top: 0.25rem; }
+  .tiptap .mybook-table-of-contents-list,
+  .tiptap .mybook-table-of-contents-list li,
+  .tiptap .mybook-table-of-contents-list button,
+  .tiptap .mybook-table-of-contents-list span { text-align: left; }
+  .tiptap .mybook-table-of-contents-item { position: relative; }
+  .tiptap .mybook-table-of-contents-item::before { position: absolute; top: 0.25rem; bottom: 0.25rem; left: calc(-1rem - 2px); width: 4px; border-radius: 999px; background: transparent; content: ""; transition: background 150ms ease; }
+  .tiptap .mybook-table-of-contents-item:hover::before,
+  .tiptap .mybook-table-of-contents-item:focus-visible::before { background: var(--primary); }
   .tiptap .mybook-image-block { margin: 1.25rem 0; }
   .tiptap .mybook-image { display: block; max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--app-border); background: var(--app-subtle); }
   .tiptap .ProseMirror-selectednode.mybook-image-block .mybook-image { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
@@ -209,39 +294,236 @@
   .tiptap .mybook-file-attachment-link:hover { color: var(--accent); text-decoration: underline; }
   .tiptap .mybook-file-attachment-meta { flex: 0 0 auto; color: var(--muted); font-size: 0.875rem; }
   .tiptap .ProseMirror-selectednode.mybook-file-attachment { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+  .tiptap .mybook-blank-block-selected { background: color-mix(in srgb, #93c5fd 28%, transparent); border-radius: 4px; }
+  .mybook-blank-block-overlay { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
+  .mybook-blank-block-overlay-row { position: fixed; border-radius: 4px; background: color-mix(in srgb, #93c5fd 28%, transparent); }
   .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0; }
-  .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0.5rem; padding-left: 1.75rem; }
-  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] { display: flex; gap: 0.625rem; align-items: flex-start; border-radius: 8px; padding: 0.125rem 0.25rem; }
-  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label { display: flex; min-height: 1.75rem; align-items: center; padding-top: 0.05rem; }
-  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label input { size: 1rem; width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
-  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div { min-width: 0; flex: 1; }
-  .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div > p:first-child { margin-top: 0; }
-  .tiptap ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
-  .tiptap ul[data-type="taskList"] li[data-type="taskItem"]:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-  .tiptap .tableWrapper { overflow-x: auto; }
-  .tiptap table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0.5rem; margin-left: -0.25rem; padding-left: 0.25rem; }
+  .tiptap ul[data-type="taskList"] li[data-checked] { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 0.625rem; border-radius: 8px; padding: 0.125rem 0.25rem; min-height: 1.75rem; line-height: 1.5; }
+  .tiptap ul[data-type="taskList"] li[data-checked] > label { display: flex; align-items: flex-start; justify-content: center; min-height: 1.5rem; margin: 0; padding: 0.125rem 0 0; }
+  .tiptap ul[data-type="taskList"] li[data-checked] > label input {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
+    border: 1.5px solid var(--border);
+    border-radius: 0.375rem;
+    background-color: var(--app-surface);
+    background-image: none;
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: 0.875rem 0.875rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  }
+  .tiptap ul[data-type="taskList"] li[data-checked] > label input:checked {
+    border-color: var(--primary);
+    background-color: var(--primary);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M12.5 4.5L6.75 10.25L3.5 7' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  .tiptap ul[data-type="taskList"] li[data-checked] > label input:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  .tiptap ul[data-type="taskList"] li[data-checked] > div { min-width: 0; flex: 1; }
+  .tiptap ul[data-type="taskList"] li[data-checked] > div > p { margin: 0; line-height: 1.5; }
+  .tiptap ul[data-type="taskList"] li[data-checked] > div > .mybook-empty-block-placeholder::before,
+  .tiptap ul[data-type="taskList"] li[data-checked] > div > p:has(> br.ProseMirror-trailingBreak)::before { content: "To-do"; color: var(--muted-foreground); font-size: 1rem; opacity: 0.6; pointer-events: none; }
+  .tiptap ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--muted-foreground); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--muted-foreground) 75%, transparent); }
+  .tiptap ul[data-type="taskList"] li[data-checked]:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  .tiptap .tableWrapper { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-bottom: 3rem; padding-bottom: 2.5rem; overflow-x: auto; }
+  .tiptap .tableWrapper[data-fixed-rows="true"] {
+    max-height: calc(attr(data-fixed-row-count type(<number>), 5) * 40px + 2px);
+    overflow-y: auto;
+  }
+  .tiptap .tableWrapper[data-fixed-rows="true"] > table > tbody > tr:first-child > th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--app-subtle);
+  }
+  .tiptap table { width: 100%; min-width: max-content; max-width: none; border-collapse: collapse; table-layout: fixed; }
   .tiptap th,
-  .tiptap td { min-width: 6rem; border: 1px solid var(--app-border); padding: 0.5rem; vertical-align: top; }
-  .tiptap th { background: var(--app-subtle); font-weight: 600; }
-  .tiptap .selectedCell { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .tiptap td { position: relative; height: 32px; min-width: 6rem; border: 1px solid var(--app-border); padding: 0.25rem 0.5rem; vertical-align: top; text-align: left; }
+  .tiptap th { position: relative; height: 32px; min-width: 6rem; border: 1px solid var(--app-border); padding: 0.25rem 0.5rem; vertical-align: top; text-align: left; }
+  .tiptap th > *,
+  .tiptap td > * { margin-top: 0; text-align: inherit; }
+  .tiptap th.mybook-active-table-cell,
+  .tiptap td.mybook-active-table-cell { box-shadow: inset 0 0 0 2px var(--primary); }
+  .tiptap th.selectedCell.mybook-active-table-cell,
+  .tiptap td.selectedCell.mybook-active-table-cell { box-shadow: inset 0 0 0 2px var(--primary); }
+  .tiptap th { background: color-mix(in srgb, var(--app-subtle) 78%, var(--app-border) 22%); font-weight: 600; }
+  .tiptap .selectedCell {
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    box-shadow: none;
+  }
+  .tiptap tr.mybook-table-selected-row > th,
+  .tiptap .mybook-table-selected-row-cell { background: color-mix(in srgb, var(--app-subtle) 78%, var(--primary) 22%); }
+  .tiptap tr.mybook-table-selected-row > td { background: color-mix(in srgb, #93c5fd 18%, transparent); }
+  .tiptap .mybook-table-selected-column { background: color-mix(in srgb, #93c5fd 18%, transparent); }
+  .tiptap tr.mybook-table-selected-row { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .tiptap .mybook-table-selected-column { border-left: 2px solid var(--primary); border-right: 2px solid var(--primary); }
+  .tiptap tr:first-child .mybook-table-selected-column { border-top: 2px solid var(--primary); }
+  .tiptap tr:last-child .mybook-table-selected-column { border-bottom: 2px solid var(--primary); }
+  .tiptap tr.mybook-table-dragging-row,
+  .tiptap .mybook-table-dragging-row-cell,
+  .tiptap tr.mybook-table-dragging-column > *,
+  .tiptap .mybook-table-dragging-column { opacity: 0.55; }
+  .tiptap .column-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    bottom: 0;
+    z-index: 2;
+    width: 6px;
+    cursor: col-resize;
+    background: transparent;
+  }
+  .tiptap .column-resize-handle:hover,
+  .tiptap .column-resize-handle.active { background: color-mix(in srgb, var(--primary) 50%, transparent); }
+  .mybook-table-column-grip,
+  .mybook-table-row-grip {
+    position: fixed;
+    z-index: 45;
+    display: flex;
+    width: 1.125rem;
+    height: 1.125rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    background: var(--app-surface);
+    color: var(--muted-foreground);
+    cursor: grab;
+    font-size: 0.6875rem;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: auto;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  }
+  .mybook-table-column-grip.is-visible,
+  .mybook-table-row-grip.is-visible,
+  .mybook-table-column-grip.is-selected,
+  .mybook-table-row-grip.is-selected {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .mybook-table-column-grip:hover,
+  .mybook-table-row-grip:hover,
+  .mybook-table-column-grip.is-selected,
+  .mybook-table-row-grip.is-selected {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .mybook-table-column-grip:active,
+  .mybook-table-row-grip:active,
+  .mybook-table-column-grip.is-dragging,
+  .mybook-table-row-grip.is-dragging { cursor: grabbing; }
+  .mybook-table-add-column,
+  .mybook-table-add-row,
+  .mybook-table-add-corner {
+    position: fixed;
+    z-index: 44;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--app-subtle) 78%, transparent);
+    color: var(--foreground);
+    opacity: 0;
+    pointer-events: none;
+    transition: background 120ms ease, opacity 120ms ease;
+  }
+  .mybook-table-add-column { width: 1rem; }
+  .mybook-table-add-row { height: 2rem; }
+  .mybook-table-add-corner { width: 1rem; height: 1rem; }
+  .mybook-table-add-column.is-visible,
+  .mybook-table-add-row.is-visible,
+  .mybook-table-add-corner.is-visible {
+    opacity: 0.78;
+    pointer-events: auto;
+  }
+  .mybook-table-add-column:hover,
+  .mybook-table-add-row:hover,
+  .mybook-table-add-corner:hover,
+  .mybook-table-add-column:focus-visible,
+  .mybook-table-add-row:focus-visible,
+  .mybook-table-add-corner:focus-visible {
+    background: color-mix(in srgb, var(--primary) 12%, var(--app-subtle));
+    opacity: 1;
+  }
+  .mybook-table-resize-handle {
+    position: fixed;
+    z-index: 46;
+    width: 1rem;
+    height: 1rem;
+    border: 0;
+    border-right: 2px solid var(--primary);
+    border-bottom: 2px solid var(--primary);
+    background: transparent;
+    cursor: nwse-resize;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .mybook-table-resize-handle.is-visible,
+  .mybook-table-resize-handle:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .mybook-table-resize-handle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  .mybook-table-drop-indicator {
+    position: fixed;
+    z-index: 46;
+    border-radius: 999px;
+    background: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+    pointer-events: none;
+  }
+  .mybook-table-drag-ghost {
+    position: fixed;
+    z-index: 47;
+    display: flex;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0.82;
+    background: color-mix(in srgb, var(--app-surface) 88%, var(--primary));
+    border: 2px solid var(--primary);
+    border-radius: 4px;
+    box-shadow: 0 12px 24px color-mix(in srgb, var(--foreground) 18%, transparent);
+  }
+  .mybook-table-drag-ghost-column { flex-direction: column; }
+  .mybook-table-drag-ghost-row { flex-direction: row; }
+  .mybook-table-drag-ghost-cell {
+    display: flex;
+    min-width: 0;
+    min-height: 2rem;
+    align-items: flex-start;
+    overflow: hidden;
+    padding: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--app-border) 75%, transparent);
+    color: var(--foreground);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
 
-  .mybook-document-canvas {
-    background:
-      linear-gradient(
-        90deg,
-        transparent 0,
-        transparent calc((100% - 1024px) / 2),
-        var(--app-surface) calc((100% - 1024px) / 2),
-        var(--app-surface) calc((100% + 1024px) / 2),
-        transparent calc((100% + 1024px) / 2),
-        transparent 100%
-      );
+  .mybook-document-canvas { background: var(--app-surface); }
+
+  @media (max-width: 1023px) {
+    .mybook-document-page { padding-left: 1rem !important; padding-right: 1rem !important; }
+    .mybook-editor-block-gutter,
+    .mybook-editor-block-hover-bridge,
+    .mybook-editor-block-controls { display: none !important; }
   }
 
   @media (max-width: 767px) {
-    .mybook-document-canvas {
-      background: var(--app-surface);
-    }
+    .mybook-document-canvas { background: var(--app-surface); }
 
     .mybook-document-page {
       width: 100% !important;
@@ -263,17 +545,22 @@
       scroll-padding-block: 7rem;
     }
 
-    .tiptap h1 { font-size: 1.75rem; }
-    .tiptap h2 { font-size: 1.35rem; }
-    .tiptap h3 { font-size: 1.125rem; }
+    .tiptap h1 { font-size: 2rem; }
+    .tiptap h2 { font-size: 1.75rem; }
+    .tiptap h3 { font-size: 1.35rem; }
+    .tiptap h4 { font-size: 1.125rem; }
     .tiptap ul:not([data-type="taskList"]),
     .tiptap ol { padding-left: 1.25rem; }
     .tiptap ul[data-type="taskList"] li[data-type="taskItem"] { gap: 0.75rem; padding: 0.25rem 0; }
     .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label { min-width: 2.25rem; min-height: 2.25rem; justify-content: center; }
     .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label input { width: 1.2rem; height: 1.2rem; }
-    .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { padding-left: 1.25rem; }
+    .tiptap ul[data-type="taskList"] ul[data-type="taskList"] { margin-left: -0.25rem; padding-left: 0.25rem; }
     .tiptap .mybook-file-attachment { align-items: flex-start; padding: 0.875rem; }
     .tiptap .mybook-file-attachment-meta { display: none; }
+    .mybook-code-block-toolbar { gap: 0.375rem; }
+    .mybook-code-language-trigger { height: 2.5rem; min-width: 6.5rem; max-width: 8rem; }
+    .mybook-code-toolbar-button { width: 2.5rem; height: 2.5rem; min-width: 2.5rem; }
+    .mybook-code-toolbar-button svg { width: 1.125rem; height: 1.125rem; }
   }
 
   @supports (-webkit-touch-callout: none) {

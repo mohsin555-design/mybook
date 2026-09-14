@@ -1,0 +1,10 @@
+- generic [active] [ref=e1]:
+  - main [ref=e5]:
+    - region [ref=e6]:
+      - heading "MyBook" [level=1] [ref=e10]
+      - paragraph [ref=e11]: Your private documents and spreadsheets, on this device or backed up to your Drive.
+      - button "Create Local Workspace" [ref=e13]
+      - paragraph [ref=e14]
+      - paragraph [ref=e18]: Local workspaces stay on this device. Google workspaces use your own Drive and only request access needed to manage files you create here.
+  - generic:
+    - region "Notifications"

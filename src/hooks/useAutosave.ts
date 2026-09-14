@@ -13,13 +13,34 @@ export function useAutosave(file: MyBookFile | undefined) {
   const lastSaved = useRef(file?.content ?? '')
   const contentRef = useRef(content)
   const fileRef = useRef(file)
+  const hydratedFileIdRef = useRef<string | null>(null)
 
   useEffect(() => { fileRef.current = file }, [file])
   useEffect(() => {
     if (!file) return
-    setIsHydrated(false)
+    const isNewFile = hydratedFileIdRef.current !== file.id
     const next = file.content
-    setContent(next); contentRef.current = next; lastSaved.current = file.content
+
+    if (isNewFile) {
+      setIsHydrated(false)
+      hydratedFileIdRef.current = file.id
+      setContent(next)
+      contentRef.current = next
+      lastSaved.current = next
+      setIsHydrated(true)
+      return
+    }
+
+    if (next === contentRef.current) {
+      lastSaved.current = next
+      return
+    }
+
+    if (contentRef.current === lastSaved.current) {
+      setContent(next)
+      contentRef.current = next
+      lastSaved.current = next
+    }
     setIsHydrated(true)
   }, [file])
 

@@ -73,8 +73,8 @@ function blocks(node: JSONContent): Array<Paragraph | Table> {
   for (const child of node.content ?? []) {
     if (child.type === 'paragraph') output.push(new Paragraph({ children: inlineChildren(child) }))
     else if (child.type === 'heading') {
-      const levels = { 1: HeadingLevel.HEADING_1, 2: HeadingLevel.HEADING_2, 3: HeadingLevel.HEADING_3 }
-      const level = Number(child.attrs?.level) as 1 | 2 | 3
+      const levels = { 1: HeadingLevel.HEADING_1, 2: HeadingLevel.HEADING_2, 3: HeadingLevel.HEADING_3, 4: HeadingLevel.HEADING_4 }
+      const level = Number(child.attrs?.level) as 1 | 2 | 3 | 4
       output.push(new Paragraph({ heading: levels[level] ?? HeadingLevel.HEADING_1, children: inlineChildren(child) }))
     } else if (child.type === 'bulletList') output.push(...listParagraphs(child, false))
     else if (child.type === 'orderedList') output.push(...listParagraphs(child, true))
@@ -94,7 +94,7 @@ function blocks(node: JSONContent): Array<Paragraph | Table> {
 export function createDocxDocument(title: string, json: JSONContent): Document {
   const children = blocks(json)
   return new Document({
-    title: title.trim() || 'Untitled document',
+    title: title.trim() || 'Untitled',
     numbering: {
       config: [{
         reference: 'mybook-numbering',
@@ -110,7 +110,7 @@ export async function createDocxBlob(title: string, json: JSONContent): Promise<
 }
 
 export function downloadDocx(blob: Blob, title: string) {
-  const safeName = (title.trim() || 'Untitled document').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120)
+  const safeName = (title.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120)
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url

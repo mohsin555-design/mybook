@@ -10,19 +10,10 @@ import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeSelection } from '@tiptap/pm/state'
 import { useEffect, useState, type ReactNode } from 'react'
-import { AppButton } from '../common/AppButton'
 import { cloneDatabaseAttrs } from './databaseModel'
 import { MobileBottomSheet } from '../common/MobileBottomSheet'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../ui/dialog'
 
-const actionableBlocks = new Set(['callout', 'toggleBlock', 'tableOfContents', 'documentLink', 'databaseBlock', 'imageBlock', 'fileAttachment', 'table', 'blockquote', 'codeBlock'])
+const actionableBlocks = new Set(['callout', 'toggleBlock', 'tableOfContents', 'documentLink', 'databaseBlock', 'imageBlock', 'fileAttachment', 'table', 'codeBlock'])
 
 interface BlockTarget {
   node: ProseMirrorNode
@@ -161,7 +152,6 @@ function SheetActionButton({
 
 export function BlockActionsMenu({ editor }: { editor: Editor }) {
   const [target, setTarget] = useState<BlockTarget | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<BlockTarget | null>(null)
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false)
 
   useEffect(() => {
@@ -170,20 +160,18 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
     editor.on('selectionUpdate', update)
     editor.on('transaction', update)
     editor.on('focus', update)
-    editor.on('blur', update)
     window.addEventListener('resize', update)
     window.addEventListener('scroll', update, true)
     return () => {
       editor.off('selectionUpdate', update)
       editor.off('transaction', update)
       editor.off('focus', update)
-      editor.off('blur', update)
       window.removeEventListener('resize', update)
       window.removeEventListener('scroll', update, true)
     }
   }, [editor])
 
-  if (!target && !deleteTarget) return null
+  if (!target) return null
 
   const previous = target ? editor.state.doc.resolve(target.pos).nodeBefore : null
   const next = target ? editor.state.doc.resolve(target.pos + target.node.nodeSize).nodeAfter : null
@@ -192,11 +180,6 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
 
   const runMobileAction = (action: () => void) => {
     action()
-    setIsMobileSheetOpen(false)
-  }
-
-  const requestDeleteBlock = (blockTarget: BlockTarget) => {
-    setDeleteTarget(blockTarget)
     setIsMobileSheetOpen(false)
   }
 
@@ -218,7 +201,7 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
           <ActionButton label="Duplicate block" onClick={() => duplicateBlock(editor, target)}>
             <DocumentDuplicateIcon aria-hidden="true" className="size-4" />
           </ActionButton>
-          <ActionButton label="Delete block" onClick={() => requestDeleteBlock(target)}>
+          <ActionButton label="Delete block" onClick={() => deleteBlock(editor, target)}>
             <TrashIcon aria-hidden="true" className="size-4" />
           </ActionButton>
         </div>
@@ -248,7 +231,7 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
             <SheetActionButton label="Duplicate block" onClick={() => runMobileAction(() => duplicateBlock(editor, target))}>
               <DocumentDuplicateIcon aria-hidden="true" className="size-5 shrink-0" />
             </SheetActionButton>
-            <SheetActionButton label="Delete block" destructive onClick={() => requestDeleteBlock(target)}>
+            <SheetActionButton label="Delete block" destructive onClick={() => runMobileAction(() => deleteBlock(editor, target))}>
               <TrashIcon aria-hidden="true" className="size-5 shrink-0" />
             </SheetActionButton>
           </div>
@@ -256,31 +239,6 @@ export function BlockActionsMenu({ editor }: { editor: Editor }) {
       </div>
       ) : null}
 
-      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
-              <TrashIcon aria-hidden="true" className="size-6" />
-            </div>
-            <DialogTitle>Delete this block?</DialogTitle>
-            <DialogDescription>
-              This content will be removed from the document.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <AppButton variant="secondary" onPress={() => setDeleteTarget(null)}>Cancel</AppButton>
-            <AppButton
-              variant="danger"
-              onPress={() => {
-                if (deleteTarget) deleteBlock(editor, deleteTarget)
-                setDeleteTarget(null)
-              }}
-            >
-              Delete block
-            </AppButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

@@ -3,7 +3,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
 export interface TableOfContentsEntry {
   id: string
-  level: 1 | 2 | 3
+  level: 1 | 2 | 3 | 4
   pos: number
   text: string
 }
@@ -25,7 +25,7 @@ export function getTableOfContentsEntries(doc: ProseMirrorNode): TableOfContents
   doc.descendants((node, pos) => {
     if (node.type.name !== 'heading') return true
     const level = Number(node.attrs.level)
-    if (level !== 1 && level !== 2 && level !== 3) return false
+    if (level !== 1 && level !== 2 && level !== 3 && level !== 4) return false
     const text = node.textContent.trim()
     if (!text) return false
     entries.push({

@@ -1,0 +1,5 @@
+- generic [active] [ref=f3e1]:
+  - main [ref=f3e6]:
+    - status [ref=f3e7]: Loading editor…
+  - generic:
+    - region "Notifications"

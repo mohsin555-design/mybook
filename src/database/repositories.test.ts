@@ -44,15 +44,15 @@ describe('IndexedDB repositories', () => {
     const firstSpreadsheet = await fileRepository.create('spreadsheet')
     const secondSpreadsheet = await fileRepository.create('spreadsheet')
 
-    expect(firstDocument.data?.name).toBe('Untitled Document')
-    expect(secondDocument.data?.name).toBe('Untitled Document 2')
+    expect(firstDocument.data?.name).toBe('Untitled')
+    expect(secondDocument.data?.name).toBe('Untitled 2')
     expect(firstSpreadsheet.data?.name).toBe('Untitled Spreadsheet')
     expect(secondSpreadsheet.data?.name).toBe('Untitled Spreadsheet 2')
 
     const files = await fileRepository.list()
     expect(files.map((file) => file.name).sort()).toEqual([
-      'Untitled Document',
-      'Untitled Document 2',
+      'Untitled',
+      'Untitled 2',
       'Untitled Spreadsheet',
       'Untitled Spreadsheet 2',
     ])
@@ -142,8 +142,8 @@ describe('IndexedDB repositories', () => {
     const created = await fileRepository.create('document')
 
     expect(created.success).toBe(true)
-    expect(created.data).toMatchObject({ name: 'Untitled Document', driveFileId: null, syncStatus: 'pending' })
-    expect(await db.files.get(created.data!.id)).toMatchObject({ id: created.data!.id, name: 'Untitled Document' })
+    expect(created.data).toMatchObject({ name: 'Untitled', driveFileId: null, syncStatus: 'pending' })
+    expect(await db.files.get(created.data!.id)).toMatchObject({ id: created.data!.id, name: 'Untitled' })
     expect(await db.syncQueue.toArray()).toMatchObject([{ entityType: 'file', entityId: created.data!.id, operation: 'create' }])
     await processPendingDriveFolderSync()
   })

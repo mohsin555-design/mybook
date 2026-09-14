@@ -452,10 +452,12 @@ function DocumentLinkPicker({
 }) {
   const pickerRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
 
   useEffect(() => {
     if (!isOpen) return
     setQuery('')
+    setSelectedIndex(0)
     window.requestAnimationFrame(() => pickerRef.current?.focus())
   }, [isOpen])
 
@@ -466,6 +468,22 @@ function DocumentLinkPicker({
     { label: 'Documents', items: documents.filter((item) => item.type === 'document') },
     { label: 'Databases', items: documents.filter((item) => item.type === 'spreadsheet') },
   ].filter((group) => group.items.length)
+  const flatTargets = groupedTargets.flatMap((group) => group.items)
+
+  useEffect(() => {
+    setSelectedIndex((index) => Math.min(index, Math.max(0, flatTargets.length - 1)))
+  }, [flatTargets.length])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && pickerRef.current?.contains(target)) return
+      onClose()
+    }
+    window.addEventListener('pointerdown', closeOnPointerDown)
+    return () => window.removeEventListener('pointerdown', closeOnPointerDown)
+  }, [isOpen, onClose])
 
   if (!isOpen || !position) return null
 
@@ -473,12 +491,14 @@ function DocumentLinkPicker({
     <div
       ref={pickerRef}
       tabIndex={-1}
-      role="dialog"
-      aria-labelledby="document-link-picker-title"
-      className="fixed z-50 w-[min(24rem,calc(100vw-1rem))] rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-0 text-foreground shadow-[0_20px_56px_rgba(15,23,42,0.22)] outline-none"
+      role="listbox"
+      aria-label="Link to Page options"
+      className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.14)] outline-none"
+      data-document-link-picker="true"
+      data-command-menu-scroller="true"
       style={{
-        left: Math.min(position.left, window.innerWidth - 392),
-        top: Math.min(position.top, window.innerHeight - 420),
+        left: Math.max(8, Math.min(position.left, window.innerWidth - 320)),
+        top: Math.max(8, Math.min(position.top, window.innerHeight - 360)),
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -486,51 +506,68 @@ function DocumentLinkPicker({
           onClose()
           return
         }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault()
+          setSelectedIndex((index) => flatTargets.length ? (index + 1) % flatTargets.length : 0)
+          return
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault()
+          setSelectedIndex((index) => flatTargets.length ? (index - 1 + flatTargets.length) % flatTargets.length : 0)
+          return
+        }
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          const selected = flatTargets[selectedIndex]
+          if (!selected) return
+          event.preventDefault()
+          onSelect({ id: selected.id, name: selected.name })
+          return
+        }
         if (event.key === 'Backspace') {
           event.preventDefault()
-          setQuery((value) => value.slice(0, -1))
+          setQuery((value) => {
+            const next = value.slice(0, -1)
+            setSelectedIndex(0)
+            return next
+          })
           return
         }
         if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
           event.preventDefault()
-          setQuery((value) => `${value}${event.key}`)
+          setQuery((value) => {
+            const next = `${value}${event.key}`
+            setSelectedIndex(0)
+            return next
+          })
         }
       }}
     >
-      <div className="border-b border-[var(--app-border)] px-4 py-3">
-        <h2 id="document-link-picker-title" className="text-sm font-semibold">Link to Page</h2>
-        <p className="mt-1 min-h-5 text-sm text-muted-foreground">{query ? `Search: ${query}` : 'Start typing to search pages'}</p>
-      </div>
-      <div className="max-h-[min(24rem,60vh)] overflow-y-auto p-2">
-        {groupedTargets.length ? groupedTargets.map((group) => (
-          <section key={group.label} className="py-1" aria-label={group.label}>
-            <h3 className="px-3 pb-1 text-xs font-semibold uppercase tracking-normal text-muted-foreground">{group.label}</h3>
+      {groupedTargets.length ? groupedTargets.map((group) => (
+          <section key={group.label} aria-label={group.label}>
+            <h3 className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.label}</h3>
             {group.items.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onSelect({ id: item.id, name: item.name })}
-                className="flex min-h-12 w-full flex-col rounded-[7px] px-3 py-2 text-left transition hover:bg-[var(--app-subtle)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                tabIndex={-1}
+                role="option"
+                aria-selected={flatTargets[selectedIndex]?.id === item.id}
+                onMouseEnter={() => setSelectedIndex(flatTargets.findIndex((target) => target.id === item.id))}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  onSelect({ id: item.id, name: item.name })
+                }}
+                className={`flex min-h-10 w-full flex-col rounded-[7px] px-3 py-2 text-left ${flatTargets[selectedIndex]?.id === item.id ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)]'}`}
                 aria-label={`Link to page ${item.name}`}
               >
                 <span className="break-words text-sm font-medium">{item.name}</span>
-                <span className="text-xs text-muted-foreground">{folderLabel(item.folderId)}</span>
+                <span className={`text-xs ${flatTargets[selectedIndex]?.id === item.id ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{folderLabel(item.folderId)}</span>
               </button>
             ))}
           </section>
         )) : (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">{query.trim() ? 'No pages found.' : 'No other pages available.'}</p>
+          <p className="px-3 py-4 text-sm text-muted-foreground">No pages found</p>
         )}
-      </div>
-      <div className="flex justify-end border-t border-[var(--app-border)] px-4 py-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="h-9 rounded-[8px] px-3 text-sm font-medium text-muted-foreground transition hover:bg-[var(--app-subtle)] hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-        >
-          Cancel
-        </button>
-      </div>
     </div>
   )
 }

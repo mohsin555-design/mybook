@@ -312,6 +312,11 @@
   .tiptap .mybook-file-attachment-meta { flex: 0 0 auto; color: var(--muted); font-size: 0.875rem; }
   .tiptap .ProseMirror-selectednode.mybook-file-attachment { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
   .tiptap .mybook-link-node-view { white-space: normal; }
+  .tiptap .mybook-document-link { display: inline-flex; max-width: 100%; border-radius: 7px; vertical-align: baseline; }
+  .tiptap .mybook-document-link-button { display: inline-flex; min-height: 2rem; max-width: 100%; align-items: center; gap: 0.45rem; border-radius: 7px; padding: 0.15rem 0.35rem; text-align: left; transition: background 120ms ease, color 120ms ease; }
+  .tiptap .mybook-document-link-button:not(:disabled):hover,
+  .tiptap .mybook-document-link-button:not(:disabled):focus-visible { background: var(--app-subtle); outline: 2px solid transparent; }
+  .tiptap .mybook-document-link-selected .mybook-document-link-button { background: color-mix(in srgb, var(--primary) 10%, transparent); box-shadow: 0 0 0 2px var(--focus-ring); }
   .tiptap .mybook-bookmark-block { --card-spacing: 0; position: relative; display: flex; min-width: 0; align-items: stretch; gap: 0; overflow: hidden; border: 1px solid var(--app-border); border-radius: 8px; background: color-mix(in srgb, var(--app-surface) 92%, var(--app-subtle)); padding: 0; box-shadow: none; }
   .tiptap .mybook-bookmark-content { min-width: 0; flex: 1; padding: 0; }
   .tiptap .mybook-bookmark-card { display: grid; min-width: 0; width: 100%; grid-template-columns: 4.75rem minmax(0, 1fr); gap: 1rem; padding: 0.85rem 3rem 0.85rem 0.85rem; text-align: left; color: var(--foreground); }

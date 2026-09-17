@@ -91,7 +91,7 @@ export function FolderBreadcrumb({
   )
 }
 
-function getFolderPath(currentFolderId: string, folders: MyBookFolder[]) {
+export function getFolderPath(currentFolderId: string, folders: MyBookFolder[]) {
   const byId = new Map(folders.map((folder) => [folder.id, folder]))
   const path: MyBookFolder[] = []
   const visited = new Set<string>()

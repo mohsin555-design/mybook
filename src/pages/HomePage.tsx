@@ -2,8 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { EmptyState } from '../components/common/EmptyState'
-import { PageHeader } from '../components/common/PageHeader'
-import { CreateItemDrawer } from '../components/files/CreateItemDrawer'
 import { DeleteFileDialog } from '../components/files/DeleteFileDialog'
 import { FileActionsMenu } from '../components/files/FileActionsMenu'
 import { FileCard } from '../components/files/FileCard'
@@ -34,11 +32,9 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
   const [deleteTarget, setDeleteTarget] = useState<MyBookFile | null>(null)
   const [folderRenameTarget, setFolderRenameTarget] = useState<MyBookFolder | null>(null)
   const [folderDeleteTarget, setFolderDeleteTarget] = useState<MyBookFolder | null>(null)
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const recentFiles = [...files].sort(compareFilesByUpdatedAt)
   const favoriteItems = activeTab === 'favorites' ? activeFavoriteItems(files, folders) : []
   const visibleFiles = activeTab === 'all' ? files : activeTab === 'recent' ? recentFiles : []
-  const rootFolderNames = folders.filter((folder) => folder.parentId === null).map((folder) => folder.name)
   const emptyState = emptyHomeState(activeTab)
   const folderCount = (targetId: string) => folders.filter((folder) => folder.parentId === targetId).length
   const fileCount = (targetId: string) => files.filter((file) => file.folderId === targetId).length
@@ -82,8 +78,6 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
 
   return (
     <div className="px-4">
-      <PageHeader title="Home" />
-
       <Tabs
         className="-mx-4 mt-2"
         value={activeTab}
@@ -99,8 +93,6 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
         <TabsContent value="all">{activeTab === 'all' ? fileList : null}</TabsContent>
       </Tabs>
 
-      <CreateItemDrawer folderId={null} onCreateFolder={() => setIsCreatingFolder(true)} />
-
       <FileNameDialog
         fileName={renameTarget?.name ?? ''}
         isOpen={Boolean(renameTarget)}
@@ -108,20 +100,6 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
         onSubmit={(name) => renameTarget
           ? fileRepository.update(renameTarget.id, { name })
           : Promise.resolve({ success: false })}
-      />
-      <FolderNameDialog
-        isOpen={isCreatingFolder}
-        title="Create folder"
-        submitLabel="Create"
-        onClose={() => setIsCreatingFolder(false)}
-        existingFolderNames={rootFolderNames}
-        onSubmit={(name) => folderRepository.create(name)}
-        onSuccess={(result) => {
-          if (result.data) {
-            navigate(`/folders/${result.data.id}`)
-            toast.add({ title: `"${result.data.name}" created`, type: 'success', priority: 'low' })
-          }
-        }}
       />
       <FolderNameDialog
         isOpen={Boolean(folderRenameTarget)}

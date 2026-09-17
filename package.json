@@ -62,6 +62,7 @@
     "@eslint/js": "^9.25.0",
     "@playwright/test": "^1.62.0",
     "@storybook/addon-a11y": "^10.6.0",
+    "@storybook/addon-designs": "^11.1.4",
     "@storybook/addon-themes": "^10.6.0",
     "@storybook/react-vite": "^10.6.0",
     "@tailwindcss/vite": "^4.1.0",

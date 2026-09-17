@@ -23,6 +23,7 @@ vi.mock('../../hooks/useLibraryData', () => ({
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
 })
 
 describe('AppLayout sidebar favorites', () => {
@@ -42,6 +43,17 @@ describe('AppLayout sidebar favorites', () => {
         dispatchEvent: vi.fn(),
       })),
     })
+  })
+
+  it.each(['/home', '/folders', '/settings', '/search'])('hides mobile leading actions on %s', (path) => {
+    vi.stubGlobal('innerWidth', 375)
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes><Route element={<AppLayout />}><Route path={path} element={<p>Page content</p>} /></Route></Routes>
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('button', { name: 'Go back' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
   })
 
   it('keeps the Favorites section empty when there are no favorites', () => {
@@ -137,6 +149,76 @@ describe('AppLayout sidebar favorites', () => {
     fireEvent.click(screen.getByRole('link', { name: 'See all favorites' }))
 
     expect(screen.getByText('Favorites page')).toBeInTheDocument()
+  })
+
+  it('renders nested breadcrumbs in AppHeader for folders with no rename trigger and shows favorite and more actions', () => {
+    mockLibraryData.folders = [
+      folder({ id: 'folder-1', name: 'Work', parentId: null }),
+      folder({ id: 'folder-2', name: 'Reports', parentId: 'folder-1', isFavorite: false }),
+    ]
+
+    render(
+      <MemoryRouter initialEntries={['/folders/folder-2']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/folders/:folderId" element={<p>Folder page</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    )
+
+    const breadcrumbNav = screen.getByRole('navigation', { name: 'breadcrumb' })
+    expect(breadcrumbNav).toHaveTextContent('Library')
+    expect(breadcrumbNav).toHaveTextContent('Work')
+    expect(breadcrumbNav).toHaveTextContent('Reports')
+
+    // Breadcrumbs should be navigation only, not editable buttons with "Rename Reports"
+    expect(screen.queryByRole('button', { name: /Rename Reports/i })).not.toBeInTheDocument()
+
+    // Keep the sidebar control on desktop and use Back only on mobile.
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveClass('hidden', 'md:inline-flex')
+    expect(screen.getByRole('button', { name: 'Go back' })).toHaveClass('md:hidden')
+
+    // Favorite and More actions in header
+    expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument()
+  })
+
+  it('navigates mobile folders back through their parents to Library', () => {
+    vi.stubGlobal('innerWidth', 375)
+    mockLibraryData.folders = [
+      folder({ id: 'parent', name: 'Work', parentId: null }),
+      folder({ id: 'child', name: 'Reports', parentId: 'parent' }),
+    ]
+    render(
+      <MemoryRouter initialEntries={['/folders/child']}>
+        <Routes><Route element={<AppLayout />}>
+          <Route path="/folders/:folderId" element={<p>Folder content</p>} />
+          <Route path="/folders" element={<p>Library content</p>} />
+        </Route></Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    expect(screen.getByRole('navigation', { name: 'breadcrumb' })).toHaveTextContent('Work')
+    expect(screen.getByRole('navigation', { name: 'breadcrumb' })).not.toHaveTextContent('Reports')
+    fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
+    expect(screen.getByText('Library content')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Go back' })).not.toBeInTheDocument()
+  })
+
+  it('renders Library title and no breadcrumbs on the main Library route', () => {
+    render(
+      <MemoryRouter initialEntries={['/folders']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/folders" element={<p>Library root page</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByRole('navigation', { name: 'breadcrumb' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Library' })).toBeInTheDocument()
   })
 })
 

@@ -49,12 +49,6 @@ vi.mock('../ui/toast', () => ({
   },
 }))
 
-vi.mock('./CreateItemDrawer', () => ({
-  CreateItemDrawer: ({ onCreateFolder }: { onCreateFolder: () => void }) => (
-    <button type="button" onClick={onCreateFolder}>New folder</button>
-  ),
-}))
-
 vi.mock('./FileActionsMenu', () => ({
   FileActionsMenu: ({ fileName, onDelete }: { fileName: string; onDelete: () => void }) => (
     <button type="button" onClick={onDelete}>Delete file {fileName}</button>
@@ -91,35 +85,7 @@ describe('FolderManagerView folder creation', () => {
     vi.mocked(toast.add).mockReset()
   })
 
-  it('navigates into newly created folders and shows a success toast', async () => {
-    vi.mocked(folderRepository.create).mockResolvedValue({
-      success: true,
-      data: {
-        id: 'folder-2',
-        driveFolderId: null,
-        name: 'Archive',
-        parentId: null,
-        createdAt: '2026-08-29T00:00:00.000Z',
-        updatedAt: '2026-08-29T00:00:00.000Z',
-        isDeleted: false,
-      },
-    })
-
-    render(<MemoryRouter><FolderManagerView folderId={null} /></MemoryRouter>)
-
-    fireEvent.click(screen.getByRole('button', { name: 'New folder' }))
-    fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Archive' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/folders/folder-2'))
-    expect(toast.add).toHaveBeenCalledWith({
-      title: '"Archive" created',
-      type: 'success',
-      priority: 'low',
-    })
-  })
-
-  it('shows an accessible breadcrumb path for nested folders', () => {
+  it('renders child files and folders without a duplicate breadcrumb', () => {
     mockLibraryData.folders = [
       {
         id: 'folder-1',
@@ -143,16 +109,7 @@ describe('FolderManagerView folder creation', () => {
 
     render(<MemoryRouter><FolderManagerView folderId="folder-2" /></MemoryRouter>)
 
-    const breadcrumb = screen.getByRole('navigation', { name: 'Folder path' })
-
-    expect(breadcrumb).toHaveTextContent('Library')
-    expect(breadcrumb).toHaveTextContent('Sharu')
-    expect(breadcrumb).toHaveTextContent('Inside sharu')
-    expect(screen.getByRole('link', { current: 'page' })).toHaveTextContent('Inside sharu')
-
-    fireEvent.click(screen.getByRole('link', { name: 'Sharu' }))
-
-    expect(mockNavigate).toHaveBeenCalledWith('/folders/folder-1')
+    expect(screen.queryByRole('navigation', { name: 'Folder path' })).not.toBeInTheDocument()
   })
 
   it('requires confirmation before deleting a file inside a folder', async () => {

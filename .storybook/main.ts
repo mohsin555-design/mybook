@@ -19,7 +19,11 @@ function withoutPwaPlugins(plugins: NonNullable<StorybookConfig['viteFinal']> ex
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(ts|tsx)'],
-  addons: ['@storybook/addon-a11y', '@storybook/addon-themes'],
+  addons: [
+    '@storybook/addon-a11y',
+    '@storybook/addon-themes',
+    '@storybook/addon-designs'
+  ],
   framework: {
     name: '@storybook/react-vite',
     options: {},

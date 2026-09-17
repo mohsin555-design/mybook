@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 
 import { AppButton } from '../components/common/AppButton'
-import { PageHeader } from '../components/common/PageHeader'
 import { useDriveBootstrap } from '../hooks/useDriveBootstrap'
 import { getDriveFolderStatus, openMyBookFolderInDrive } from '../services/googleDrive'
 import { exportLocalWorkspaceBackup, importLocalWorkspaceBackup } from '../services/localBackup'
@@ -120,10 +119,6 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4">
-      <PageHeader
-        title="Preferences"
-        description="Manage your MyBook preferences and account session."
-      />
       <section aria-labelledby="appearance-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="appearance-heading" className="text-base font-semibold leading-6">Appearance</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">Choose how MyBook looks on this device.</p>

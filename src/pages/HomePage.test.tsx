@@ -53,12 +53,6 @@ vi.mock('../components/ui/toast', () => ({
   },
 }))
 
-vi.mock('../components/files/CreateItemDrawer', () => ({
-  CreateItemDrawer: ({ onCreateFolder }: { onCreateFolder: () => void }) => (
-    <button type="button" onClick={onCreateFolder}>New folder</button>
-  ),
-}))
-
 vi.mock('../components/files/FileActionsMenu', () => ({
   FileActionsMenu: ({
     fileName,
@@ -128,35 +122,6 @@ describe('HomePage folder creation', () => {
     vi.mocked(folderRepository.delete).mockResolvedValue({ success: true })
     vi.mocked(fileRepository.setFavorite).mockResolvedValue({ success: true })
     vi.mocked(folderRepository.setFavorite).mockResolvedValue({ success: true })
-  })
-
-  it('closes the dialog, navigates into the new folder, and shows a success toast', async () => {
-    vi.mocked(folderRepository.create).mockResolvedValue({
-      success: true,
-      data: {
-        id: 'folder-1',
-        driveFolderId: null,
-        name: 'Projects',
-        parentId: null,
-        createdAt: '2026-08-29T00:00:00.000Z',
-        updatedAt: '2026-08-29T00:00:00.000Z',
-        isDeleted: false,
-      },
-    })
-
-    render(<MemoryRouter><HomePage /></MemoryRouter>)
-
-    fireEvent.click(screen.getByRole('button', { name: 'New folder' }))
-    fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Projects' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/folders/folder-1'))
-    expect(toast.add).toHaveBeenCalledWith({
-      title: '"Projects" created',
-      type: 'success',
-      priority: 'low',
-    })
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('uses Recent-specific empty copy when there are no recent files', () => {

@@ -12,7 +12,7 @@ describe('EditorStatus', () => {
     render(<EditorStatus status="pending" />)
 
     expect(screen.getByRole('status')).toHaveTextContent('Saved locally')
-    expect(screen.queryByText('Saving...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Saving…')).not.toBeInTheDocument()
     expect(screen.queryByText('Synced')).not.toBeInTheDocument()
   })
 
@@ -24,11 +24,11 @@ describe('EditorStatus', () => {
   })
 
   it.each([
-    ['editing', 'Saving...'],
-    ['saving-locally', 'Saving...'],
+    ['editing', 'Saving…'],
+    ['saving-locally', 'Saving…'],
     ['saved-locally', 'Saved locally'],
     ['pending', 'Saved locally'],
-    ['backing-up', 'Syncing...'],
+    ['backing-up', 'Syncing…'],
     ['backed-up', 'Synced'],
     ['offline', 'Saved locally · Offline'],
     ['failed', 'Saved locally · Sync failed'],

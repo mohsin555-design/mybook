@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Delete02Icon, File01Icon, Folder01Icon, HelpCircleIcon, Home01Icon, Logout01Icon, Moon01Icon, MoreHorizontalIcon, Search01Icon, Settings01Icon, Sun01Icon } from '@hugeicons/core-free-icons'
+import { Delete02Icon, File01Icon, Folder01Icon, HelpCircleIcon, Home01Icon, Logout01Icon, MoreHorizontalIcon, Search01Icon, Settings01Icon, Sun01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -9,10 +9,26 @@ import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { activeFavoriteItems } from '../../utils/favorites'
-import { IconButton } from '../common/IconButton'
+import { AppHeader } from '../common/AppHeader'
+import { getFolderPath } from '../files/FolderBreadcrumb'
+import { FolderNameDialog } from '../files/FolderNameDialog'
+import { DeleteFolderDialog } from '../files/DeleteFolderDialog'
+import { fileRepository, folderRepository } from '../../database/repositories'
+import { deletedToast } from '../../utils/deleteToast'
+import type { MyBookFolder } from '../../types/files'
+import { toast } from '../ui/toast'
 import { Input } from '../ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu'
 import {
   Sidebar,
   SidebarContent,
@@ -27,7 +43,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarTrigger,
 } from '../ui/sidebar'
 import { MobileBottomNavigation } from './MobileBottomNavigation'
 
@@ -60,6 +75,84 @@ export function AppLayout() {
         ...folders.filter((folder) => !folder.isDeleted && folder.name.toLocaleLowerCase().includes(normalizedSearchQuery)).map((folder) => ({ kind: 'folder' as const, id: folder.id, name: folder.name, type: 'folder' as const })),
       ].slice(0, 8)
     : recentFiles.map((file) => ({ kind: 'file' as const, id: file.id, name: file.name, type: file.type }))
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [renameFolderTarget, setRenameFolderTarget] = useState<MyBookFolder | null>(null)
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<MyBookFolder | null>(null)
+  const folderMatch = pathname.match(/^\/folders\/([^/]+)/)
+  const currentFolderId = folderMatch ? folderMatch[1] : null
+  const currentFolder = currentFolderId ? folders.find((f) => f.id === currentFolderId) : null
+
+  let headerTitle = 'Home'
+  let showTitle = true
+  let breadcrumbs: { label: string; onPress?: () => void }[] = []
+  let showAddNew = true
+  let leadingAction: 'sidebar' | 'back' | 'none' = 'sidebar'
+  let onBack: (() => void) | undefined = undefined
+
+  if (pathname === '/home') {
+    headerTitle = 'Home'
+  } else if (pathname === '/favorites') {
+    headerTitle = 'Favorites'
+  } else if (pathname === '/folders') {
+    headerTitle = 'Library'
+    breadcrumbs = []
+  } else if (currentFolderId) {
+    const path = getFolderPath(currentFolderId, folders)
+    breadcrumbs = [
+      { label: 'Library', onPress: () => navigate('/folders') },
+      ...path.map((folder, index) => {
+        const isCurrent = index === path.length - 1
+        return isCurrent
+          ? { label: folder.name }
+          : { label: folder.name, onPress: () => navigate(`/folders/${folder.id}`) }
+      }),
+    ]
+    headerTitle = currentFolder?.name ?? 'Folder'
+    showTitle = false
+    leadingAction = 'sidebar'
+    onBack = () => navigate(currentFolder?.parentId ? `/folders/${currentFolder.parentId}` : '/folders')
+  } else if (pathname === '/search') {
+    headerTitle = 'Search'
+  } else if (pathname === '/trash') {
+    headerTitle = 'Trash'
+    showAddNew = false
+  } else if (pathname === '/settings') {
+    headerTitle = 'Preferences'
+    showAddNew = false
+  } else if (pathname === '/design-system') {
+    headerTitle = 'Design System'
+    showAddNew = false
+  }
+
+  // Move destinations for currentFolder
+  const currentFolderDescendants = new Set<string>()
+  if (currentFolder) {
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const folder of folders) {
+        if ((folder.parentId === currentFolder.id || (folder.parentId && currentFolderDescendants.has(folder.parentId))) && !currentFolderDescendants.has(folder.id)) {
+          currentFolderDescendants.add(folder.id)
+          changed = true
+        }
+      }
+    }
+  }
+  const moveDestinations = currentFolder
+    ? folders.filter((folder) => folder.id !== currentFolder.id && folder.id !== currentFolder.parentId && !currentFolderDescendants.has(folder.id))
+    : []
+
+  const targetFolderId = pathname.startsWith('/folders/') && currentFolderId ? currentFolderId : null
+  const existingFolderNames = folders
+    .filter((f) => f.parentId === targetFolderId)
+    .map((f) => f.name)
+
+  const handleCreateDocument = () => {
+    void fileRepository.create('document', targetFolderId).then((result) => {
+      if (result.data) navigate(`/document/${result.data.id}`)
+    })
+  }
+
   const openSearchResult = (result: (typeof searchResults)[number]) => {
     setSearchOpen(false)
     navigate(result.kind === 'folder' ? `/folders/${result.id}` : `/${result.type}/${result.id}`)
@@ -174,25 +267,76 @@ export function AppLayout() {
       </Sidebar>
 
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-        <header className="sticky top-0 z-30 hidden shrink-0 border-b bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur md:block">
-          <div className="flex h-16 w-full items-center gap-3 px-4 sm:px-6 lg:px-8">
-            <SidebarTrigger aria-label="Open navigation" title="Open navigation" className="hidden md:inline-flex" />
-            <div className="ml-auto flex items-center gap-2">
-              <IconButton
-                label={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
-                variant="ghost"
-                onPress={toggleTheme}
-                className="hidden md:inline-flex"
-              >
-                {theme === 'light' ? (
-                  <HugeiconsIcon icon={Moon01Icon} strokeWidth={2} className="size-5" />
-                ) : (
-                  <HugeiconsIcon icon={Sun01Icon} strokeWidth={2} className="size-5" />
-                )}
-              </IconButton>
-            </div>
-          </div>
-        </header>
+        {!isEditor ? (
+          <AppHeader
+            title={headerTitle}
+            showTitle={showTitle}
+            breadcrumbs={breadcrumbs}
+            leadingAction={leadingAction}
+            hideLeadingOnMobile={['/home', '/folders', '/settings', '/search'].includes(pathname)}
+            onBack={onBack}
+            onRename={false}
+            favoriteAction={Boolean(currentFolder)}
+            isFavorite={Boolean(currentFolder?.isFavorite)}
+            onFavorite={() => {
+              if (currentFolder) {
+                void folderRepository.setFavorite(currentFolder.id, !currentFolder.isFavorite)
+              }
+            }}
+            moreAction={Boolean(currentFolder)}
+            moreContent={
+              currentFolder ? (
+                <>
+                  <DropdownMenuItem onClick={() => setRenameFolderTarget(currentFolder)}>
+                    Rename
+                  </DropdownMenuItem>
+                  {currentFolder.parentId || moveDestinations.length > 0 ? (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>Move</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="min-w-44">
+                        {currentFolder.parentId ? (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              void folderRepository.update(currentFolder.id, { parentId: null })
+                            }}
+                          >
+                            Move to Library root
+                          </DropdownMenuItem>
+                        ) : null}
+                        {moveDestinations.map((dest) => (
+                          <DropdownMenuItem
+                            key={dest.id}
+                            onClick={() => {
+                              void folderRepository.update(currentFolder.id, { parentId: dest.id })
+                            }}
+                          >
+                            Move to {dest.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  ) : null}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setDeleteFolderTarget(currentFolder)}
+                  >
+                    Delete
+                  </DropdownMenuItem>
+                </>
+              ) : undefined
+            }
+            addNewAction={showAddNew}
+            addNewContent={
+              showAddNew ? (
+                <>
+                  <DropdownMenuItem onClick={handleCreateDocument}>Document</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setIsCreatingFolder(true)}>Folder</DropdownMenuItem>
+                </>
+              ) : undefined
+            }
+          />
+        ) : null}
 
         <main className={`min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-background ${isEditor ? 'p-0' : 'px-0 pb-4 md:px-8 md:pb-8 md:pt-6'}`}>
           <div className={isEditor ? 'h-full w-full' : 'mx-auto w-full max-w-6xl'}>
@@ -201,6 +345,66 @@ export function AppLayout() {
         </main>
         {!isEditor ? <MobileBottomNavigation /> : null}
       </SidebarInset>
+
+      <FolderNameDialog
+        isOpen={isCreatingFolder}
+        title="Create folder"
+        submitLabel="Create"
+        onClose={() => setIsCreatingFolder(false)}
+        existingFolderNames={existingFolderNames}
+        onSubmit={(name) => folderRepository.create(name, targetFolderId)}
+        onSuccess={(result) => {
+          if (result.data) {
+            navigate(`/folders/${result.data.id}`)
+            toast.add({ title: `"${result.data.name}" created`, type: 'success', priority: 'low' })
+          }
+        }}
+      />
+      <FolderNameDialog
+        isOpen={Boolean(renameFolderTarget)}
+        title="Rename folder"
+        submitLabel="Save"
+        initialName={renameFolderTarget?.name ?? ''}
+        existingFolderNames={folders
+          .filter((f) => f.parentId === renameFolderTarget?.parentId && f.id !== renameFolderTarget?.id)
+          .map((f) => f.name)}
+        onClose={() => setRenameFolderTarget(null)}
+        onSubmit={(name) => {
+          if (!renameFolderTarget) return Promise.resolve({ success: false })
+          return folderRepository.update(renameFolderTarget.id, { name })
+        }}
+        onSuccess={(result) => {
+          if (result.data) {
+            toast.add({ title: `Renamed to "${result.data.name}"`, type: 'success', priority: 'low' })
+          }
+        }}
+      />
+      <DeleteFolderDialog
+        isOpen={Boolean(deleteFolderTarget)}
+        folderName={deleteFolderTarget?.name ?? ''}
+        hasContents={Boolean(
+          deleteFolderTarget &&
+            (folders.some((f) => f.parentId === deleteFolderTarget.id) ||
+              files.some((f) => f.folderId === deleteFolderTarget.id))
+        )}
+        onClose={() => setDeleteFolderTarget(null)}
+        onConfirm={() => {
+          if (!deleteFolderTarget) return
+          const target = deleteFolderTarget
+          void folderRepository.delete(target.id).then((result) => {
+            if (!result.success) return
+            toast.add(
+              deletedToast({
+                itemName: target.name,
+                onUndo: () => {
+                  void folderRepository.restore(target.id)
+                },
+              })
+            )
+            navigate(target.parentId ? `/folders/${target.parentId}` : '/folders')
+          })
+        }}
+      />
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogContent className="max-w-xl gap-4 p-4 sm:p-5">
           <DialogHeader>

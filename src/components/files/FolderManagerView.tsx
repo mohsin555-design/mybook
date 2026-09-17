@@ -1,4 +1,3 @@
-import { ChevronLeftIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -10,14 +9,11 @@ import { formatUpdatedAt } from '../../utils/dateFormat'
 import { deletedToast } from '../../utils/deleteToast'
 import { AppButton } from '../common/AppButton'
 import { EmptyState } from '../common/EmptyState'
-import { PageHeader } from '../common/PageHeader'
 import { toast } from '../ui/toast'
-import { CreateItemDrawer } from './CreateItemDrawer'
 import { DeleteFileDialog } from './DeleteFileDialog'
 import { DeleteFolderDialog } from './DeleteFolderDialog'
 import { FileCard } from './FileCard'
 import { FileActionsMenu } from './FileActionsMenu'
-import { FolderBreadcrumb } from './FolderBreadcrumb'
 import { FileNameDialog } from './FileNameDialog'
 import { FolderActionsMenu } from './FolderActionsMenu'
 import { FolderCard } from './FolderCard'
@@ -31,7 +27,6 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const navigate = useNavigate()
   const { files, folders } = useLibraryData()
   const workspaceMode = useWorkspaceStore((state) => state.mode)
-  const [isCreating, setIsCreating] = useState(false)
   const [renameTarget, setRenameTarget] = useState<MyBookFolder | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MyBookFolder | null>(null)
   const [fileRenameTarget, setFileRenameTarget] = useState<MyBookFile | null>(null)
@@ -39,7 +34,6 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const currentFolder = folderId ? folders.find((folder) => folder.id === folderId) : null
   const childFolders = folders.filter((folder) => folder.parentId === folderId)
   const childFiles = files.filter((file) => file.folderId === folderId)
-  const childFolderNames = childFolders.map((folder) => folder.name)
 
   if (folderId && !currentFolder) {
     return (
@@ -79,50 +73,6 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
 
   return (
     <div className="px-4">
-      <PageHeader
-        title={currentFolder?.name ?? 'Library'}
-        leading={currentFolder ? (
-          <button
-            type="button"
-            aria-label="Back to parent folder"
-            onClick={() => navigate(currentFolder.parentId ? `/folders/${currentFolder.parentId}` : '/folders')}
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted"
-          >
-            <ChevronLeftIcon aria-hidden="true" className="size-4" />
-          </button>
-        ) : null}
-        actions={currentFolder ? (
-          <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-              <FolderActionsMenu
-                folderName={currentFolder.name}
-                folders={folders}
-                folderId={currentFolder.id}
-                currentParentId={currentFolder.parentId}
-                isFavorite={Boolean(currentFolder.isFavorite)}
-                onRename={() => setRenameTarget(currentFolder)}
-                onMove={(destination) => void folderRepository.update(currentFolder.id, { parentId: destination })}
-                onToggleFavorite={() => void folderRepository.setFavorite(currentFolder.id, !currentFolder.isFavorite)}
-                onDelete={() => setDeleteTarget(currentFolder)}
-              />
-          </div>
-        ) : (
-          <AppButton
-            className="min-h-8 rounded-full bg-danger/10 px-3 text-sm text-danger"
-            variant="ghost"
-            onPress={() => navigate('/trash')}
-          >
-            <TrashIcon aria-hidden="true" className="size-4" />
-            Trash
-          </AppButton>
-        )}
-      />
-
-      {currentFolder ? (
-        <div className="mt-2 -mx-1 px-1">
-          <FolderBreadcrumb currentFolderId={currentFolder.id} folders={folders} onNavigate={navigate} />
-        </div>
-      ) : null}
-
       <div className="-mx-4 mt-4 px-1">
         {childFiles.map((file) => (
           <FileCard
@@ -182,22 +132,6 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
         </div>
       ) : null}
 
-      <CreateItemDrawer folderId={folderId} onCreateFolder={() => setIsCreating(true)} />
-
-      <FolderNameDialog
-        isOpen={isCreating}
-        title="Create folder"
-        submitLabel="Create"
-        onClose={() => setIsCreating(false)}
-        existingFolderNames={childFolderNames}
-        onSubmit={(name) => folderRepository.create(name, folderId)}
-        onSuccess={(result) => {
-          if (result.data) {
-            navigate(`/folders/${result.data.id}`)
-            toast.add({ title: `"${result.data.name}" created`, type: 'success', priority: 'low' })
-          }
-        }}
-      />
       <FolderNameDialog
         isOpen={Boolean(renameTarget)}
         title="Rename folder"

@@ -632,10 +632,10 @@
       scroll-padding-block: 7rem;
     }
 
-    .tiptap h1 { font-size: 2rem; }
-    .tiptap h2 { font-size: 1.75rem; }
-    .tiptap h3 { font-size: 1.35rem; }
-    .tiptap h4 { font-size: 1.125rem; }
+    .tiptap h1 { font-size: 1.5rem; line-height: 1.3; }
+    .tiptap h2 { font-size: 1.25rem; line-height: 1.4; }
+    .tiptap h3 { font-size: 1.125rem; line-height: 1.45; }
+    .tiptap h4 { font-size: 1rem; line-height: 1.5; }
     .tiptap ul:not([data-type="taskList"]),
     .tiptap ol { padding-left: 1.25rem; }
     .tiptap ul[data-type="taskList"] li[data-type="taskItem"] { gap: 0.75rem; padding: 0.25rem 0; }

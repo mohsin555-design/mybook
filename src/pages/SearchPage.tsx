@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { EmptyState } from '../components/common/EmptyState'
-import { PageHeader } from '../components/common/PageHeader'
 import { SearchInput } from '../components/common/SearchInput'
 import { DeleteFileDialog } from '../components/files/DeleteFileDialog'
 import { DeleteFolderDialog } from '../components/files/DeleteFolderDialog'
@@ -34,6 +33,7 @@ export function SearchPage() {
   const [folderRenameTarget, setFolderRenameTarget] = useState<MyBookFolder | null>(null)
   const [folderDeleteTarget, setFolderDeleteTarget] = useState<MyBookFolder | null>(null)
   const [fileDeleteTarget, setFileDeleteTarget] = useState<MyBookFile | null>(null)
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
 
   const results = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -75,7 +75,6 @@ export function SearchPage() {
 
   return (
     <div className="px-4">
-      <PageHeader title="Search" />
       <div>
         <div className="mt-3">
           <SearchInput
@@ -167,6 +166,20 @@ export function SearchPage() {
           .filter((folder) => folder.parentId === folderRenameTarget?.parentId && folder.id !== folderRenameTarget?.id)
           .map((folder) => folder.name)}
         onSubmit={(name) => folderRenameTarget ? folderRepository.update(folderRenameTarget.id, { name }) : Promise.resolve({ success: false })}
+      />
+      <FolderNameDialog
+        isOpen={isCreatingFolder}
+        title="Create folder"
+        submitLabel="Create"
+        onClose={() => setIsCreatingFolder(false)}
+        existingFolderNames={folders.filter((f) => f.parentId === null).map((f) => f.name)}
+        onSubmit={(name) => folderRepository.create(name)}
+        onSuccess={(result) => {
+          if (result.data) {
+            navigate(`/folders/${result.data.id}`)
+            toast.add({ title: `"${result.data.name}" created`, type: 'success', priority: 'low' })
+          }
+        }}
       />
       <DeleteFileDialog
         isOpen={Boolean(fileDeleteTarget)}

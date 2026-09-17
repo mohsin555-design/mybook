@@ -1,9 +1,7 @@
-import { EllipsisHorizontalIcon, ShareIcon, StarIcon } from '@heroicons/react/24/outline'
 import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Dropdown } from '../ui/compat-dropdown'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu'
-import { SidebarTrigger } from '../ui/sidebar'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
@@ -25,8 +23,9 @@ import { useIsMobile } from '../../hooks/use-mobile'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
 import { documentToMyBookMarkdown, downloadMyBookMarkdown, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
 import { EmptyState } from '../common/EmptyState'
+import { AppHeader } from '../common/AppHeader'
 import { DeleteFileDialog } from '../files/DeleteFileDialog'
-import { FolderBreadcrumb } from '../files/FolderBreadcrumb'
+import { getFolderPath } from '../files/FolderBreadcrumb'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
 import { EditorBlockControls } from './EditorBlockControls'
@@ -1658,177 +1657,183 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setIsFullWidth(fullWidth)
     window.localStorage.setItem(documentViewModeStorageKey, fullWidth ? 'full' : 'page')
   }
-  const shareDocument = async () => {
-    const shareData = { title: documentTitle, text: documentTitle, url: window.location.href }
-    if (navigator.share) {
-      try { await navigator.share(shareData) } catch { /* User cancelled sharing. */ }
-      return
-    }
-    await navigator.clipboard?.writeText(window.location.href)
-    toast.add({ title: 'Link copied', description: 'Document link copied to clipboard.', type: 'success', priority: 'low' })
-  }
   const toggleDocumentFavorite = async () => {
     const result = await fileRepository.setFavorite(file.id, !file.isFavorite)
     if (!result.success) toast.add({ title: 'Could not update favorite', description: result.error, type: 'error', priority: 'low' })
   }
 
+  const folderPath = file.folderId ? getFolderPath(file.folderId, folders) : []
+  const editorBreadcrumbs = [
+    { label: 'Library', onPress: () => navigate('/folders') },
+    ...folderPath.map((f) => ({ label: f.name, onPress: () => navigate(`/folders/${f.id}`) })),
+    { label: documentTitle },
+  ]
+
   return (
     <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
-      <header className="sticky top-0 z-[70] border-b border-[var(--app-border)] bg-background/95 px-4 backdrop-blur sm:px-6 lg:px-8">
-        <div className="flex min-h-16 items-center gap-2">
-          <SidebarTrigger aria-label="Open navigation" title="Open navigation" className="hidden shrink-0 md:inline-flex" />
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
-              <FolderBreadcrumb currentFolderId={file.folderId} folders={folders} currentPageLabel={documentTitle} onNavigate={navigate} />
-              <EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} />
-            </div>
-          </div>
-          <Button type="button" variant="ghost" size="icon" aria-label="Share document" title="Share document" onClick={() => void shareDocument()}><ShareIcon aria-hidden="true" className="size-4" /></Button>
-          <Button type="button" variant="ghost" size="icon" aria-label={file.isFavorite ? 'Remove from favorites' : 'Add to favorites'} title={file.isFavorite ? 'Remove from favorites' : 'Add to favorites'} onClick={() => void toggleDocumentFavorite()}><StarIcon aria-hidden="true" className={`size-4 ${file.isFavorite ? 'fill-current text-amber-500' : ''}`} /></Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />} aria-label="More document actions" title="More document actions"><EllipsisHorizontalIcon aria-hidden="true" className="size-5" /></DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuItem onClick={() => void saveAll()}>Save now</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void backupNow()}>Sync now</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={!file.driveFileId} onClick={() => file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined}>Open backup in Drive</DropdownMenuItem>
-              <DropdownMenuItem disabled={!file.driveFileId} onClick={() => void copyDriveLink()}>Copy backup link</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void duplicateDocument()}>Duplicate</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setDocumentViewMode(false)}>Page width</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDocumentViewMode(true)}>Full width</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setZoom(75)}>Zoom 75%</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setZoom(100)}>Zoom 100%</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setZoom(125)}>Zoom 125%</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setZoom(150)}>Zoom 150%</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => editor.chain().focus().undo().run()}>Undo</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().redo().run()}>Redo</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={setEditorLink}>Link</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(calloutNode()).run()}>Callout</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(toggleBlockNode()).run()}>Toggle</DropdownMenuItem>
-              <DropdownMenuItem onClick={openImagePicker}>Image</DropdownMenuItem>
-              <DropdownMenuItem onClick={openFilePicker}>File attachment</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()}>Basic Table</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().insertContent({ type: 'paragraph' }).run()}>Horizontal rule</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>Paragraph</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 1 }).run()}>Heading 1</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 2 }).run()}>Heading 2</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 3 }).run()}>Heading 3</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().toggleBold().run()}>Bold</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().toggleItalic().run()}>Italic</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().toggleUnderline().run()}>Underline</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => editor.chain().focus().toggleStrike().run()}>Strikethrough</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Export MyBook Markdown</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void exportDocx(true)}>Download DOCX</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void exportDocx(false)}>Prepare DOCX</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Move to Trash</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void close()}>Close document</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      <AppHeader
+        leadingAction="sidebar"
+        onBack={() => navigate(file.folderId ? `/folders/${file.folderId}` : '/folders')}
+        breadcrumbs={editorBreadcrumbs}
+        hideBreadcrumbsOnMobile
+        title={documentTitle}
+        titleRef={pageTitleRef}
+        onRename={true}
+        onBreadcrumbRename={updateTitle}
+        status={<EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} />}
+        addNewAction={false}
+        shareAction={true}
+        favoriteAction={true}
+        isFavorite={file.isFavorite}
+        onFavorite={() => void toggleDocumentFavorite()}
+        moreAction={true}
+        moreMenuClassName="min-w-64"
+        moreContent={
+          <>
+            <DropdownMenuItem onClick={() => void saveAll()}>Save now</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void backupNow()}>Sync now</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled={!file.driveFileId} onClick={() => (file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined)}>
+              Open backup in Drive
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={!file.driveFileId} onClick={() => void copyDriveLink()}>
+              Copy backup link
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void duplicateDocument()}>Duplicate</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setDocumentViewMode(false)}>Page width</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDocumentViewMode(true)}>Full width</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setZoom(75)}>Zoom 75%</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setZoom(100)}>Zoom 100%</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setZoom(125)}>Zoom 125%</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setZoom(150)}>Zoom 150%</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => editor.chain().focus().undo().run()}>Undo</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().redo().run()}>Redo</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={setEditorLink}>Link</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(calloutNode()).run()}>Callout</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(toggleBlockNode()).run()}>Toggle</DropdownMenuItem>
+            <DropdownMenuItem onClick={openImagePicker}>Image</DropdownMenuItem>
+            <DropdownMenuItem onClick={openFilePicker}>File attachment</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()}>Basic Table</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().insertContent({ type: 'paragraph' }).run()}>Horizontal rule</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>Paragraph</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 1 }).run()}>Heading 1</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 2 }).run()}>Heading 2</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 3 }).run()}>Heading 3</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleBold().run()}>Bold</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleItalic().run()}>Italic</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleUnderline().run()}>Underline</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().toggleStrike().run()}>Strikethrough</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Export MyBook Markdown</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void exportDocx(true)}>Download DOCX</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void exportDocx(false)}>Prepare DOCX</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Move to Trash</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void close()}>Close document</DropdownMenuItem>
+          </>
+        }
+      />
+      <nav aria-label="Desktop document commands" className="hidden">
+        <DesktopMenu label="Document">
+          <Dropdown.Menu aria-label="Document menu" onAction={handleDocumentAction}>
+            <Dropdown.Item id="save">Save now</Dropdown.Item>
+            <Dropdown.Item id="backup">Sync now</Dropdown.Item>
+            <Dropdown.Item id="import">Import document</Dropdown.Item>
+            <Dropdown.Item id="duplicate">Duplicate</Dropdown.Item>
+            <Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item>
+            <Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item>
+            <Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item>
+            <Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item>
+            <Dropdown.Item id="close">Close document</Dropdown.Item>
+          </Dropdown.Menu>
+        </DesktopMenu>
+        <DesktopMenu label="Edit">
+          <Dropdown.Menu aria-label="Edit menu" onAction={handleDocumentAction}>
+            <Dropdown.Item id="undo" isDisabled={!editor.can().chain().focus().undo().run()}>Undo</Dropdown.Item>
+            <Dropdown.Item id="redo" isDisabled={!editor.can().chain().focus().redo().run()}>Redo</Dropdown.Item>
+            <Dropdown.Item id="clear" isDisabled={!editor.can().chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</Dropdown.Item>
+          </Dropdown.Menu>
+        </DesktopMenu>
+        <DesktopMenu label="View">
+          <Dropdown.Menu aria-label="View menu" onAction={handleDocumentAction}>
+            <Dropdown.Item id="page-width">Page width</Dropdown.Item>
+            <Dropdown.Item id="full-width">Full width</Dropdown.Item>
+            <Dropdown.Item id="zoom-75">Zoom 75%</Dropdown.Item>
+            <Dropdown.Item id="zoom-100">Zoom 100%</Dropdown.Item>
+            <Dropdown.Item id="zoom-125">Zoom 125%</Dropdown.Item>
+            <Dropdown.Item id="zoom-150">Zoom 150%</Dropdown.Item>
+            <Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item>
+            <Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item>
+          </Dropdown.Menu>
+        </DesktopMenu>
+        <DesktopMenu label="Insert">
+          <Dropdown.Menu aria-label="Insert menu" onAction={handleDocumentAction}>
+            <Dropdown.Item id="link">Link</Dropdown.Item>
+            <Dropdown.Item id="callout">Callout</Dropdown.Item>
+            <Dropdown.Item id="toggle">Toggle</Dropdown.Item>
+            <Dropdown.Item id="image">Image</Dropdown.Item>
+            <Dropdown.Item id="file">File attachment</Dropdown.Item>
+            <Dropdown.Item id="table" isDisabled={!editor.can().chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()}>Basic Table</Dropdown.Item>
+            <Dropdown.Item id="hr" isDisabled={!editor.can().chain().focus().setHorizontalRule().run()}>Horizontal rule</Dropdown.Item>
+          </Dropdown.Menu>
+        </DesktopMenu>
+        <DesktopMenu label="Format">
+          <Dropdown.Menu aria-label="Format menu" onAction={handleDocumentAction}>
+            <Dropdown.Item id="paragraph">Paragraph</Dropdown.Item>
+            <Dropdown.Item id="h1">Heading 1</Dropdown.Item>
+            <Dropdown.Item id="h2">Heading 2</Dropdown.Item>
+            <Dropdown.Item id="h3">Heading 3</Dropdown.Item>
+            <Dropdown.Item id="h4">Heading 4</Dropdown.Item>
+            <Dropdown.Item id="bold">Bold</Dropdown.Item>
+            <Dropdown.Item id="italic">Italic</Dropdown.Item>
+            <Dropdown.Item id="underline">Underline</Dropdown.Item>
+            <Dropdown.Item id="strike">Strikethrough</Dropdown.Item>
+            <Dropdown.Item id="code">Inline code</Dropdown.Item>
+            <Dropdown.Item id="code-block">Code block</Dropdown.Item>
+            <Dropdown.Item id="quote">Quote</Dropdown.Item>
+            <Dropdown.Item id="bullet">Bulleted list</Dropdown.Item>
+            <Dropdown.Item id="numbered">Numbered list</Dropdown.Item>
+            <Dropdown.Item id="task">To-do list</Dropdown.Item>
+          </Dropdown.Menu>
+        </DesktopMenu>
+        <div className="ml-auto hidden items-center gap-2 text-sm text-muted-foreground lg:flex" role="group" aria-label="Document view controls">
+          <button
+            type="button"
+            aria-pressed={!isFullWidth}
+            onClick={() => setDocumentViewMode(false)}
+            className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${!isFullWidth ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
+          >
+            Page
+          </button>
+          <button
+            type="button"
+            aria-pressed={isFullWidth}
+            onClick={() => setDocumentViewMode(true)}
+            className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${isFullWidth ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
+          >
+            Full
+          </button>
+          <label className="sr-only" htmlFor="document-zoom">Document zoom</label>
+          <select
+            id="document-zoom"
+            aria-label="Document zoom"
+            value={zoom}
+            onChange={(event) => setZoom(Number(event.target.value))}
+            className="h-8 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] px-2 text-sm font-medium text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          >
+            <option value={75}>75%</option>
+            <option value={100}>100%</option>
+            <option value={125}>125%</option>
+            <option value={150}>150%</option>
+          </select>
         </div>
-        <nav aria-label="Desktop document commands" className="hidden">
-          <DesktopMenu label="Document">
-            <Dropdown.Menu aria-label="Document menu" onAction={handleDocumentAction}>
-              <Dropdown.Item id="save">Save now</Dropdown.Item>
-              <Dropdown.Item id="backup">Sync now</Dropdown.Item>
-              <Dropdown.Item id="import">Import document</Dropdown.Item>
-              <Dropdown.Item id="duplicate">Duplicate</Dropdown.Item>
-              <Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item>
-              <Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item>
-              <Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item>
-              <Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item>
-              <Dropdown.Item id="close">Close document</Dropdown.Item>
-            </Dropdown.Menu>
-          </DesktopMenu>
-          <DesktopMenu label="Edit">
-            <Dropdown.Menu aria-label="Edit menu" onAction={handleDocumentAction}>
-              <Dropdown.Item id="undo" isDisabled={!editor.can().chain().focus().undo().run()}>Undo</Dropdown.Item>
-              <Dropdown.Item id="redo" isDisabled={!editor.can().chain().focus().redo().run()}>Redo</Dropdown.Item>
-              <Dropdown.Item id="clear" isDisabled={!editor.can().chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</Dropdown.Item>
-            </Dropdown.Menu>
-          </DesktopMenu>
-          <DesktopMenu label="View">
-            <Dropdown.Menu aria-label="View menu" onAction={handleDocumentAction}>
-              <Dropdown.Item id="page-width">Page width</Dropdown.Item>
-              <Dropdown.Item id="full-width">Full width</Dropdown.Item>
-              <Dropdown.Item id="zoom-75">Zoom 75%</Dropdown.Item>
-              <Dropdown.Item id="zoom-100">Zoom 100%</Dropdown.Item>
-              <Dropdown.Item id="zoom-125">Zoom 125%</Dropdown.Item>
-              <Dropdown.Item id="zoom-150">Zoom 150%</Dropdown.Item>
-              <Dropdown.Item id="open-drive" isDisabled={!file.driveFileId}>Open backup in Drive</Dropdown.Item>
-              <Dropdown.Item id="copy-link" isDisabled={!file.driveFileId}>Copy backup link</Dropdown.Item>
-            </Dropdown.Menu>
-          </DesktopMenu>
-          <DesktopMenu label="Insert">
-            <Dropdown.Menu aria-label="Insert menu" onAction={handleDocumentAction}>
-              <Dropdown.Item id="link">Link</Dropdown.Item>
-              <Dropdown.Item id="callout">Callout</Dropdown.Item>
-              <Dropdown.Item id="toggle">Toggle</Dropdown.Item>
-              <Dropdown.Item id="image">Image</Dropdown.Item>
-              <Dropdown.Item id="file">File attachment</Dropdown.Item>
-              <Dropdown.Item id="table" isDisabled={!editor.can().chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()}>Basic Table</Dropdown.Item>
-              <Dropdown.Item id="hr" isDisabled={!editor.can().chain().focus().setHorizontalRule().run()}>Horizontal rule</Dropdown.Item>
-            </Dropdown.Menu>
-          </DesktopMenu>
-          <DesktopMenu label="Format">
-            <Dropdown.Menu aria-label="Format menu" onAction={handleDocumentAction}>
-              <Dropdown.Item id="paragraph">Paragraph</Dropdown.Item>
-              <Dropdown.Item id="h1">Heading 1</Dropdown.Item>
-              <Dropdown.Item id="h2">Heading 2</Dropdown.Item>
-              <Dropdown.Item id="h3">Heading 3</Dropdown.Item>
-                            <Dropdown.Item id="h4">Heading 4</Dropdown.Item>
-              <Dropdown.Item id="bold">Bold</Dropdown.Item>
-              <Dropdown.Item id="italic">Italic</Dropdown.Item>
-              <Dropdown.Item id="underline">Underline</Dropdown.Item>
-              <Dropdown.Item id="strike">Strikethrough</Dropdown.Item>
-              <Dropdown.Item id="code">Inline code</Dropdown.Item>
-              <Dropdown.Item id="code-block">Code block</Dropdown.Item>
-              <Dropdown.Item id="quote">Quote</Dropdown.Item>
-              <Dropdown.Item id="bullet">Bulleted list</Dropdown.Item>
-              <Dropdown.Item id="numbered">Numbered list</Dropdown.Item>
-              <Dropdown.Item id="task">To-do list</Dropdown.Item>
-            </Dropdown.Menu>
-          </DesktopMenu>
-          <div className="ml-auto hidden items-center gap-2 text-sm text-muted-foreground lg:flex" role="group" aria-label="Document view controls">
-            <button
-              type="button"
-              aria-pressed={!isFullWidth}
-              onClick={() => setDocumentViewMode(false)}
-              className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${!isFullWidth ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
-            >
-              Page
-            </button>
-            <button
-              type="button"
-              aria-pressed={isFullWidth}
-              onClick={() => setDocumentViewMode(true)}
-              className={`h-8 rounded-[8px] px-3 font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${isFullWidth ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--app-subtle)] hover:text-foreground'}`}
-            >
-              Full
-            </button>
-            <label className="sr-only" htmlFor="document-zoom">Document zoom</label>
-            <select
-              id="document-zoom"
-              aria-label="Document zoom"
-              value={zoom}
-              onChange={(event) => setZoom(Number(event.target.value))}
-              className="h-8 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] px-2 text-sm font-medium text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-            >
-              <option value={75}>75%</option>
-              <option value={100}>100%</option>
-              <option value={125}>125%</option>
-              <option value={150}>150%</option>
-            </select>
-          </div>
-        </nav>
-        <div className="hidden"><DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="desktop" /></div>
-      </header>
+      </nav>
+      <div className="hidden"><DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="desktop" /></div>
       <input ref={importInputRef} type="file" accept=".docx,.md,.mybook.md,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" aria-label="Import document file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void importDocumentFile(selectedFile); event.target.value = '' }} />
       <input ref={fileInputRef} type="file" className="sr-only" aria-label="Attach file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertAttachmentFile(selectedFile); event.target.value = '' }} />
       <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" aria-label="Insert image" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertImageFile(selectedFile); event.target.value = '' }} />
@@ -1925,7 +1930,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                     event.preventDefault()
                     editor.chain().focus('start').run()
                   }}
-                  className="block min-h-[3.5rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[2.75rem] font-extrabold leading-[1.12] tracking-normal text-foreground outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-5xl"
+                  className="block min-h-[2.1875rem] sm:min-h-[3.5rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.75rem] font-extrabold leading-[1.25] sm:leading-[1.12] tracking-normal text-foreground outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-5xl"
                   aria-label="Page title"
                 />
               </div>

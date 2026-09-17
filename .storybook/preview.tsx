@@ -13,11 +13,13 @@ const withAppShell: Decorator = (Story, context) => {
   document.documentElement.dataset.theme = theme
   document.documentElement.classList.toggle('dark', theme === 'dark')
 
+  const fullWidth = context.parameters.fullWidth === true
+
   return (
     <MemoryRouter initialEntries={['/home']}>
       <TooltipProvider>
-        <main className="min-h-screen overflow-auto bg-background p-6 text-foreground">
-          <div className="mx-auto w-full max-w-5xl">
+        <main className={fullWidth ? "min-h-screen bg-background text-foreground" : "min-h-screen overflow-auto bg-background p-6 text-foreground"}>
+          <div className={fullWidth ? "w-full min-w-0" : "mx-auto w-full max-w-5xl"}>
             <Story />
           </div>
         </main>

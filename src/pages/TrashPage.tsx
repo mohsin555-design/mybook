@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { EmptyState } from '../components/common/EmptyState'
-import { PageHeader } from '../components/common/PageHeader'
 import { DeleteFileDialog } from '../components/files/DeleteFileDialog'
 import { FileCard } from '../components/files/FileCard'
 import { FolderCard } from '../components/files/FolderCard'
@@ -41,7 +40,6 @@ export function TrashPage() {
   const fileCount = (targetId: string) => files.filter((file) => file.folderId === targetId).length
   return (
     <div className="px-4">
-      <PageHeader title="Trash" description="Restore files and folders or permanently remove them." />
       {trashItems.length ? (
         <div className="-mx-4 mt-4 px-1">
           {trashItems.map((target) => {

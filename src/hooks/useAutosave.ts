@@ -9,7 +9,9 @@ const SAVE_DELAY = 500
 export function useAutosave(file: MyBookFile | undefined) {
   const [content, setContent] = useState('')
   const [isHydrated, setIsHydrated] = useState(false)
-  const [status, setStatus] = useState<EditorSaveStatus>(isLocalWorkspace() ? 'local' : navigator.onLine ? 'pending' : 'offline')
+  const [status, setStatus] = useState<EditorSaveStatus>(
+    isLocalWorkspace() ? 'local' : (file?.syncStatus ?? (navigator.onLine ? 'backed-up' : 'offline'))
+  )
   const lastSaved = useRef(file?.content ?? '')
   const contentRef = useRef(content)
   const fileRef = useRef(file)
@@ -27,6 +29,7 @@ export function useAutosave(file: MyBookFile | undefined) {
       setContent(next)
       contentRef.current = next
       lastSaved.current = next
+      setStatus(isLocalWorkspace() ? 'local' : (file.syncStatus ?? (navigator.onLine ? 'backed-up' : 'offline')))
       setIsHydrated(true)
       return
     }
@@ -52,7 +55,7 @@ export function useAutosave(file: MyBookFile | undefined) {
     if (!result.success) { setStatus('failed'); return false }
     lastSaved.current = contentRef.current
     setStatus('saved-locally')
-    window.setTimeout(() => setStatus(isLocalWorkspace() ? 'local' : navigator.onLine ? 'pending' : 'offline'), 700)
+    window.setTimeout(() => setStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline'))), 700)
     return true
   }, [])
 

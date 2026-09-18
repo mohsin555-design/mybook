@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Key, type React
 import { useNavigate } from 'react-router-dom'
 
 import { fileRepository } from '../../database/repositories'
+import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { useAutosave } from '../../hooks/useAutosave'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
@@ -771,6 +772,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const pageTitleRef = useRef<HTMLTextAreaElement>(null)
   const cloudTimerRef = useRef<number | null>(null)
   const cloudFlightRef = useRef(false)
+  const lastBackedUpContentRef = useRef<string | null>(null)
+  const lastBackedUpTitleRef = useRef<string | null>(null)
+  const lastBackedUpFileIdRef = useRef<string | null>(null)
   const editorContentRef = useRef('')
   const titleRef = useRef('')
   const lastSavedTitleRef = useRef('')
@@ -1301,19 +1305,38 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     titleElement.style.height = '0px'
     titleElement.style.height = `${titleElement.scrollHeight}px`
   }, [title])
+  if (file && lastBackedUpFileIdRef.current !== file.id) {
+    lastBackedUpFileIdRef.current = file.id
+    if (file.syncStatus === 'backed-up') {
+      lastBackedUpContentRef.current = file.content
+      lastBackedUpTitleRef.current = file.name
+    } else {
+      lastBackedUpContentRef.current = null
+      lastBackedUpTitleRef.current = null
+    }
+  }
   const saveTitle = useCallback(async () => {
     const nextTitle = titleRef.current.trim()
     if (!file || !nextTitle || nextTitle === file.name) return
-    const result = await fileRepository.update(file.id, { name: nextTitle })
+    const result = await fileRepository.update(file.id, { name: nextTitle, syncStatus: isLocalWorkspace() ? 'local' : 'pending' })
     if (result.success) {
       lastSavedTitleRef.current = nextTitle
       updateTitle(nextTitle)
     }
   }, [file, updateTitle])
   useEffect(() => {
-    if (!file || file.isDeleted) return
+    if (!file || file.isDeleted || file.workspaceType === 'local' || file.syncStatus === 'local') return
     if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
-    if (status !== 'pending' && status !== 'saved-locally') return
+
+    const trimmedTitle = titleRef.current.trim() || file.name || 'Untitled'
+    const hasUnsyncedChanges =
+      file.syncStatus === 'pending' ||
+      status === 'saved-locally' ||
+      content !== (lastBackedUpContentRef.current ?? '') ||
+      trimmedTitle !== (lastBackedUpTitleRef.current ?? '')
+
+    if (!hasUnsyncedChanges || file.syncStatus === 'backed-up') return
+
     cloudTimerRef.current = window.setTimeout(() => {
       if (cloudFlightRef.current || !file || file.isDeleted || file.type !== 'document') return
       cloudFlightRef.current = true
@@ -1321,8 +1344,16 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         try {
           const [savedContent] = await Promise.all([save(), saveTitle()])
           if (!savedContent) return
-          const result = await backupDocumentToDrive({ fileId: file.id, title: titleRef.current.trim() || file.name || 'Untitled', content, folderId: file.folderId })
-          if (!result.success) toast.add({ title: "Couldn't sync", description: result.error, type: 'error', priority: 'low' })
+          const latest = (await fileRepository.get(file.id)).data
+          if (!latest) return
+          const latestTitle = latest.name.trim() || 'Untitled'
+          const result = await backupDocumentToDrive({ fileId: latest.id, title: latestTitle, content: latest.content, folderId: latest.folderId })
+          if (result.success) {
+            lastBackedUpContentRef.current = latest.content
+            lastBackedUpTitleRef.current = latestTitle
+          } else {
+            toast.add({ title: "Couldn't sync", description: result.error, type: 'error', priority: 'low' })
+          }
         } finally {
           cloudFlightRef.current = false
         }
@@ -1343,8 +1374,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     await saveAll()
     const latest = (await fileRepository.get(file.id)).data
     if (!latest) return
-    const result = await backupDocumentToDrive({ fileId: latest.id, title: latest.name, content: latest.content, folderId: latest.folderId })
-    if (!result.success) toast.add({ title: "Couldn't sync", description: result.error ?? 'Sync failed.', type: 'error', priority: 'low' })
+    const latestTitle = latest.name.trim() || 'Untitled'
+    const result = await backupDocumentToDrive({ fileId: latest.id, title: latestTitle, content: latest.content, folderId: latest.folderId })
+    if (result.success) {
+      lastBackedUpContentRef.current = latest.content
+      lastBackedUpTitleRef.current = latestTitle
+    } else {
+      toast.add({ title: "Couldn't sync", description: result.error ?? 'Sync failed.', type: 'error', priority: 'low' })
+    }
   }
   const copyDriveLink = async () => {
     if (!file.driveFileId) return
@@ -1356,7 +1393,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       priority: 'low',
     })
   }
-  const close = async () => { await saveAll(); navigate(file.folderId ? `/folders/${file.folderId}` : '/home') }
+  const navigateBack = () => {
+    if (typeof window !== 'undefined' && window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) {
+      navigate(-1)
+    } else {
+      navigate(file.folderId ? `/folders/${file.folderId}` : '/home')
+    }
+  }
+  const close = async () => { await saveAll(); navigateBack() }
   const deleteDocument = async () => {
     await saveAll()
     const result = await fileRepository.delete(file.id)
@@ -1673,7 +1717,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     <section className={`mybook-document-editor min-h-dvh w-full pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0 ${documentSurfaceClass}`}>
       <AppHeader
         leadingAction="sidebar"
-        onBack={() => navigate(file.folderId ? `/folders/${file.folderId}` : '/folders')}
+        onBack={navigateBack}
         breadcrumbs={editorBreadcrumbs}
         hideBreadcrumbsOnMobile
         title={documentTitle}

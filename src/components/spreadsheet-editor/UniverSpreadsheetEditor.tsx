@@ -46,6 +46,9 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const cloudTimerRef = useRef<number | null>(null)
   const cloudFlightRef = useRef(false)
+  const lastBackedUpContentRef = useRef<string | null>(null)
+  const lastBackedUpTitleRef = useRef<string | null>(null)
+  const lastBackedUpFileIdRef = useRef<string | null>(null)
   const latestSnapshot = useRef('')
   const contentRef = useRef(content)
   const setContentRef = useRef(setContent)
@@ -101,10 +104,29 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     }
   }, [fileId, fileName, isHydrated, workbookRevision])
 
+  if (file && lastBackedUpFileIdRef.current !== file.id) {
+    lastBackedUpFileIdRef.current = file.id
+    if (file.syncStatus === 'backed-up') {
+      lastBackedUpContentRef.current = file.content
+      lastBackedUpTitleRef.current = file.name
+    } else {
+      lastBackedUpContentRef.current = null
+      lastBackedUpTitleRef.current = null
+    }
+  }
+
   useEffect(() => {
-    if (!file || file.isDeleted || file.type !== 'spreadsheet' || !isHydrated) return
+    if (!file || file.isDeleted || file.type !== 'spreadsheet' || !isHydrated || file.workspaceType === 'local' || file.syncStatus === 'local') return
     if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
-    if (status !== 'pending' && status !== 'saved-locally') return
+
+    const hasUnsyncedChanges =
+      file.syncStatus === 'pending' ||
+      status === 'saved-locally' ||
+      content !== (lastBackedUpContentRef.current ?? '') ||
+      file.name !== (lastBackedUpTitleRef.current ?? '')
+
+    if (!hasUnsyncedChanges || file.syncStatus === 'backed-up') return
+
     cloudTimerRef.current = window.setTimeout(() => {
       if (cloudFlightRef.current || !file || file.isDeleted) return
       cloudFlightRef.current = true
@@ -116,7 +138,12 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
           const latestFile = latest.data
           if (!latestFile) return
           const result = await backupSpreadsheetToDrive({ fileId: file.id, title: latestFile.name, content: latestFile.content, folderId: latestFile.folderId })
-          if (!result.success) toast.add({ title: "Couldn't sync", description: result.error, type: 'error', priority: 'low' })
+          if (result.success) {
+            lastBackedUpContentRef.current = latestFile.content
+            lastBackedUpTitleRef.current = latestFile.name
+          } else {
+            toast.add({ title: "Couldn't sync", description: result.error, type: 'error', priority: 'low' })
+          }
         } finally {
           cloudFlightRef.current = false
         }
@@ -131,7 +158,14 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
   if (file === undefined) return <div role="status" className="p-4 text-muted-foreground">Loading spreadsheet…</div>
   if (!file || file.isDeleted) return <EmptyState title="Spreadsheet not found" description="This spreadsheet may have been moved to Trash or deleted." />
 
-  const close = async () => { await save(); navigate(file.folderId ? `/folders/${file.folderId}` : '/home') }
+  const navigateBack = () => {
+    if (typeof window !== 'undefined' && window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0) {
+      navigate(-1)
+    } else {
+      navigate(file.folderId ? `/folders/${file.folderId}` : '/home')
+    }
+  }
+  const close = async () => { await save(); navigateBack() }
   const deleteSpreadsheet = async () => {
     await save()
     const result = await fileRepository.delete(file.id)
@@ -200,7 +234,12 @@ export function UniverSpreadsheetEditor({ fileId }: { fileId: string }) {
     const latest = (await fileRepository.get(file.id)).data
     if (!latest) return
     const result = await backupSpreadsheetToDrive({ fileId: latest.id, title: latest.name, content: latest.content, folderId: latest.folderId })
-    if (!result.success) toast.add({ title: "Couldn't sync", description: result.error ?? 'Sync failed.', type: 'error', priority: 'low' })
+    if (result.success) {
+      lastBackedUpContentRef.current = latest.content
+      lastBackedUpTitleRef.current = latest.name
+    } else {
+      toast.add({ title: "Couldn't sync", description: result.error ?? 'Sync failed.', type: 'error', priority: 'low' })
+    }
   }
 
   const copyDriveLink = async () => {

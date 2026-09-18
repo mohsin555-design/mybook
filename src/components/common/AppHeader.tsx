@@ -293,7 +293,7 @@ export function AppHeader({
         <div className="flex min-w-0 flex-1 items-center gap-3 group-data-[compact=true]/app-header:hidden">
           <div className="min-w-0 flex-1">
             {breadcrumbs.length && !(isMobile && hideBreadcrumbsOnMobile) ? (
-              <Breadcrumb>
+              <Breadcrumb className={cn(hideBreadcrumbsOnMobile && 'hidden md:block')}>
                 <BreadcrumbList>
                   {breadcrumbs.map((breadcrumb, index) => {
                     const isCurrent = index === breadcrumbs.length - 1

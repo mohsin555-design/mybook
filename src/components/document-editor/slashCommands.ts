@@ -13,6 +13,7 @@ export interface SlashCommand {
   keywords: string[]
   category: 'Basic Blocks' | 'Lists' | 'Media' | 'Data' | 'Advanced'
   shortcut?: string
+  hidden?: boolean
 }
 
 export interface SlashMenuState {
@@ -55,7 +56,9 @@ export function getSlashMenuState(editor: Pick<Editor, 'state' | 'view'>): Slash
   return { query: match.query, range: { from, to }, rect: new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top) }
 }
 
-export const slashCommands: SlashCommand[] = [
+export const ENABLE_DATABASE_BLOCK = false
+
+export const allSlashCommands: SlashCommand[] = [
   { id: 'paragraph', title: 'Text', description: 'Start with plain text', keywords: ['paragraph', 'text'], category: 'Basic Blocks' },
   { id: 'h1', title: 'Heading 1', description: 'Large section heading', keywords: ['h1', 'heading', 'title'], category: 'Basic Blocks', shortcut: '#' },
   { id: 'h2', title: 'Heading 2', description: 'Medium section heading', keywords: ['h2', 'heading', 'subtitle'], category: 'Basic Blocks', shortcut: '##' },
@@ -71,11 +74,13 @@ export const slashCommands: SlashCommand[] = [
   { id: 'file', title: 'File attachment', description: 'Attach a file block', keywords: ['file', 'attachment', 'upload', 'pdf', 'doc'], category: 'Media' },
   { id: 'document-link', title: 'Link to Page', description: 'Link to another workspace item', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document', 'database', 'spreadsheet'], category: 'Media', shortcut: '[[' },
   { id: 'table', title: 'Basic Table', description: 'Insert a basic table', keywords: ['table', 'basic table', 'grid'], category: 'Data' },
-  { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data' },
+  { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data', hidden: !ENABLE_DATABASE_BLOCK },
   { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'], category: 'Advanced' },
   { id: 'toc', title: 'Table of contents', description: 'Show document headings', keywords: ['toc', 'table of contents', 'contents', 'outline'], category: 'Advanced' },
   { id: 'code-block', title: 'Code block', description: 'Insert multiline code', keywords: ['code', 'pre', 'block'], category: 'Advanced', shortcut: '```' },
 ]
+
+export const slashCommands: SlashCommand[] = allSlashCommands.filter((command) => !command.hidden)
 
 export function groupSlashCommands(commands: SlashCommand[]) {
   const categoryOrder: SlashCommand['category'][] = ['Basic Blocks', 'Lists', 'Media', 'Data', 'Advanced']

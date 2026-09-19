@@ -3,7 +3,7 @@ import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { filterSlashCommands, getSlashCommandMatch, getSlashMenuState, groupSlashCommands, runSlashCommand, slashCommands } from './slashCommands'
+import { allSlashCommands, ENABLE_DATABASE_BLOCK, filterSlashCommands, getSlashCommandMatch, getSlashMenuState, groupSlashCommands, runSlashCommand, slashCommands } from './slashCommands'
 
 let editor: Editor
 
@@ -64,15 +64,18 @@ describe('SlashCommandMenu database command', () => {
     expect(editor.state.doc.firstChild?.type.name).toBe('paragraph')
   })
 
-  it('shows Database as a slash command for typed rows and properties', () => {
-    expect(slashCommands).toEqual(expect.arrayContaining([
+  it('keeps database definition in allSlashCommands while hiding it from active menu during MVP', () => {
+    expect(ENABLE_DATABASE_BLOCK).toBe(false)
+    expect(allSlashCommands).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'database',
         title: 'Database',
         description: 'Typed rows and properties',
+        hidden: true,
       }),
     ]))
-    expect(filterSlashCommands('database').map((command) => command.id)).toContain('database')
+    expect(slashCommands.some((command) => command.id === 'database')).toBe(false)
+    expect(filterSlashCommands('database').map((command) => command.id)).not.toContain('database')
   })
 
   it('shows Table of contents by title and aliases', () => {

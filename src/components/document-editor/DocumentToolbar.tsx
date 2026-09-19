@@ -147,7 +147,7 @@ function ToolbarControls({
     { label: 'Callout', icon: InformationCircleIcon, active: editor.isActive('callout'), disabled: false, run: () => editor.chain().focus().insertContent(calloutNode()).run() },
     { label: 'Toggle', icon: ChevronRightIcon, active: editor.isActive('toggleBlock'), disabled: false, run: () => editor.chain().focus().insertContent(toggleBlockNode()).run() },
     { label: 'Image', icon: PhotoIcon, active: editor.isActive('imageBlock'), disabled: !onInsertImage, run: () => onInsertImage?.() },
-    { label: 'File attachment', icon: PaperClipIcon, active: editor.isActive('fileAttachment'), disabled: !onInsertFile, run: () => onInsertFile?.() },
+    { label: 'File', icon: PaperClipIcon, active: editor.isActive('fileAttachment'), disabled: !onInsertFile, run: () => onInsertFile?.() },
     { label: 'Basic Table', icon: TableCellsIcon, active: editor.isActive('table'), disabled: !editor.can().chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(), run: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run() },
     { label: 'Horizontal rule', icon: MinusIcon, active: false, disabled: !editor.can().chain().focus().setHorizontalRule().run(), run: () => editor.chain().focus().setHorizontalRule().run() },
     { label: 'Inline code', icon: CodeBracketIcon, active: editor.isActive('code'), disabled: !editor.can().chain().focus().toggleCode().run(), run: () => editor.chain().focus().toggleCode().run() },
@@ -172,7 +172,7 @@ function ToolbarControls({
       { label: 'Callout', icon: InformationCircleIcon, active: editor.isActive('callout'), disabled: false, run: () => editor.chain().focus().insertContent(calloutNode()).run() },
       { label: 'Toggle', icon: ChevronRightIcon, active: editor.isActive('toggleBlock'), disabled: false, run: () => editor.chain().focus().insertContent(toggleBlockNode()).run() },
       { label: 'Image', icon: PhotoIcon, active: editor.isActive('imageBlock'), disabled: !onInsertImage, run: () => onInsertImage?.() },
-      { label: 'File attachment', icon: PaperClipIcon, active: editor.isActive('fileAttachment'), disabled: !onInsertFile, run: () => onInsertFile?.() },
+      { label: 'File', icon: PaperClipIcon, active: editor.isActive('fileAttachment'), disabled: !onInsertFile, run: () => onInsertFile?.() },
       { label: 'Basic Table', icon: TableCellsIcon, active: editor.isActive('table'), disabled: !editor.can().chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(), run: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run() },
       { label: 'Horizontal rule', icon: MinusIcon, active: false, disabled: !editor.can().chain().focus().setHorizontalRule().run(), run: () => editor.chain().focus().setHorizontalRule().run() },
     ]

@@ -1,9 +1,20 @@
-import { EllipsisHorizontalIcon } from '@heroicons/react/24/outline'
-import { ArrowReloadHorizontalIcon, Copy02Icon, CopyLinkIcon, Delete02Icon, ReloadIcon, SquareArrowOutUpRightIcon, Unlink02Icon } from '@hugeicons/core-free-icons'
+import {
+  ArrowReloadHorizontalIcon,
+  Copy02Icon,
+  CopyIcon,
+  CopyLinkIcon,
+  Delete02Icon,
+  LinkOffIcon,
+  MoreHorizontalIcon,
+  SquareArrowOutUpRightIcon,
+  Tick02Icon,
+} from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { Editor } from '@tiptap/react'
+import { useEffect, useState } from 'react'
 
+import { useDeviceMode } from '../../hooks/useDeviceMode'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +25,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu'
+import { Button } from '../ui/button'
 import { bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { embedBlockNode } from './extensions/EmbedBlock'
 import { analyzePastedUrl } from './pasteUrlModel'
@@ -34,29 +46,44 @@ export function LinkBlockActions({
   metadata,
   node,
   onOpen,
-  onReload,
+  embedToolbar = false,
+  onMenuOpenChange,
+  onCopyBlock,
+  onDuplicate,
+  isBlockCopied = false,
 }: {
   editor: Editor
   getPos: (() => number | undefined) | boolean
   metadata: LinkBlockMetadata
   node: ProseMirrorNode
   onOpen: () => void
-  onReload?: () => void
+  embedToolbar?: boolean
+  onMenuOpenChange?: (open: boolean) => void
+  onCopyBlock?: () => void | Promise<void>
+  onDuplicate?: () => void
+  isBlockCopied?: boolean
 }) {
+  const { isTouch } = useDeviceMode()
   const range = blockRange(getPos, node)
   const canEmbed = Boolean(analyzePastedUrl(metadata.url)?.embedUrl)
-  const copyLink = () => {
+  const [copiedLink, setCopiedLink] = useState(false)
+
+  useEffect(() => {
+    if (!copiedLink) return
+    const timer = window.setTimeout(() => setCopiedLink(false), 1400)
+    return () => window.clearTimeout(timer)
+  }, [copiedLink])
+
+  const copyLink = (event?: React.MouseEvent) => {
+    event?.preventDefault()
     void navigator.clipboard?.writeText(metadata.url)
-  }
-  const duplicate = () => {
-    if (!range) return
-    editor.commands.insertContentAt(range.to, node.toJSON())
+    setCopiedLink(true)
   }
   const removeLink = () => {
     if (!range) return
     editor.commands.insertContentAt(range, {
       type: 'paragraph',
-      content: [{ type: 'text', text: metadata.title || metadata.url }],
+      content: [{ type: 'text', text: embedToolbar ? metadata.url : metadata.title || metadata.url }],
     })
   }
   const deleteBlock = () => {
@@ -101,18 +128,55 @@ export function LinkBlockActions({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onMenuOpenChange}>
       <DropdownMenuTrigger
-        aria-label={`More actions for ${metadata.title || metadata.url}`}
-        className="mybook-link-card-actions"
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`More actions for ${metadata.title || metadata.url}`}
+            title="More options"
+            className="mybook-image-toolbar-button"
+          />
+        }
       >
-        <EllipsisHorizontalIcon aria-hidden="true" className="size-5" />
+        <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-4" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem onClick={onOpen}><HugeiconsIcon icon={SquareArrowOutUpRightIcon} strokeWidth={2} className="size-4" />Open</DropdownMenuItem>
-        {metadata.kind === 'embed' && onReload ? <DropdownMenuItem onClick={onReload}><HugeiconsIcon icon={ReloadIcon} strokeWidth={2} className="size-4" />Reload</DropdownMenuItem> : null}
-        <DropdownMenuItem onClick={copyLink}><HugeiconsIcon icon={CopyLinkIcon} strokeWidth={2} className="size-4" />Copy link</DropdownMenuItem>
-        <DropdownMenuItem onClick={duplicate}><HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4" />Duplicate</DropdownMenuItem>
+      <DropdownMenuContent bottomSheet={isTouch} align="end" sideOffset={6} className="min-w-44 rounded-xl p-1.5 shadow-lg">
+        {isTouch && (onCopyBlock || onDuplicate) ? (
+          <>
+            {onCopyBlock ? (
+              <DropdownMenuItem
+                closeOnClick={false}
+                onClick={() => {
+                  void onCopyBlock()
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={isBlockCopied ? Tick02Icon : CopyIcon} strokeWidth={2} className="size-4 shrink-0" />
+                <span className="whitespace-nowrap">{isBlockCopied ? 'Copied' : 'Copy block'}</span>
+              </DropdownMenuItem>
+            ) : null}
+            {onDuplicate ? (
+              <DropdownMenuItem
+                onClick={() => {
+                  onDuplicate()
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4 shrink-0" />
+                <span className="whitespace-nowrap">Duplicate</span>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        <DropdownMenuItem onClick={onOpen} className="flex items-center gap-2"><HugeiconsIcon icon={SquareArrowOutUpRightIcon} strokeWidth={2} className="size-4" /><span>Open</span></DropdownMenuItem>
+        <DropdownMenuItem closeOnClick={false} onClick={copyLink} className="flex items-center gap-2">
+          <HugeiconsIcon icon={copiedLink ? Tick02Icon : CopyLinkIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
+          <span className="whitespace-nowrap">{copiedLink ? 'Copied' : 'Copy link'}</span>
+        </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger><HugeiconsIcon icon={ArrowReloadHorizontalIcon} strokeWidth={2} />Change to</DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
@@ -122,9 +186,9 @@ export function LinkBlockActions({
             {metadata.kind !== 'embed' ? <DropdownMenuItem disabled={!canEmbed} onClick={changeToEmbed}>Embed</DropdownMenuItem> : null}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-        <DropdownMenuItem onClick={removeLink}><HugeiconsIcon icon={Unlink02Icon} strokeWidth={2} />Remove link</DropdownMenuItem>
+        <DropdownMenuItem onClick={removeLink} className="flex items-center gap-2"><HugeiconsIcon icon={LinkOffIcon} strokeWidth={2} /><span>Remove link</span></DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={deleteBlock}><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />Delete</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={deleteBlock} className="flex items-center gap-2"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" /><span>Delete</span></DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

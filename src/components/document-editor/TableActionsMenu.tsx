@@ -21,6 +21,7 @@ import { getTableInteractionState, setTableInteraction } from './extensions/Tabl
 import { resetHeaderCellBackgrounds } from './tableHeaderBackground'
 import { tableElementsFromNodeDom } from './tableDom'
 import { tableMenuTop } from './tableMenuPosition'
+import { useDeviceMode } from '../../hooks/useDeviceMode'
 import { Button } from '../ui/button'
 
 type Axis = 'row' | 'column'
@@ -450,7 +451,7 @@ function GripMenuContent({
                 <span aria-hidden="true">›</span>
               </button>
               {openSubmenu === submenu ? (
-                <div role="menu" aria-label={label === 'Color' ? 'Background color' : 'Align'} className="absolute left-full top-0 z-20 ml-1 min-w-44 rounded-lg border border-[var(--app-border)] bg-popover p-1 shadow-lg">
+                <div role="menu" aria-label={label === 'Color' ? 'Background color' : 'Align'} className="my-1 rounded-lg border border-[var(--app-border)] bg-popover p-1 shadow-lg sm:absolute sm:left-full sm:top-0 sm:z-20 sm:ml-1 sm:min-w-44">
                   {label === 'Color' ? tableColors.map((color) => (
                     <button
                       key={color.name}
@@ -458,7 +459,7 @@ function GripMenuContent({
                       role="menuitemradio"
                       aria-checked={selectedColor === color.value}
                       onClick={() => { applyCellAttribute(editor, geometry, selection, 'backgroundColor', color.value); setOpenSubmenu(null) }}
-                      className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)]"
+                      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-[var(--app-subtle)] sm:min-h-8"
                     >
                       <span aria-hidden="true" className="size-4 rounded border border-[var(--app-border)]" style={{ backgroundColor: color.value }} />
                       <span>{color.name}</span>
@@ -471,7 +472,7 @@ function GripMenuContent({
                       role="menuitemradio"
                       aria-checked={selectedAlignment === alignment}
                       onClick={() => { applyCellAttribute(editor, geometry, selection, 'align', alignment); setOpenSubmenu(null) }}
-                      className="flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm capitalize hover:bg-[var(--app-subtle)]"
+                      className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm capitalize hover:bg-[var(--app-subtle)] sm:min-h-8"
                     >
                       <span>{alignment}</span>
                       {selectedAlignment === alignment ? <span className="ml-auto text-primary">✓</span> : null}
@@ -505,6 +506,7 @@ function GripMenuContent({
 }
 
 export function TableActionsMenu({ editor }: { editor: Editor }) {
+  const { isTouch } = useDeviceMode()
   const [geometry, setGeometry] = useState<TableGeometry | null>(null)
   const [interaction, setInteraction] = useState<TableInteractionState>({ selection: null, menuOpen: false, drag: null })
   const [hoverState, setHoverState] = useState<HoverState>({ rowIndex: null, columnIndex: null })
@@ -965,22 +967,40 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
       ) : null}
 
       {isManualMenuOpen && selection ? (
-        <div
-          ref={selection.axis === 'column' ? columnMenuRef : rowMenuRef}
-          className="mybook-table-manual-menu fixed z-20 w-64 rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
-          style={selection.axis === 'row'
-            ? {
-                top: rowMenuTop ?? tableMenuTop(selection.rect.top + selection.rect.height / 2 - 9, selection.rect.top + selection.rect.height / 2 + 9, 360),
-                left: Math.max(8, Math.min(geometry.tableRect.left + 17, window.innerWidth - 264)),
-              }
-            : {
-              top: columnMenuTop ?? tableMenuTop(geometry.tableRect.top - 9, geometry.tableRect.top + 9, 360),
-                left: Math.max(8, Math.min(selection.rect.left + selection.rect.width / 2 - 9, window.innerWidth - 264)),
-              }}
-          role="menu"
-        >
-          <GripMenuContent editor={editor} geometry={geometry} selection={selection} onClose={closeSelectionMenu} />
-        </div>
+        isTouch ? (
+          <>
+            <div
+              className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs"
+              onClick={closeSelectionMenu}
+              aria-hidden="true"
+            />
+            <div
+              ref={selection.axis === 'column' ? columnMenuRef : rowMenuRef}
+              className="mybook-table-manual-menu fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-[var(--app-border)] bg-popover p-3 pb-[max(1rem,env(safe-area-inset-bottom))] text-popover-foreground shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
+              role="menu"
+            >
+              <div className="mx-auto mb-2.5 h-1 w-9 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+              <GripMenuContent editor={editor} geometry={geometry} selection={selection} onClose={closeSelectionMenu} />
+            </div>
+          </>
+        ) : (
+          <div
+            ref={selection.axis === 'column' ? columnMenuRef : rowMenuRef}
+            className="mybook-table-manual-menu fixed z-20 w-64 rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
+            style={selection.axis === 'row'
+              ? {
+                  top: rowMenuTop ?? tableMenuTop(selection.rect.top + selection.rect.height / 2 - 9, selection.rect.top + selection.rect.height / 2 + 9, 360),
+                  left: Math.max(8, Math.min(geometry.tableRect.left + 17, window.innerWidth - 264)),
+                }
+              : {
+                top: columnMenuTop ?? tableMenuTop(geometry.tableRect.top - 9, geometry.tableRect.top + 9, 360),
+                  left: Math.max(8, Math.min(selection.rect.left + selection.rect.width / 2 - 9, window.innerWidth - 264)),
+                }}
+            role="menu"
+          >
+            <GripMenuContent editor={editor} geometry={geometry} selection={selection} onClose={closeSelectionMenu} />
+          </div>
+        )
       ) : null}
 
     </>

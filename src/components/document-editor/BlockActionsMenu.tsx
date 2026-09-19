@@ -15,7 +15,7 @@ import { cloneDatabaseAttrs } from './databaseModel'
 import { MobileBottomSheet } from '../common/MobileBottomSheet'
 import { Button } from '../ui/button'
 
-const actionableBlocks = new Set(['callout', 'toggleBlock', 'tableOfContents', 'documentLink', 'databaseBlock', 'imageBlock', 'fileAttachment', 'table', 'codeBlock'])
+const actionableBlocks = new Set(['callout', 'toggleBlock', 'tableOfContents', 'documentLink', 'databaseBlock', 'imageBlock', 'videoBlock', 'audioBlock', 'fileAttachment', 'table', 'codeBlock'])
 
 interface BlockTarget {
   node: ProseMirrorNode

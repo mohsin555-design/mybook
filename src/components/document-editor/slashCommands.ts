@@ -71,7 +71,9 @@ export const allSlashCommands: SlashCommand[] = [
   { id: 'task', title: 'To-do list', description: 'Track tasks and todos', keywords: ['task', 'check', 'todo', 'todo list', 'checklist'], category: 'Lists', shortcut: '[]' },
   { id: 'toggle', title: 'Toggle', description: 'Hide details under a title', keywords: ['toggle', 'details', 'collapse'], category: 'Lists' },
   { id: 'image', title: 'Image', description: 'Upload an image', keywords: ['image', 'photo', 'picture', 'media'], category: 'Media' },
-  { id: 'file', title: 'File attachment', description: 'Attach a file block', keywords: ['file', 'attachment', 'upload', 'pdf', 'doc'], category: 'Media' },
+  { id: 'video', title: 'Video', description: 'Embed a video or upload a clip', keywords: ['video', 'clip', 'youtube', 'vimeo', 'movie', 'media', 'mp4'], category: 'Media' },
+  { id: 'audio', title: 'Audio', description: 'Embed an audio link or upload a sound file', keywords: ['audio', 'sound', 'music', 'podcast', 'recording', 'media', 'mp3', 'wav', 'track'], category: 'Media' },
+  { id: 'file', title: 'File', description: 'Upload a file or embed a link', keywords: ['file', 'attachment', 'upload', 'pdf', 'doc', 'docx', 'xlsx', 'media', 'embed'], category: 'Media' },
   { id: 'document-link', title: 'Link to Page', description: 'Link to another workspace item', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document', 'database', 'spreadsheet'], category: 'Media', shortcut: '[[' },
   { id: 'table', title: 'Basic Table', description: 'Insert a basic table', keywords: ['table', 'basic table', 'grid'], category: 'Data' },
   { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data', hidden: !ENABLE_DATABASE_BLOCK },
@@ -111,6 +113,15 @@ function insertQuoteBlock(editor: Editor, range: SlashMenuState['range']) {
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, quoteTextStart)).scrollIntoView())
 }
 
+function insertCodeBlock(editor: Editor, range: SlashMenuState['range']) {
+  editor
+    .chain()
+    .focus()
+    .deleteRange(range)
+    .setCodeBlock()
+    .run()
+}
+
 export function runSlashCommand(editor: Editor, commandId: string, range: SlashMenuState['range']) {
   const chain = editor.chain().focus().deleteRange(range)
   if (commandId === 'paragraph') chain.setParagraph().run()
@@ -133,12 +144,20 @@ export function runSlashCommand(editor: Editor, commandId: string, range: SlashM
     chain.run()
     window.dispatchEvent(new CustomEvent('mybook:insert-image'))
   }
+  else if (commandId === 'video') {
+    chain.run()
+    window.dispatchEvent(new CustomEvent('mybook:insert-video'))
+  }
+  else if (commandId === 'audio') {
+    chain.run()
+    window.dispatchEvent(new CustomEvent('mybook:insert-audio'))
+  }
   else if (commandId === 'file') {
     chain.run()
     window.dispatchEvent(new CustomEvent('mybook:insert-file'))
   }
   else if (commandId === 'quote') insertQuoteBlock(editor, range)
-  else if (commandId === 'code-block') chain.toggleCodeBlock().run()
+  else if (commandId === 'code-block') insertCodeBlock(editor, range)
   else if (commandId === 'table') chain.insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()
   else if (commandId === 'hr') chain.setHorizontalRule().insertContent({ type: 'paragraph' }).run()
 }

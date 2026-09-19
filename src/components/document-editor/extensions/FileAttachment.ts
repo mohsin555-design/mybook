@@ -1,10 +1,16 @@
 import { mergeAttributes, Node } from '@tiptap/core'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+
+import { FileBlockNodeView } from '../FileBlockNodeView'
+import { formatFileSize } from '../fileIcons'
 
 export const FileAttachment = Node.create({
   name: 'fileAttachment',
   group: 'block',
   atom: true,
   draggable: true,
+  selectable: true,
+  isolating: true,
 
   addAttributes() {
     return {
@@ -25,7 +31,10 @@ export const FileAttachment = Node.create({
       },
       src: {
         default: '',
-        parseHTML: (element) => element.getAttribute('data-src') ?? element.querySelector('a')?.getAttribute('href') ?? '',
+        parseHTML: (element) =>
+          element.getAttribute('data-src') ??
+          element.querySelector('a')?.getAttribute('href') ??
+          '',
         renderHTML: (attributes) => ({ 'data-src': attributes.src ?? '' }),
       },
     }
@@ -47,11 +56,19 @@ export const FileAttachment = Node.create({
           'data-type': 'file-attachment',
           class: 'mybook-file-attachment',
         },
-        HTMLAttributes,
+        HTMLAttributes
       ),
       ['a', { href: src, download: name, class: 'mybook-file-attachment-link' }, name],
-      ['span', { class: 'mybook-file-attachment-meta' }, [mimeType, formatAttachmentSize(size)].filter(Boolean).join(' · ')],
+      [
+        'span',
+        { class: 'mybook-file-attachment-meta' },
+        [mimeType, formatAttachmentSize(size)].filter(Boolean).join(' · '),
+      ],
     ]
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(FileBlockNodeView)
   },
 })
 
@@ -63,8 +80,5 @@ export function fileAttachmentNode(src: string, name: string, mimeType = '', siz
 }
 
 export function formatAttachmentSize(size: number) {
-  if (!Number.isFinite(size) || size <= 0) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(size < 10 * 1024 * 1024 ? 1 : 0)} MB`
+  return formatFileSize(size)
 }

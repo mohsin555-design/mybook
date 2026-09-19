@@ -88,7 +88,12 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   }
   if (node.type === 'imageBlock' && typeof node.attrs?.src === 'string') {
     const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt.replace(/\[/g, '\\[').replace(/\]/g, '\\]') : ''
-    return `![${alt}](${node.attrs.src})`
+    const caption = typeof node.attrs?.caption === 'string' && node.attrs.caption.trim() ? ` "${node.attrs.caption.replace(/"/g, '\\"')}"` : ''
+    const imgMd = `![${alt}](${node.attrs.src}${caption})`
+    if (typeof node.attrs?.href === 'string' && node.attrs.href.trim()) {
+      return `[${imgMd}](${node.attrs.href.trim()})`
+    }
+    return imgMd
   }
   if (node.type === 'fileAttachment' && typeof node.attrs?.src === 'string') {
     return [
@@ -132,6 +137,7 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   if (node.type === 'documentLink') return documentLinkMarkdown(node)
   if (node.type === 'bookmarkBlock') return bookmarkMarkdown(node)
   if (node.type === 'embedBlock') return embedMarkdown(node)
+  if (node.type === 'videoBlock') return videoMarkdown(node)
   if (node.type === 'databaseBlock') return databaseMarkdown(node)
   return (node.content ?? []).map((child) => blockMarkdown(child, depth)).join('\n\n')
 }
@@ -153,7 +159,7 @@ export function documentToMyBookMarkdown(title: string, json: JSONContent, optio
 }
 
 type InlineMark = NonNullable<JSONContent['marks']>[number]
-type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'unknown'
+type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'unknown'
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 function findUnescaped(value: string, needle: string, start: number) {
@@ -352,6 +358,21 @@ function embedMarkdown(node: JSONContent) {
   return [':::embed', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
 }
 
+function videoMarkdown(node: JSONContent) {
+  if (typeof node.attrs?.src !== 'string' || !node.attrs.src.trim()) return ''
+  const attrs = {
+    src: node.attrs.src,
+    ...(typeof node.attrs.alt === 'string' && node.attrs.alt ? { alt: node.attrs.alt } : {}),
+    ...(typeof node.attrs.caption === 'string' && node.attrs.caption ? { caption: node.attrs.caption } : {}),
+    ...(node.attrs.showCaption !== undefined ? { showCaption: node.attrs.showCaption } : {}),
+    ...(typeof node.attrs.width === 'string' ? { width: node.attrs.width } : {}),
+    ...(typeof node.attrs.align === 'string' ? { align: node.attrs.align } : {}),
+    ...(typeof node.attrs.href === 'string' && node.attrs.href ? { href: node.attrs.href } : {}),
+    ...(typeof node.attrs.provider === 'string' ? { provider: node.attrs.provider } : {}),
+  }
+  return [':::video', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
+}
+
 function rawParagraph(lines: string[]): JSONContent {
   const value = lines.join('\n')
   return { type: 'paragraph', ...(value ? { content: [{ type: 'text', text: value }] } : {}) }
@@ -368,7 +389,7 @@ function customBlockKind(line: string): CustomBlockKind | null {
   if (trimmed === ':::') return null
   const name = /^:::([A-Za-z][\w-]*)(?:\s|$)/u.exec(trimmed)?.[1]
   if (!name) return null
-  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed') return name
+  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video') return name
   return 'unknown'
 }
 
@@ -486,6 +507,28 @@ function parseStructuredEmbed(lines: string[]): JSONContent | null {
         url: parsed.url,
         embedUrl: parsed.embedUrl,
         title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title : 'Embedded content',
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseStructuredVideo(lines: string[]): JSONContent | null {
+  try {
+    const parsed: unknown = JSON.parse(lines.join('\n'))
+    if (!isRecord(parsed) || typeof parsed.src !== 'string' || !parsed.src.trim()) return null
+    return {
+      type: 'videoBlock',
+      attrs: {
+        src: parsed.src,
+        alt: typeof parsed.alt === 'string' ? parsed.alt : '',
+        caption: typeof parsed.caption === 'string' ? parsed.caption : '',
+        showCaption: typeof parsed.showCaption === 'boolean' ? parsed.showCaption : true,
+        width: typeof parsed.width === 'string' ? parsed.width : '100%',
+        align: typeof parsed.align === 'string' ? parsed.align : 'left',
+        href: typeof parsed.href === 'string' ? parsed.href : null,
+        provider: typeof parsed.provider === 'string' ? parsed.provider : 'html5',
       },
     }
   } catch {
@@ -770,6 +813,14 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       content.push(embed ?? rawParagraph(collected.lines))
       continue
     }
+    if (blockKind === 'video') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      const video = collected.closed ? parseStructuredVideo(collected.lines.slice(1, -1)) : null
+      content.push(video ?? rawParagraph(collected.lines))
+      continue
+    }
     if (blockKind === 'file') {
       flushParagraph()
       const opener = line.trim()
@@ -839,10 +890,28 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       flushParagraph()
       continue
     }
-    const image = /^!\[([^\]]*)\]\((.+)\)$/u.exec(line.trim())
-    if (image) {
+    const linkedImage = /^\[!\[([^\]]*)\]\((.+)\)\]\((.+)\)$/u.exec(line.trim())
+    const image = !linkedImage ? /^!\[([^\]]*)\]\((.+)\)$/u.exec(line.trim()) : null
+    if (linkedImage || image) {
       flushParagraph()
-      content.push({ type: 'imageBlock', attrs: { alt: image[1]?.replace(/\\(\[|\])/g, '$1') ?? '', src: image[2] ?? '' } })
+      const rawAlt = linkedImage ? linkedImage[1] : image![1]
+      let src = (linkedImage ? linkedImage[2] : image![2]) ?? ''
+      const href = linkedImage ? linkedImage[3] : ''
+      let caption = ''
+      const titleMatch = /^(.*?)(?:\s+"([^"]*)")?\s*$/u.exec(src)
+      if (titleMatch && titleMatch[2] !== undefined) {
+        src = titleMatch[1] ?? ''
+        caption = titleMatch[2].replace(/\\"/g, '"')
+      }
+      content.push({
+        type: 'imageBlock',
+        attrs: {
+          alt: rawAlt?.replace(/\\(\[|\])/g, '$1') ?? '',
+          src,
+          ...(caption ? { caption, showCaption: true } : {}),
+          ...(href ? { href } : {}),
+        },
+      })
       continue
     }
     if (/^>\s?/u.test(line)) {

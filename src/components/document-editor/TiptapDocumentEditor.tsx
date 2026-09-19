@@ -1,3 +1,5 @@
+import { pastedEmbed } from './embedClipboard'
+import { pastedBookmark } from './bookmarkClipboard'
 import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Dropdown } from '../ui/compat-dropdown'
@@ -38,7 +40,13 @@ import { DatabaseBlock } from './extensions/DatabaseBlock'
 import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
 import { EmbedBlock, embedBlockNode } from './extensions/EmbedBlock'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
+import { FileBlockPicker } from './FileBlockPicker'
 import { ImageBlock, imageBlockNode } from './extensions/ImageBlock'
+import { ImageBlockPicker } from './ImageBlockPicker'
+import { VideoBlock, videoBlockNode } from './extensions/VideoBlock'
+import { VideoBlockPicker } from './VideoBlockPicker'
+import { AudioBlock, audioBlockNode } from './extensions/AudioBlock'
+import { AudioBlockPicker } from './AudioBlockPicker'
 import { TableOfContents } from './extensions/TableOfContents'
 import { ToggleBlock, toggleBlockNode } from './extensions/ToggleBlock'
 import { FixedTable } from './extensions/FixedTable'
@@ -60,7 +68,7 @@ const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const documentViewModeStorageKey = 'mybook-document-view-mode'
 const emptyBlockPlaceholderClass = 'mybook-empty-block-placeholder'
 const quoteEmptyPlaceholderClass = 'mybook-quote-empty-placeholder'
-const emptyBlockPlaceholderKey = new PluginKey<{ focused: boolean }>('emptyBlockPlaceholder')
+const emptyBlockPlaceholderKey = new PluginKey<{ focused: boolean; pickerActive?: boolean }>('emptyBlockPlaceholder')
 const listMarkerDepthKey = new PluginKey('listMarkerDepth')
 const blankBlockSelectionKey = new PluginKey<{ anchor: number | null; head: number | null }>('blankBlockSelection')
 const blankSelectableBlockSelector = ':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > blockquote, :scope > pre, :scope > .mybook-toggle, :scope > ul > li, :scope > ol > li, :scope > [data-type="taskItem"]'
@@ -68,16 +76,33 @@ const blankSelectableBlockSelector = ':scope > p, :scope > h1, :scope > h2, :sco
 const MarkdownLinkShortcut = Extension.create({
   name: 'markdownLinkShortcut',
   addInputRules() {
-    return [new InputRule({
-      find: /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)$/,
-      handler: ({ state, range, match }) => {
-        const label = match[1]
-        const href = match[2]
-        const linkMark = label && href ? state.schema.marks.link?.create({ href }) : null
-        if (!linkMark || !label) return
-        state.tr.replaceWith(range.from, range.to, state.schema.text(label, [linkMark]))
-      },
-    })]
+    return [
+      new InputRule({
+        find: /!\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)$/,
+        handler: ({ state, range, match }) => {
+          const alt = match[1] ?? ''
+          const src = match[2]
+          if (!src) return
+          const imageNode = state.schema.nodes.imageBlock?.create({ src, alt })
+          if (!imageNode) return
+          const paragraphNode = state.schema.nodes.paragraph?.create()
+          const nodesToInsert = paragraphNode ? [imageNode, paragraphNode] : [imageNode]
+          state.tr.replaceWith(range.from, range.to, nodesToInsert)
+        },
+      }),
+      new InputRule({
+        find: /(?:^|[^!])\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)$/,
+        handler: ({ state, range, match }) => {
+          const label = match[1]
+          const href = match[2]
+          const linkMark = label && href ? state.schema.marks.link?.create({ href }) : null
+          if (!linkMark || !label) return
+          const fullMatch = match[0]
+          const offset = fullMatch.startsWith('[') ? 0 : 1
+          state.tr.replaceWith(range.from + offset, range.to, state.schema.text(label, [linkMark]))
+        },
+      }),
+    ]
   },
 })
 interface PasteAsMenuState {
@@ -97,6 +122,22 @@ interface InlineLinkToolbarState {
 }
 interface DocumentLinkPickerState {
   query: string
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+}
+interface ImagePickerState {
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+}
+interface VideoPickerState {
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+}
+interface AudioPickerState {
+  range: { from: number; to: number }
+  position: { left: number; top: number }
+}
+interface FilePickerState {
   range: { from: number; to: number }
   position: { left: number; top: number }
 }
@@ -349,16 +390,21 @@ const EmptyBlockPlaceholder = Extension.create({
     return [new Plugin({
       key: emptyBlockPlaceholderKey,
       state: {
-        init: () => ({ focused: false }),
+        init: () => ({ focused: false, pickerActive: false }),
         apply(transaction, value) {
           const focused = transaction.getMeta(emptyBlockPlaceholderKey)?.focused
-          return focused === undefined ? value : { focused }
+          const pickerActive = transaction.getMeta(emptyBlockPlaceholderKey)?.pickerActive
+          return {
+            focused: focused !== undefined ? focused : value.focused,
+            pickerActive: pickerActive !== undefined ? pickerActive : value.pickerActive,
+          }
         },
       },
       props: {
         decorations(state) {
           const decorations: Decoration[] = []
-          const isEditorFocused = emptyBlockPlaceholderKey.getState(state)?.focused === true
+          const pluginState = emptyBlockPlaceholderKey.getState(state)
+          const isEditorFocused = pluginState?.focused === true || pluginState?.pickerActive === true
           const activeTextblockPos = isEditorFocused && state.selection.empty && state.selection.$from.parent.isTextblock && state.selection.$from.parent.content.size === 0
             ? state.selection.$from.before(state.selection.$from.depth)
             : null
@@ -594,11 +640,35 @@ function PasteAsMenu({
   onClose,
 }: {
   menu: PasteAsMenuState
-  onChoose: (action: 'link' | 'bookmark' | 'mention' | 'embed' | 'document-link') => void
+  onChoose: (action: 'link' | 'bookmark' | 'mention' | 'embed' | 'image' | 'document-link') => void
   onClose: () => void
 }) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (menuRef.current && !menuRef.current.contains(target)) {
+        onClose()
+      }
+    }
+    window.addEventListener('pointerdown', handlePointerDown)
+    return () => window.removeEventListener('pointerdown', handlePointerDown)
+  }, [onClose])
+
+  useEffect(() => {
+    const handleScroll = (event: Event) => {
+      const target = event.target as Node | null
+      if (menuRef.current && menuRef.current.contains(target)) return
+      onClose()
+    }
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [onClose])
+
   return (
     <div
+      ref={menuRef}
       data-paste-as-menu="true"
       role="menu"
       aria-label="Paste as"
@@ -618,7 +688,8 @@ function PasteAsMenu({
       <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('link')}>Link</button>
       <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('bookmark')}>Bookmark</button>
       <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('mention')}>Mention</button>
-      {menu.urlInfo.embedUrl ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('embed')}>Embed</button> : null}
+      {menu.urlInfo.isImage ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('image')}>Image</button> : null}
+      {menu.urlInfo.embedUrl && !menu.urlInfo.isImage ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('embed')}>Embed</button> : null}
       {menu.documentTarget ? <button type="button" role="menuitem" className="mybook-paste-as-item" onClick={() => onChoose('document-link')}>Link to page</button> : null}
     </div>
   )
@@ -630,7 +701,7 @@ function InlineLinkToolbar({
   onClose,
 }: {
   toolbar: InlineLinkToolbarState
-  onAction: (action: 'copy' | 'edit' | 'bookmark' | 'mention' | 'embed' | 'page' | 'remove', values?: { href: string; text: string }) => void
+  onAction: (action: 'copy' | 'edit' | 'bookmark' | 'mention' | 'embed' | 'image' | 'page' | 'remove', values?: { href: string; text: string }) => void
   onClose: () => void
 }) {
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -720,6 +791,7 @@ function InlineLinkToolbar({
             <DropdownMenuContent align="start" className="min-w-40">
               <DropdownMenuItem onClick={() => onAction('bookmark')}>Bookmark</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAction('mention')}>Mention</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAction('image')}>Image</DropdownMenuItem>
               <DropdownMenuItem disabled={!toolbar.canEmbed} onClick={() => onAction('embed')}>Embed</DropdownMenuItem>
               {toolbar.documentTarget ? <DropdownMenuItem onClick={() => onAction('page')}>Link to Page</DropdownMenuItem> : null}
             </DropdownMenuContent>
@@ -763,7 +835,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [zoom, setZoom] = useState(100)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [documentLinkPicker, setDocumentLinkPicker] = useState<DocumentLinkPickerState | null>(null)
-  const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState(0)
+  const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState<number>(0)
+  const [imagePicker, setImagePicker] = useState<ImagePickerState | null>(null)
+  const [videoPicker, setVideoPicker] = useState<VideoPickerState | null>(null)
+  const [audioPicker, setAudioPicker] = useState<AudioPickerState | null>(null)
+  const [filePicker, setFilePicker] = useState<FilePickerState | null>(null)
   const [pasteAsMenu, setPasteAsMenu] = useState<PasteAsMenuState | null>(null)
   const [inlineLinkToolbar, setInlineLinkToolbar] = useState<InlineLinkToolbarState | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -784,6 +860,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const slashSelectedIndexRef = useRef(0)
   const documentLinkPickerRef = useRef<DocumentLinkPickerState | null>(null)
   const documentLinkSelectedIndexRef = useRef(0)
+  const imagePickerRef = useRef<ImagePickerState | null>(null)
+  const videoPickerRef = useRef<VideoPickerState | null>(null)
+  const audioPickerRef = useRef<AudioPickerState | null>(null)
+  const filePickerRef = useRef<FilePickerState | null>(null)
   const pasteAsMenuRef = useRef<PasteAsMenuState | null>(null)
   const inlineLinkToolbarRef = useRef<InlineLinkToolbarState | null>(null)
   const filesRef = useRef(files)
@@ -805,13 +885,45 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     titleRef.current = nextTitle
     setTitle(nextTitle)
   }, [])
+  const closeImagePicker = useCallback(() => {
+    imagePickerRef.current = null
+    setImagePicker(null)
+    const currentEditor = editorRef.current
+    if (currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    }
+  }, [])
+  const closeVideoPicker = useCallback(() => {
+    videoPickerRef.current = null
+    setVideoPicker(null)
+    const currentEditor = editorRef.current
+    if (currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    }
+  }, [])
+  const closeAudioPicker = useCallback(() => {
+    audioPickerRef.current = null
+    setAudioPicker(null)
+    const currentEditor = editorRef.current
+    if (currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    }
+  }, [])
+  const closeFilePicker = useCallback(() => {
+    filePickerRef.current = null
+    setFilePicker(null)
+    const currentEditor = editorRef.current
+    if (currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    }
+  }, [])
   const updateSlashMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
     if (slashMenuDismissedRef.current) {
       slashMenuRef.current = null
       setSlashMenu(null)
       return
     }
-    if (documentLinkPickerRef.current) {
+    if (documentLinkPickerRef.current || imagePickerRef.current || videoPickerRef.current || audioPickerRef.current || filePickerRef.current) {
       slashMenuRef.current = null
       setSlashMenu(null)
       return
@@ -833,6 +945,27 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     pasteAsMenuRef.current = null
     setPasteAsMenu(null)
   }, [])
+  const updatePasteAsMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    const menu = pasteAsMenuRef.current
+    if (!menu) return
+    const { selection, doc } = currentEditor.state
+    if (doc.content.size < menu.range.from) {
+      closePasteAsMenu()
+      return
+    }
+    const $start = doc.resolve(Math.min(menu.range.from, doc.content.size))
+    const currentText = $start.parent.isTextblock
+      ? $start.parent.textBetween(0, $start.parent.content.size, '\n', '\0')
+      : ''
+    if (!currentText || (currentText !== menu.urlInfo.url && currentText !== menu.urlInfo.url.replace(/\/$/, ''))) {
+      closePasteAsMenu()
+      return
+    }
+    const $cursor = doc.resolve(selection.from)
+    if (!$cursor.parent.isTextblock || $start.start() !== $cursor.start()) {
+      closePasteAsMenu()
+    }
+  }, [closePasteAsMenu])
   const closeInlineLinkToolbar = useCallback(() => {
     inlineLinkToolbarRef.current = null
     setInlineLinkToolbar(null)
@@ -842,6 +975,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setDocumentLinkPicker(null)
     documentLinkSelectedIndexRef.current = 0
     setDocumentLinkSelectedIndex(0)
+    const currentEditor = editorRef.current
+    if (currentEditor && !currentEditor.isDestroyed) {
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: false }))
+    }
   }, [])
   const updateDocumentLinkPicker = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
     const picker = documentLinkPickerRef.current
@@ -921,6 +1058,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       EmbedBlock,
       FileAttachment,
       ImageBlock,
+      VideoBlock,
+      AudioBlock,
       ToggleBlock,
       DatabaseBlock,
       TableOfContents,
@@ -939,6 +1078,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
       handlePaste: (view, event) => {
+        const copiedEmbed = pastedEmbed(event.clipboardData?.getData('text/html') ?? '')
+        if (copiedEmbed) {
+          event.preventDefault()
+          editorRef.current?.commands.insertContent(copiedEmbed)
+          closePasteAsMenu()
+          closeInlineLinkToolbar()
+          return true
+        }
+        const copiedBookmark = pastedBookmark(event.clipboardData?.getData('text/html') ?? '')
+        if (copiedBookmark) {
+          event.preventDefault()
+          editorRef.current?.commands.insertContent(copiedBookmark)
+          closePasteAsMenu()
+          closeInlineLinkToolbar()
+          return true
+        }
         const rawUrl = event.clipboardData?.getData('text/plain') ?? ''
         const urlInfo = analyzePastedUrl(rawUrl)
         if (urlInfo && !view.state.selection.empty) {
@@ -1101,6 +1256,30 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           return true
         }
 
+        if (event.key === 'Escape' && imagePickerRef.current) {
+          event.preventDefault()
+          closeImagePicker()
+          return true
+        }
+
+        if (event.key === 'Escape' && videoPickerRef.current) {
+          event.preventDefault()
+          closeVideoPicker()
+          return true
+        }
+
+        if (event.key === 'Escape' && audioPickerRef.current) {
+          event.preventDefault()
+          closeAudioPicker()
+          return true
+        }
+
+        if (event.key === 'Escape' && filePickerRef.current) {
+          event.preventDefault()
+          closeFilePicker()
+          return true
+        }
+
         const documentPicker = documentLinkPickerRef.current
         if (documentPicker) {
           const targets = documentLinkTargets(filesRef.current, fileId, documentPicker.query)
@@ -1184,6 +1363,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       setContent(next)
       updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
+      updatePasteAsMenu(currentEditor)
     },
     onSelectionUpdate: ({ editor: currentEditor }) => {
       if (!currentEditor.state.selection.empty) {
@@ -1197,6 +1377,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
       updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
+      updatePasteAsMenu(currentEditor)
     },
   })
 
@@ -1238,17 +1419,151 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [slashMenu])
 
   const openImagePicker = useCallback(() => {
-    imageInputRef.current?.click()
-  }, [])
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: ImagePickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: { left: coords.left, top: coords.bottom + 8 },
+    }
+    imagePickerRef.current = nextPicker
+    setImagePicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
+    closeDocumentLinkPicker()
+    closeVideoPicker()
+    closeAudioPicker()
+    closeFilePicker()
+    closePasteAsMenu()
+  }, [closeDocumentLinkPicker, closeVideoPicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
+
+  const handleInsertImage = useCallback((src: string, alt: string) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const picker = imagePickerRef.current
+    closeImagePicker()
+    if (picker?.range) {
+      currentEditor.chain().focus().insertContentAt(picker.range, [imageBlockNode(src, alt), { type: 'paragraph' }]).run()
+    } else {
+      currentEditor.chain().focus().insertContent([imageBlockNode(src, alt), { type: 'paragraph' }]).run()
+    }
+  }, [closeImagePicker])
+
+  const openVideoPicker = useCallback(() => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: VideoPickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: { left: coords.left, top: coords.bottom + 8 },
+    }
+    videoPickerRef.current = nextPicker
+    setVideoPicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
+    closeDocumentLinkPicker()
+    closeImagePicker()
+    closeAudioPicker()
+    closeFilePicker()
+    closePasteAsMenu()
+  }, [closeDocumentLinkPicker, closeImagePicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
+
+  const handleInsertVideo = useCallback((src: string, alt: string, provider?: 'html5' | 'youtube' | 'vimeo' | 'embed') => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const picker = videoPickerRef.current
+    closeVideoPicker()
+    if (picker?.range) {
+      currentEditor.chain().focus().insertContentAt(picker.range, [videoBlockNode(src, alt, '100%', 'left', '', true, '', provider ?? 'html5'), { type: 'paragraph' }]).run()
+    } else {
+      currentEditor.chain().focus().insertContent([videoBlockNode(src, alt, '100%', 'left', '', true, '', provider ?? 'html5'), { type: 'paragraph' }]).run()
+    }
+  }, [closeVideoPicker])
+
+  const openAudioPicker = useCallback(() => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: AudioPickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: { left: coords.left, top: coords.bottom + 8 },
+    }
+    audioPickerRef.current = nextPicker
+    setAudioPicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
+    closeDocumentLinkPicker()
+    closeImagePicker()
+    closeVideoPicker()
+    closeFilePicker()
+    closePasteAsMenu()
+  }, [closeDocumentLinkPicker, closeImagePicker, closeVideoPicker, closeFilePicker, closePasteAsMenu])
+
+  const handleInsertAudio = useCallback((src: string, title: string, provider?: 'html5' | 'embed') => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const picker = audioPickerRef.current
+    closeAudioPicker()
+    if (picker?.range) {
+      currentEditor.chain().focus().insertContentAt(picker.range, [audioBlockNode(src, title, '100%', 'left', '', provider ?? 'html5'), { type: 'paragraph' }]).run()
+    } else {
+      currentEditor.chain().focus().insertContent([audioBlockNode(src, title, '100%', 'left', '', provider ?? 'html5'), { type: 'paragraph' }]).run()
+    }
+  }, [closeAudioPicker])
 
   const openFilePicker = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const { selection } = currentEditor.state
+    const coords = currentEditor.view.coordsAtPos(selection.from)
+    const nextPicker: FilePickerState = {
+      range: { from: selection.from, to: selection.to },
+      position: { left: coords.left, top: coords.bottom + 8 },
+    }
+    filePickerRef.current = nextPicker
+    setFilePicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
+    slashMenuRef.current = null
+    setSlashMenu(null)
+    closeDocumentLinkPicker()
+    closeImagePicker()
+    closeVideoPicker()
+    closeAudioPicker()
+    closePasteAsMenu()
+  }, [closeDocumentLinkPicker, closeImagePicker, closeVideoPicker, closeAudioPicker, closePasteAsMenu])
+
+  const handleInsertFile = useCallback((src: string, name: string, mimeType = '', size = 0) => {
+    const currentEditor = editorRef.current
+    if (!currentEditor) return
+    const picker = filePickerRef.current
+    closeFilePicker()
+    if (picker?.range) {
+      currentEditor.chain().focus().insertContentAt(picker.range, [fileAttachmentNode(src, name, mimeType, size), { type: 'paragraph' }]).run()
+    } else {
+      currentEditor.chain().focus().insertContent([fileAttachmentNode(src, name, mimeType, size), { type: 'paragraph' }]).run()
+    }
+  }, [closeFilePicker])
 
   useEffect(() => {
     window.addEventListener('mybook:insert-image', openImagePicker)
     return () => window.removeEventListener('mybook:insert-image', openImagePicker)
   }, [openImagePicker])
+
+  useEffect(() => {
+    window.addEventListener('mybook:insert-video', openVideoPicker)
+    return () => window.removeEventListener('mybook:insert-video', openVideoPicker)
+  }, [openVideoPicker])
+
+  useEffect(() => {
+    window.addEventListener('mybook:insert-audio', openAudioPicker)
+    return () => window.removeEventListener('mybook:insert-audio', openAudioPicker)
+  }, [openAudioPicker])
 
   useEffect(() => {
     window.addEventListener('mybook:insert-file', openFilePicker)
@@ -1267,11 +1582,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     documentLinkPickerRef.current = nextPicker
     setDocumentLinkPicker(nextPicker)
+    currentEditor.view.dispatch(currentEditor.state.tr.setMeta(emptyBlockPlaceholderKey, { pickerActive: true }))
     documentLinkSelectedIndexRef.current = 0
     setDocumentLinkSelectedIndex(0)
     slashMenuRef.current = null
     setSlashMenu(null)
-  }, [])
+    closeImagePicker()
+    closeVideoPicker()
+    closeAudioPicker()
+    closeFilePicker()
+    closePasteAsMenu()
+  }, [closeImagePicker, closeVideoPicker, closeAudioPicker, closeFilePicker, closePasteAsMenu])
 
   useEffect(() => {
     window.addEventListener('mybook:insert-document-link', openDocumentLinkPicker)
@@ -1432,11 +1753,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     closePasteAsMenu()
   }
 
-  const choosePasteAs = (action: 'link' | 'bookmark' | 'mention' | 'embed' | 'document-link') => {
+  const choosePasteAs = (action: 'link' | 'bookmark' | 'mention' | 'embed' | 'image' | 'document-link') => {
     if (!pasteAsMenu) return
     if (action === 'link') {
       closePasteAsMenu()
       editor.chain().focus().run()
+      return
+    }
+    if (action === 'image') {
+      replacePasteAsBlock(imageBlockNode(pasteAsMenu.urlInfo.url, pasteAsMenu.urlInfo.title))
       return
     }
     if (action === 'bookmark' || action === 'mention') {
@@ -1465,7 +1790,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }
 
-  const runInlineLinkAction = (action: 'copy' | 'edit' | 'bookmark' | 'mention' | 'embed' | 'page' | 'remove', values?: { href: string; text: string }) => {
+  const runInlineLinkAction = (action: 'copy' | 'edit' | 'bookmark' | 'mention' | 'embed' | 'image' | 'page' | 'remove', values?: { href: string; text: string }) => {
     const toolbar = inlineLinkToolbarRef.current
     if (!toolbar) return
     if (action === 'copy') {
@@ -1488,6 +1813,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
     if (action === 'remove') {
       editor.chain().focus().setTextSelection(toolbar.range).unsetLink().run()
+      closeInlineLinkToolbar()
+      return
+    }
+    if (action === 'image') {
+      const info = analyzePastedUrl(toolbar.href)
+      editor.commands.insertContentAt(toolbar.range, imageBlockNode(
+        toolbar.href,
+        toolbar.text || info?.title || ''
+      ))
       closeInlineLinkToolbar()
       return
     }
@@ -1657,7 +1991,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     else if (action === 'underline') editor.chain().focus().toggleUnderline().run()
     else if (action === 'strike') editor.chain().focus().toggleStrike().run()
     else if (action === 'code') editor.chain().focus().toggleCode().run()
-    else if (action === 'code-block') editor.chain().focus().toggleCodeBlock().run()
+    else if (action === 'code-block') {
+      const { from, to } = editor.state.selection
+      runSlashCommand(editor, 'code-block', { from, to })
+    }
     else if (action === 'quote') {
       const { from, to } = editor.state.selection
       runSlashCommand(editor, 'quote', { from, to })
@@ -2025,6 +2362,34 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           }}
           onClose={closeDocumentLinkPicker}
           onSelect={insertDocumentLink}
+        />
+      ) : null}
+      {imagePicker ? (
+        <ImageBlockPicker
+          position={imagePicker.position}
+          onClose={closeImagePicker}
+          onInsert={handleInsertImage}
+        />
+      ) : null}
+      {videoPicker ? (
+        <VideoBlockPicker
+          position={videoPicker.position}
+          onClose={closeVideoPicker}
+          onInsert={handleInsertVideo}
+        />
+      ) : null}
+      {audioPicker ? (
+        <AudioBlockPicker
+          position={audioPicker.position}
+          onClose={closeAudioPicker}
+          onInsert={handleInsertAudio}
+        />
+      ) : null}
+      {filePicker ? (
+        <FileBlockPicker
+          position={filePicker.position}
+          onClose={closeFilePicker}
+          onInsert={handleInsertFile}
         />
       ) : null}
       <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="mobile" />

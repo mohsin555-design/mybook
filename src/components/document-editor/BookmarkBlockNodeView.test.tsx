@@ -3,17 +3,25 @@ import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NodeViewProps } from '@tiptap/react'
 import { BookmarkBlockNodeView } from './BookmarkBlockNodeView'
+import { copyBookmarkToClipboard } from './bookmarkClipboard'
 import { getBookmarkMetadata } from '../../services/bookmarkMetadata'
 
 vi.mock('@tiptap/react', () => ({ NodeViewWrapper: ({ children }: { children: React.ReactNode }) => <section>{children}</section> }))
-vi.mock('./LinkBlockActions', () => ({ LinkBlockActions: () => null }))
+vi.mock('./bookmarkClipboard', () => ({ copyBookmarkToClipboard: vi.fn().mockResolvedValue(true) }))
 vi.mock('../../services/bookmarkMetadata', () => ({ getBookmarkMetadata: vi.fn(async () => null) }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('bookmark preview', () => {
   const href = 'https://example.com/icons?search=delete'
   function props(image = '') {
-    return { node: { attrs: { href, title: 'Page title', description: 'Page description', image } }, updateAttributes: vi.fn(), selected: false } as unknown as NodeViewProps
+    const insertContentAt = vi.fn()
+    return {
+      node: { attrs: { href, title: 'Page title', description: 'Page description', image }, nodeSize: 1, toJSON: () => ({ type: 'bookmarkBlock' }) },
+      getPos: () => 4,
+      editor: { commands: { insertContentAt } },
+      updateAttributes: vi.fn(),
+      selected: false,
+    } as unknown as NodeViewProps
   }
   it('shows the original URL and a centered icon when there is no image', () => {
     const { container } = render(<BookmarkBlockNodeView {...props()} />)
@@ -52,5 +60,25 @@ describe('bookmark preview', () => {
     render(<BookmarkBlockNodeView {...nodeProps} />)
     await waitFor(() => expect(nodeProps.updateAttributes).toHaveBeenCalledWith(metadata))
     expect(screen.getByText(href)).toBeTruthy()
+  })
+  it('orders bookmark action buttons (Copy, Duplicate, More) and More menu items', async () => {
+    const nodeProps = props()
+    render(<BookmarkBlockNodeView {...nodeProps} />)
+
+    const buttons = screen.getAllByRole('button').filter((b) => b.classList.contains('mybook-image-toolbar-button'))
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Copy block', 'Duplicate', 'More actions for Page title'])
+
+    // 1. Copy
+    fireEvent.click(screen.getByRole('button', { name: 'Copy block' }))
+    expect(copyBookmarkToClipboard).toHaveBeenCalledWith(nodeProps.node)
+    await screen.findByRole('button', { name: 'Copied' })
+
+    // 2. Duplicate
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }))
+    expect(nodeProps.editor.commands.insertContentAt).toHaveBeenCalledWith(5, nodeProps.node.toJSON())
+
+    // 3. More
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Page title' }))
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open', 'Copy link', 'Change to', 'Remove link', 'Delete'])
   })
 })

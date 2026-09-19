@@ -10,11 +10,13 @@ import {
   HashtagIcon,
   ListBulletIcon,
   MinusIcon,
+  MusicalNoteIcon,
   NumberedListIcon,
   PaperClipIcon,
   PhotoIcon,
   QueueListIcon,
   TableCellsIcon,
+  VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import { useEffect, useRef } from 'react'
 
@@ -35,6 +37,8 @@ const commandIcons = {
   task: CheckCircleIcon,
   toggle: ChevronRightIcon,
   image: PhotoIcon,
+  video: VideoCameraIcon,
+  audio: MusicalNoteIcon,
   file: PaperClipIcon,
   'document-link': DocumentIcon,
   table: TableCellsIcon,

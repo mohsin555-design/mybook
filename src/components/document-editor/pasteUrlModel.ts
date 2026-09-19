@@ -9,10 +9,36 @@ export interface PasteUrlInfo {
   embedProvider?: string
   youtubeId?: string
   documentId?: string
+  isImage?: boolean
 }
 
 const youtubeHosts = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'])
 const figmaHosts = new Set(['figma.com', 'www.figma.com'])
+const imageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp', 'ico', 'tiff'])
+
+export function isImageUrl(rawUrl: string): boolean {
+  const trimmed = rawUrl.trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith('data:image/')) return true
+  try {
+    const url = new URL(trimmed)
+    const pathname = url.pathname.toLowerCase()
+    const ext = pathname.split('.').pop()
+    if (ext && imageExtensions.has(ext)) return true
+    if (
+      url.hostname.includes('images.unsplash.com') ||
+      url.hostname.includes('imgur.com') ||
+      url.hostname.includes('i.postimg.cc') ||
+      url.hostname.includes('cdn.pixabay.com') ||
+      url.hostname.includes('images.pexels.com')
+    ) {
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
 
 export function analyzePastedUrl(rawUrl: string, origin = globalThis.location?.origin ?? 'http://localhost'): PasteUrlInfo | null {
   const trimmed = rawUrl.trim()
@@ -30,6 +56,7 @@ export function analyzePastedUrl(rawUrl: string, origin = globalThis.location?.o
   const documentId = documentIdFromUrl(parsed, origin)
   const embed = supportedEmbedFromUrl(parsed)
   const domain = parsed.hostname.replace(/^www\./u, '')
+  const isImage = isImageUrl(parsed.href)
   return {
     url: parsed.href,
     kind: documentId ? 'writin-document' : embed ? 'embed' : 'normal',
@@ -39,6 +66,7 @@ export function analyzePastedUrl(rawUrl: string, origin = globalThis.location?.o
     embedProvider: embed?.provider,
     youtubeId: embed?.provider === 'youtube' ? embed.id : undefined,
     documentId,
+    isImage,
   }
 }
 

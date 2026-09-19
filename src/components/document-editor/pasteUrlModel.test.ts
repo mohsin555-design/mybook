@@ -28,6 +28,12 @@ describe('pasteUrlModel', () => {
     expect(analyzePastedUrl('https://example.com/document/doc_123', 'https://writin.test')?.kind).toBe('embed')
   })
 
+  it('recognizes image URLs as image paste candidates', () => {
+    expect(analyzePastedUrl('https://example.com/photo.png')?.isImage).toBe(true)
+    expect(analyzePastedUrl('https://images.unsplash.com/photo-123456')?.isImage).toBe(true)
+    expect(analyzePastedUrl('https://example.com/article')?.isImage).toBe(false)
+  })
+
   it('keeps the paste menu limited to single URL paste content', () => {
     expect(isSingleUrlPaste('https://example.com')).toBe(true)
     expect(isSingleUrlPaste('See https://example.com')).toBe(false)

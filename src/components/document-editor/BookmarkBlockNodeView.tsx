@@ -1,11 +1,13 @@
 import type { NodeViewProps } from '@tiptap/react'
 import { NodeViewWrapper } from '@tiptap/react'
 import { useEffect, useState } from 'react'
-import { InternetIcon } from '@hugeicons/core-free-icons'
+import { Copy02Icon, CopyIcon, InternetIcon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 
 import { getBookmarkMetadata } from '../../services/bookmarkMetadata'
+import { Button } from '../ui/button'
 import { Card, CardAction, CardContent } from '../ui/card'
+import { copyBookmarkToClipboard } from './bookmarkClipboard'
 import { LinkBlockActions } from './LinkBlockActions'
 
 export function BookmarkBlockNodeView({ editor, getPos, node, selected, updateAttributes }: NodeViewProps) {
@@ -20,6 +22,15 @@ export function BookmarkBlockNodeView({ editor, getPos, node, selected, updateAt
   const thumbnail = isMention ? (domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64` : '') : image
   const [loadedImage, setLoadedImage] = useState('')
   const [failedImage, setFailedImage] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = window.setTimeout(() => setCopied(false), 1400)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
   useEffect(() => {
     let active = true
     void getBookmarkMetadata(href).then((metadata) => {
@@ -27,8 +38,19 @@ export function BookmarkBlockNodeView({ editor, getPos, node, selected, updateAt
     })
     return () => { active = false }
   }, [href, title, description, image, siteName, updateAttributes])
+
   const open = () => {
     if (href) window.open(href, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleCopy = async () => {
+    const success = await copyBookmarkToClipboard(node)
+    setCopied(success)
+  }
+
+  const handleDuplicate = () => {
+    const pos = getPos()
+    if (pos !== undefined) editor.commands.insertContentAt(pos + node.nodeSize, node.toJSON())
   }
 
   return (
@@ -38,7 +60,7 @@ export function BookmarkBlockNodeView({ editor, getPos, node, selected, updateAt
       className="mybook-link-node-view"
       contentEditable={false}
     >
-      <Card size="sm" className={`mybook-bookmark-block ${isMention ? 'mybook-mention-block' : ''} rounded-[10px] py-0 gap-0 ring-0 shadow-none data-[size=sm]:[--card-spacing:0px] ${selected ? 'ProseMirror-selectednode' : ''}`}>
+      <Card size="sm" data-menu-open={menuOpen} className={`mybook-bookmark-block ${isMention ? 'mybook-mention-block' : ''} rounded-[10px] py-0 gap-0 ring-0 shadow-none data-[size=sm]:[--card-spacing:0px] ${selected ? 'ProseMirror-selectednode' : ''}`}>
         <CardContent className="mybook-bookmark-content px-0">
           <button type="button" className="mybook-bookmark-card" onClick={open} aria-label={`Open ${title}`}>
             <span className="mybook-bookmark-logo" aria-hidden="true">
@@ -58,12 +80,43 @@ export function BookmarkBlockNodeView({ editor, getPos, node, selected, updateAt
           </button>
         </CardContent>
         <CardAction className="mybook-link-card-action-slot">
+          <span className="mybook-desktop-only-action">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="mybook-image-toolbar-button"
+              aria-label={copied ? 'Copied' : 'Copy block'}
+              title={copied ? 'Copied' : 'Copy block'}
+              onClick={handleCopy}
+            >
+              <HugeiconsIcon icon={copied ? Tick02Icon : CopyIcon} strokeWidth={2} className="size-4" />
+            </Button>
+          </span>
+          <span className="mybook-desktop-only-action">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="mybook-image-toolbar-button"
+              aria-label="Duplicate"
+              title="Duplicate"
+              onClick={handleDuplicate}
+            >
+              <HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4" />
+            </Button>
+          </span>
           <LinkBlockActions
             editor={editor}
             getPos={getPos}
             metadata={{ kind: isMention ? 'mention' : 'bookmark', url: href, title, domain, description }}
             node={node}
             onOpen={open}
+            embedToolbar
+            onMenuOpenChange={setMenuOpen}
+            onCopyBlock={handleCopy}
+            onDuplicate={handleDuplicate}
+            isBlockCopied={copied}
           />
         </CardAction>
       </Card>

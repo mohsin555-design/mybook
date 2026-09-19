@@ -1347,6 +1347,25 @@ describe('MyBook Markdown round trips', () => {
     expectRoundTrip(doc(paragraph(text('Literal * _ # [ ] ( ) ` | \\ characters should not corrupt content'))))
   })
 
+  it('round trips video blocks with attributes and captions', () => {
+    const videoNode: JSONContent = {
+      type: 'videoBlock',
+      attrs: {
+        src: 'https://example.com/demo.mp4',
+        alt: 'Demo Video',
+        caption: 'Watch the full walkthrough',
+        showCaption: true,
+        width: '75%',
+        align: 'center',
+        href: 'https://example.com/docs',
+        provider: 'html5',
+      },
+    }
+    const markdown = documentToMyBookMarkdown('Video Doc', doc(videoNode))
+    const parsed = myBookMarkdownToDocument(markdown)
+    expect(parsed.content?.[0]).toEqual(videoNode)
+  })
+
   it('round trips a larger document without changing structure', () => {
     expectRoundTrip(doc(...Array.from({ length: 150 }, (_, index) => paragraph(text(`Paragraph ${index + 1}`)))))
   })

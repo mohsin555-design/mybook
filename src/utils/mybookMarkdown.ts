@@ -968,7 +968,7 @@ export function downloadMyBookMarkdown(markdown: string, title: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `${safeName}.mybook.md`
+  anchor.download = `${safeName}.md`
   anchor.click()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

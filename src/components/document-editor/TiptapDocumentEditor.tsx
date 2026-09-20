@@ -2110,12 +2110,23 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <DropdownMenuItem onClick={() => editor.chain().focus().toggleUnderline().run()}>Underline</DropdownMenuItem>
             <DropdownMenuItem onClick={() => editor.chain().focus().toggleStrike().run()}>Strikethrough</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Export MyBook Markdown</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Download Markdown (.md)</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void exportDocx(true)}>Download DOCX</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void exportDocx(false)}>Prepare DOCX</DropdownMenuItem>
             <DropdownMenuItem onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Move to Trash</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void close()}>Close document</DropdownMenuItem>
+            {!isLocalWorkspace ? (
+              <>
+                <DropdownMenuSeparator />
+                <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
+                  <span>Cloud sync</span>
+                  <span className="font-medium text-foreground">
+                    {editorStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced' : 'Saved locally'}
+                  </span>
+                </div>
+              </>
+            ) : null}
           </>
         }
       />

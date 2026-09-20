@@ -1,7 +1,7 @@
 import { db } from './db'
 import type { AppSetting, FileType, FileVersionSource, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem, WorkspaceType } from '../types/files'
 import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFile, restoreDriveFolder, trashDriveFile, trashDriveFolder, updateDriveFolder } from '../services/googleDrive'
-import { deleteLocalWorkspaceFile, readLocalWorkspaceFile, writeLocalWorkspaceFile } from '../services/localWorkspace'
+import { deleteLocalWorkspaceFile, deleteLocalWorkspaceFolder, ensureLocalWorkspaceFolder, readLocalWorkspaceFile, syncAttachmentsOnRenameOrMove, writeLocalWorkspaceFile } from '../services/localWorkspace'
 import { isLocalWorkspace, shouldSyncWithDrive } from '../stores/useWorkspaceStore'
 import { devLog } from '../utils/safeLog'
 
@@ -370,6 +370,14 @@ export const fileRepository = {
         ? { ...changes, syncStatus: pendingSyncStatus(), syncError: null }
         : changes
       if (nextChanges.folderId !== undefined && !(await folderIsInActiveWorkspace(nextChanges.folderId))) return { success: false, error: 'Folder could not be found in this workspace.' }
+      const isRenamedOrMoved = isLocalWorkspace() && (
+        (changes.name !== undefined && changes.name !== existing.name) ||
+        (changes.folderId !== undefined && changes.folderId !== existing.folderId)
+      )
+      if (isRenamedOrMoved) {
+        await syncAttachmentsOnRenameOrMove(existing, { ...existing, ...nextChanges })
+        await deleteLocalWorkspaceFile(existing)
+      }
       await db.files.update(id, { ...nextChanges, updatedAt: new Date().toISOString() })
       await persistLocalFile(await db.files.get(id))
       if (changes.name !== undefined || changes.folderId !== undefined || changes.content !== undefined) {
@@ -483,6 +491,9 @@ export const folderRepository = {
       const now = new Date().toISOString()
       const folder: MyBookFolder = { id: crypto.randomUUID(), driveFolderId: null, workspaceType: activeWorkspaceType(), name: normalized, parentId, createdAt: now, updatedAt: now, isDeleted: false }
       await db.folders.add(folder)
+      if (isLocalWorkspace()) {
+        await ensureLocalWorkspaceFolder(folder.id)
+      }
       await maybeQueueFolderSync(folder.id, 'create', navigator.onLine ? null : 'Offline. Folder will sync when you reconnect.')
       processPendingDriveSyncInBackground()
       return { success: true, data: folder }
@@ -527,6 +538,9 @@ export const folderRepository = {
       const next = { ...changes, updatedAt: new Date().toISOString() }
       await db.folders.update(id, next)
       if (changes.name !== undefined || changes.parentId !== undefined) {
+        if (isLocalWorkspace()) {
+          await ensureLocalWorkspaceFolder(id)
+        }
         await maybeQueueFolderSync(id, folder.driveFolderId ? 'update' : 'create', navigator.onLine ? null : 'Offline. Folder changes will sync when you reconnect.')
         processPendingDriveSyncInBackground()
       }
@@ -547,6 +561,9 @@ export const folderRepository = {
         await Promise.all([...ids].map((folderId) => db.folders.update(folderId, { isDeleted: true, updatedAt: now })))
         await db.files.filter((file) => fileBelongsToActiveWorkspace(file) && Boolean(file.folderId && ids.has(file.folderId))).modify({ isDeleted: true, updatedAt: now })
       })
+      if (isLocalWorkspace()) {
+        await deleteLocalWorkspaceFolder(id)
+      }
       await Promise.all(deletedFolderIds.map((folderId) => maybeQueueFolderSync(folderId, 'delete', navigator.onLine ? null : 'Offline. Folder will move to Drive Trash when you reconnect.')))
       processPendingDriveSyncInBackground()
       return { success: true }

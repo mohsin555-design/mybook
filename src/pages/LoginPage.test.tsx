@@ -52,17 +52,17 @@ describe('LoginPage local workspace setup', () => {
   it('defaults to private app storage when a device folder picker is unavailable', async () => {
     renderLoginPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Local Workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create a Private Device Vault' }))
 
-    expect(screen.getByRole('dialog', { name: 'Create local workspace' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Create Private Device Vault' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /Choose a folder on this device/ })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: /Use private app storage/ })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /Use private device storage/ })).toBeChecked()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Vault' }))
 
     await waitFor(() => expect(screen.getByText('Home')).toBeInTheDocument())
     expect(initializeLocalWorkspace).toHaveBeenCalledWith({
-      name: 'My Workspace',
+      name: 'Private Device Vault',
       storagePreference: 'private',
       allowPrivateFallback: true,
       directoryHandle: undefined,
@@ -73,7 +73,7 @@ describe('LoginPage local workspace setup', () => {
     mockLocalWorkspaceSupport.canPickDeviceDirectory = true
     renderLoginPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Local Workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select a Local Vault Folder' }))
 
     expect(screen.getByRole('radio', { name: /Choose a folder on this device/ })).toBeChecked()
     expect(screen.getByRole('button', { name: 'Browse folder' })).toBeInTheDocument()
@@ -84,16 +84,16 @@ describe('LoginPage local workspace setup', () => {
     mockLocalWorkspaceSupport.canPickDeviceDirectory = true
     renderLoginPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Local Workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select a Local Vault Folder' }))
     fireEvent.click(screen.getByRole('button', { name: 'Browse folder' }))
 
     expect(await screen.findByText('Selected folder: Writing Vault')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Vault' }))
 
     await waitFor(() => expect(screen.getByText('Home')).toBeInTheDocument())
     expect(initializeLocalWorkspace).toHaveBeenCalledWith({
-      name: 'My Workspace',
+      name: 'Writing Vault',
       storagePreference: 'file-system',
       allowPrivateFallback: false,
       directoryHandle: pickedDirectory.handle,
@@ -105,8 +105,8 @@ describe('LoginPage local workspace setup', () => {
 
     renderLoginPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create Local Workspace' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Create Workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Select a Local Vault Folder' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open Vault' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Choose a folder before creating')
     expect(screen.queryByText('Home')).not.toBeInTheDocument()

@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
-import { Delete02Icon, File01Icon, Folder01Icon, HelpCircleIcon, Home01Icon, Logout01Icon, MoreHorizontalIcon, Search01Icon, Settings01Icon, Sun01Icon } from '@hugeicons/core-free-icons'
+import { useEffect, useRef, useState } from 'react'
+import { CloudUploadIcon, Delete02Icon, Download01Icon, File01Icon, Folder01Icon, HelpCircleIcon, Home01Icon, Logout01Icon, MoreHorizontalIcon, Search01Icon, Settings01Icon, Sun01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
 
 import { useAppStore } from '../../stores/useAppStore'
-import { useAuthStore } from '../../stores/useAuthStore'
+import { authApiUrl, isBackendAuthEnabled, useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
+import { loadGoogleIdentity } from '../../utils/googleIdentity'
 import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { activeFavoriteItems } from '../../utils/favorites'
@@ -14,6 +16,8 @@ import { getFolderPath } from '../files/FolderBreadcrumb'
 import { FolderNameDialog } from '../files/FolderNameDialog'
 import { DeleteFolderDialog } from '../files/DeleteFolderDialog'
 import { fileRepository, folderRepository } from '../../database/repositories'
+import { downloadVaultZip } from '../../services/vaultExport'
+import { db } from '../../database/db'
 import { deletedToast } from '../../utils/deleteToast'
 import type { MyBookFolder } from '../../types/files'
 import { toast } from '../ui/toast'
@@ -48,8 +52,8 @@ import { MobileBottomNavigation } from './MobileBottomNavigation'
 
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
-  const { email, displayName: accountDisplayName, isAuthenticated, logout } = useAuthStore()
-  const workspaceMode = useWorkspaceStore((state) => state.mode)
+  const { email, displayName: accountDisplayName, isAuthenticated, completeLogin, logout } = useAuthStore()
+  const { mode: workspaceMode, selectGoogleWorkspace } = useWorkspaceStore()
   const { files, folders } = useLibraryData()
   useDriveBootstrap()
   const { pathname } = useLocation()
@@ -60,10 +64,56 @@ export function AppLayout() {
   const recentFiles = files.filter((file) => !file.isDeleted).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).slice(0, 5)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false)
+  const googleButtonRef = useRef<HTMLDivElement>(null)
   const isLocalWorkspace = workspaceMode === 'local' || !isAuthenticated
-  const displayName = isLocalWorkspace ? 'Local workspace' : accountDisplayName || email || 'Google account'
-  const profileEmail = isLocalWorkspace ? null : email
-  const initials = isLocalWorkspace ? 'LW' : displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+  const localDetailsRecord = useLiveQuery(() => db.settings.get('local-workspace.details'), [])
+  const localDetails = localDetailsRecord?.value as { name?: string; storage?: string } | undefined
+  const vaultName = localDetails?.name || 'Local Vault'
+  const displayName = isLocalWorkspace ? vaultName : accountDisplayName || email || 'Google account'
+  const profileEmail = email
+  const initials = isLocalWorkspace
+    ? displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'LV'
+    : displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+
+  useEffect(() => {
+    if (!isGoogleModalOpen || isBackendAuthEnabled) return
+    let active = true
+    const renderGoogleBtn = async () => {
+      try {
+        await loadGoogleIdentity()
+        const google = window.google
+        if (!active || !google?.accounts?.id || !googleButtonRef.current) return
+        google.accounts.id.initialize({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? '',
+          callback: (response) => {
+            if (!response.credential) return
+            void completeLogin(response.credential, '').then((succeeded) => {
+              if (succeeded) {
+                selectGoogleWorkspace()
+                setIsGoogleModalOpen(false)
+              }
+            })
+          },
+        })
+        googleButtonRef.current.innerHTML = ''
+        google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: 'outline',
+          size: 'large',
+          type: 'standard',
+          text: 'signin_with',
+          shape: 'rectangular',
+          width: 280,
+        })
+      } catch {
+        // Handled silently
+      }
+    }
+    void renderGoogleBtn()
+    return () => {
+      active = false
+    }
+  }, [isGoogleModalOpen, completeLogin, selectGoogleWorkspace])
   const navigateToSearch = () => {
     navigate(searchQuery.trim() ? `/search?query=${encodeURIComponent(searchQuery.trim())}` : '/search')
     setSearchOpen(false)
@@ -178,12 +228,41 @@ export function AppLayout() {
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background" aria-hidden="true">{initials}</span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-sidebar-foreground">{displayName}</p>
-              {profileEmail ? <p className="truncate text-xs text-sidebar-foreground/60">{profileEmail}</p> : null}
+              {profileEmail ? (
+                <p className="truncate text-xs text-sidebar-foreground/60" title={profileEmail}>{profileEmail}</p>
+              ) : isLocalWorkspace ? (
+                <button
+                  type="button"
+                  onClick={() => setIsGoogleModalOpen(true)}
+                  className="mt-0.5 block truncate text-left text-xs font-medium text-primary hover:underline"
+                >
+                  Connect Cloud Vault (Google)
+                </button>
+              ) : null}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger render={<button type="button" />} aria-label="Account options" title="Account options" className="flex size-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"><HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-5" /></DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-40">
-                <DropdownMenuItem onClick={() => void logout()}><HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" />Log out</DropdownMenuItem>
+              <DropdownMenuContent align="end" className="min-w-48">
+                {isLocalWorkspace ? (
+                  <>
+                    {!profileEmail ? (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setIsGoogleModalOpen(true)
+                        }}
+                      >
+                        <HugeiconsIcon icon={CloudUploadIcon} strokeWidth={2} className="size-4" />
+                        Connect Cloud Vault
+                      </DropdownMenuItem>
+                    ) : null}
+                    <DropdownMenuItem onClick={() => void downloadVaultZip({ vaultName })}>
+                      <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />
+                      Export full vault (ZIP)
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
+                <DropdownMenuItem onClick={() => void logout()}><HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" />{isLocalWorkspace ? 'Return to start' : 'Log out'}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -439,6 +518,59 @@ export function AppLayout() {
           </div>
         </DialogContent>
       </Dialog>
+      {isGoogleModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end bg-black/40 px-3 pb-3 pt-[calc(1rem+env(safe-area-inset-top))] sm:items-center sm:justify-center sm:p-6"
+          role="presentation"
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cloud-connect-title"
+            className="max-h-full w-full max-w-md overflow-y-auto rounded-t-2xl border border-[var(--app-border)] bg-background p-5 shadow-xl sm:rounded-2xl sm:p-6"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <HugeiconsIcon icon={CloudUploadIcon} strokeWidth={2} className="size-6" />
+              </div>
+              <div>
+                <h2 id="cloud-connect-title" className="text-lg font-semibold leading-7">
+                  Connect Cloud Vault
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Sign in with Google to enable cloud backup for your files. Your local workspace files stay safely on this device.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col items-center justify-center gap-3">
+              {isBackendAuthEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.assign(`${authApiUrl('/google/start')}?returnTo=${encodeURIComponent(pathname)}`)
+                  }}
+                  className="min-h-11 rounded-[var(--radius-control)] bg-foreground px-5 text-base font-semibold text-background transition hover:opacity-90"
+                >
+                  Sign in with Google
+                </button>
+              ) : (
+                <div ref={googleButtonRef} className="flex min-h-[44px] justify-center" />
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsGoogleModalOpen(false)}
+                className="min-h-11 rounded-[var(--radius-control)] border border-[var(--app-border)] px-4 text-sm font-semibold transition hover:bg-muted"
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </SidebarProvider>
   )
 }

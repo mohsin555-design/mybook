@@ -1,37 +1,27 @@
-# Spreadsheet Editor
+# Spreadsheet editor
 
-## Purpose
+## Editor and storage
 
-The spreadsheet editor provides workbook editing for MyBook spreadsheets.
+Spreadsheets open at `/spreadsheet/:spreadsheetId` using the lazily loaded `UniverSpreadsheetEditor`. Univer Sheets provides the workbook grid, formatting toolbar, formula bar, sheet bar, add-sheet control, statistics and zoom. Content is serialized as a Univer workbook snapshot in IndexedDB and autosaved after workbook commands.
 
-## Editor Engine
+Implementation: `src/components/spreadsheet-editor/UniverSpreadsheetEditor.tsx`, `src/hooks/useAutosave.ts` and `src/utils/xlsx.ts`.
 
-MyBook uses Univer Sheets for spreadsheet editing.
+## Dedicated XLSX import/export
 
-Enabled surface area includes:
+The editor imports actual `.xlsx` workbooks into Univer snapshots and exports snapshots through the XLSX conversion utility. Conversion may report warnings where workbook features cannot be represented exactly. Google Drive spreadsheet backups use the conversion path and `.xlsx` files.
 
-- workbook grid
-- toolbar
-- formula bar
-- sheet bar
-- statistic bar
-- zoom slider
-- add sheet button
+Do not promise complete Excel feature parity, macros or lossless preservation of arbitrary workbooks. Validate the formulas, formatting and sheet structures relevant to each import/export case.
 
-## Storage
+## Cloud changes
 
-Spreadsheet state is saved as a Univer workbook snapshot in IndexedDB. Autosave updates local content after workbook commands.
+A newer Drive copy can trigger editor conflict handling with options to retain local work, use remote content or download copies. Startup/reconnect imports also exist in the shared Drive service. See [Drive synchronization](./google-drive-sync.md) for queued local intent and version snapshots.
 
-## Import and Export
+## Local-folder and ZIP limitation
 
-The editor can import `.xlsx` files into a Univer workbook snapshot.
+`localWorkspace.ts` currently writes the raw workbook content string using an `.xlsx` filename and scans `.xlsx` files as text. `vaultExport.ts` similarly places workbook text under `.xlsx` inside ZIPs. These paths do not perform Excel conversion and should not be treated as valid portable XLSX export/import.
 
-The editor can export/download `.xlsx` files. Export may show warnings when workbook features cannot be represented perfectly.
+Use the dedicated spreadsheet editor export for actual Excel files. Remaining implementation work is to use proper conversion in folder/ZIP paths, or clearly identify an internal snapshot format without misleading extensions. Binary XLSX folder discovery needs the corresponding parser.
 
-## Drive Backup
+## Verification
 
-Spreadsheet backups are uploaded to Google Drive as `.xlsx`. Backup can run automatically after local save or manually through editor actions.
-
-## Drive Conflict
-
-If the Drive copy is newer than the last backup, the editor asks whether to keep the local workbook, use the Drive workbook, or download both.
+Tests in `src/utils/xlsx.test.ts` exercise conversion; workspace/export tests cover their own storage paths. Test multiple sheets, formulas, formatting and conversion warnings separately from local-folder recovery. Live Drive conflicts, offline edits and fresh-browser restore still need browser/account acceptance checks.

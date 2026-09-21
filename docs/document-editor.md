@@ -1,43 +1,31 @@
-- headings 1-4
-# Document Editor
+# Document editor
 
-## Purpose
+## Purpose and implementation
 
-The document editor provides rich text editing for MyBook documents.
+Documents open at `/document/:documentId`. `src/components/document-editor/TiptapDocumentEditor.tsx` configures Tiptap and coordinates toolbars, block controls, imports, local saving and Drive actions. Document content is serialized Tiptap JSON in IndexedDB; recovery drafts also use localStorage. `src/hooks/useAutosave.ts` debounces content saves by 500 ms and attempts to flush on page hide/visibility changes.
 
-## Storage
+## Formatting and editing
 
-Documents are stored locally as Tiptap JSON in IndexedDB. Autosave writes edits locally and keeps recovery drafts in `localStorage`.
+- Bold, italic, underline, strikethrough and inline code.
+- Semantic headings H1–H4, paragraphs, bulleted/numbered lists and nested checklists.
+- Quotes, code blocks, links, horizontal rules and clear formatting.
+- Tables with row/column controls, headers, merge/split and resizing.
+- Undo/redo, paste cleanup, slash-command insertion and contextual block actions.
 
-## Formatting
+Desktop uses command menus and a top formatting toolbar, centered-page/full-width views and zoom. Mobile uses a bottom toolbar and contextual sheets, with visual-viewport/safe-area handling. Desktop page view is a continuous writing column, not a guaranteed print-pagination system.
 
-Supported editor actions include:
+## Advanced content
 
-- bold
-- italic
-- underline
-- headings 1-4
-- bulleted lists
-- numbered lists
-- checklists
-- undo and redo
-- blockquote
-- links
-- tables
-- horizontal rule
-- strikethrough
-- clear formatting
+The editor registers callouts, toggles, image/video/audio blocks, file attachments, bookmarks, website mentions, embeds, document links, table of contents and database-style blocks. Their models, format rules and limits are documented in [advanced editor and Markdown](./advanced-editor-and-format-spec.md). Website mentions are not user mentions.
 
-## Import and Export
+## Import/export and sync
 
-The editor can import `.docx`, `.md`, and `.mybook.md` files. DOCX imports use Mammoth and some complex formatting may be simplified.
+The editor imports `.docx`, `.md` and `.mybook.md`; downloads `.docx` or `.md`. DOCX uses Mammoth for import and can simplify unsupported content. Markdown downloads preserve MyBook metadata and custom blocks. Drive document copies still use `.mybook.md`.
 
-The editor can export/download `.docx` files and `.mybook.md` files.
+Local saves and cloud upload are different stages. Connected workspaces can import remote changes during bootstrap/reconnect, with conflict/version handling in the Drive services. See [Drive sync](./google-drive-sync.md), [local vaults](./local-vaults.md) and [backup/export](./backup-and-export.md).
 
-## Drive Backup
+## Accessibility and verification
 
-Document backups are uploaded to Google Drive as `.mybook.md`. Backup can run automatically after local save or manually through editor actions.
+Controls should have accessible names, visible focus and selected states. Slash commands support keyboard selection; heading commands create real headings. Mobile controls must keep the caret reachable when the keyboard opens.
 
-## Drive Edits
-
-Drive backups are not treated as live collaborative copies. If a user edits a Drive backup directly, they can import that file explicitly to replace the MyBook content.
+Relevant tests are alongside editor components, extensions and Markdown/DOCX utilities. Remaining acceptance checks include real mobile keyboards, desktop zoom, clean paste, all block round trips with media, error/recovery behavior and cloud status placement. AI summaries, user mentions and a citations workflow are not implemented editor features.

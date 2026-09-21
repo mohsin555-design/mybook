@@ -1,23 +1,28 @@
-# MyBook Feature Specs
+# MyBook feature and module specifications
 
-This folder documents how MyBook works at the product and implementation level.
+Each guide documents the module's behavior, data flow, implementation files, verification and remaining work. Existing guides are updated in place; separate guides cover modules that previously had no dedicated specification.
 
-## Specs
+| Module | Specification |
+| --- | --- |
+| Files, folders, search, favorites and Trash | [Files and folders](./files-and-folders.md) |
+| Rich text, autosave and responsive editor controls | [Document editor](./document-editor.md) |
+| Advanced blocks, media, document links, database blocks and portable syntax | [Advanced editor and Markdown format](./advanced-editor-and-format-spec.md) |
+| Bookmark previews and website mentions | [Bookmark previews](./bookmark-previews.md) |
+| Workbook editing and Excel conversion | [Spreadsheet editor](./spreadsheet-editor.md) |
+| Account-free onboarding, device folders, private storage and discovery | [Local vaults](./local-vaults.md) |
+| JSON recovery, Markdown/DOCX/XLSX and ZIP downloads | [Backup, import and export](./backup-and-export.md) |
+| Google sign-in, sessions, tokens and reconnect | [Authentication and Drive tokens](./auth-and-drive-tokens.md) |
+| Cloud bootstrap, queues, imports and conflicts | [Google Drive synchronization](./google-drive-sync.md) |
+| Navigation, theme, diagnostics, branding, install and offline behavior | [App settings and PWA](./app-settings-and-pwa.md) |
 
-- [Authentication and Drive tokens](./auth-and-drive-tokens.md)
-- [Google Drive sync](./google-drive-sync.md)
-- [Files and folders](./files-and-folders.md)
-- [Document editor](./document-editor.md)
-- [Advanced editor and MyBook Markdown spec](./advanced-editor-and-format-spec.md)
-- [Spreadsheet editor](./spreadsheet-editor.md)
+## Setup and deployment
 
-## Product Summary
+- [GitHub overview and local setup](../README.md)
+- [Google OAuth setup](../GOOGLE_OAUTH_SETUP.md)
+- [Production deployment](../PRODUCTION_DEPLOYMENT.md)
+- [Node authentication server](../server/README.md)
+- [Contributor instructions](../AGENTS.md)
 
-MyBook is a local-first browser workspace for personal documents and spreadsheets. Editable content is stored in IndexedDB so the app remains usable offline. Google Drive is used for visible backups, folder mirroring, and explicit import/export after the user signs in with Google.
+## Additional requirements
 
-The app should treat local access and Drive access separately:
-
-- Local workspace access depends on the remembered signed-in user.
-- Drive actions depend on a short-lived Google access token.
-- Expired Drive tokens should be renewed silently when possible.
-- If silent renewal fails, local files should remain available and Drive actions should ask for reconnect.
+[New syncing implementation](./new-syncing-implementation.md) retains the original workspace issue and proposed requirements. Current storage/sync behavior is documented in the dedicated module guides above; proposed behavior is not automatically implemented behavior.

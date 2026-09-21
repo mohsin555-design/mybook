@@ -148,7 +148,7 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
         meta={`Updated ${formatUpdatedAt(file.updatedAt)}`}
         type={file.type}
         syncStatus={file.syncStatus}
-        folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'MyBook'}
+        folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'Writin'}
         onOpen={() => navigate(`/${file.type}/${file.id}`)}
         action={
           <FileActionsMenu

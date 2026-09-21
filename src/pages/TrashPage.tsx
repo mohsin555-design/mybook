@@ -69,7 +69,7 @@ export function TrashPage() {
                 name={file.name}
                 meta={`Deleted ${new Date(file.updatedAt).toLocaleDateString()}`}
                 type={file.type}
-                folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'MyBook'}
+                folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'Writin'}
                 syncStatus={file.syncStatus}
                 action={(
                   <TrashActionsMenu

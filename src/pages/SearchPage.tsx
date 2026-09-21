@@ -122,7 +122,7 @@ export function SearchPage() {
                 name={file.name}
                 meta={`Updated ${formatUpdatedAt(file.updatedAt)}`}
                 type={file.type}
-                folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'MyBook'}
+                folderName={folders.find((folder) => folder.id === file.folderId)?.name ?? 'Writin'}
                 syncStatus={file.syncStatus}
                 onOpen={() => navigate(`/${file.type}/${file.id}`)}
                 action={

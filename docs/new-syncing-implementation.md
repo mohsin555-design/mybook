@@ -170,8 +170,8 @@ Documented for discussion only; no implementation requested yet.
   not appear cloud-saved. Detailed pending/offline/error states can live in More.
 - Preserve offline changes, retry safely, and handle conflicts without silently
   overwriting another device's work. Surface actionable reconnect/save errors.
-- Reconcile the existing Drive folder named `MyBook` with the proposed `Writin`
-  name during implementation; avoid duplicate cloud workspaces or lost backups.
+- Preserve the existing Drive folder ID when renaming `MyBook` to `Writin`;
+  the current [migration](./google-drive-sync.md#folder-name-migration) performs a name-only update and stops on ambiguous discovery.
 - Verify connecting Drive to an existing local workspace retains local saving,
   uploads existing content without duplication, and opens correctly on a fresh
   browser. Test offline edits, media, reconnection, and simultaneous device edits.

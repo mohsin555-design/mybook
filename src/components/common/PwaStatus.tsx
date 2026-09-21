@@ -101,7 +101,7 @@ export function PwaStatus() {
 
   return <>
     {!online ? <div role="status" className="shrink-0 border-b border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-center text-sm text-yellow-800"><SignalIcon className="mr-1 inline size-4" />Offline mode: saved local files remain available. Drive sync will resume when you reconnect.</div> : null}
-    {needRefresh ? <div role="status" className="shrink-0 border-b border-accent/30 bg-primary/10 px-4 py-2 text-center text-sm"><ArrowPathIcon aria-hidden="true" className="mr-1 inline size-4" />Update available. <button type="button" className="min-h-11 rounded-lg px-2 font-semibold underline" onClick={() => void updateServiceWorker(true)}>Update MyBook</button></div> : null}
+    {needRefresh ? <div role="status" className="shrink-0 border-b border-accent/30 bg-primary/10 px-4 py-2 text-center text-sm"><ArrowPathIcon aria-hidden="true" className="mr-1 inline size-4" />Update available. <button type="button" className="min-h-11 rounded-lg px-2 font-semibold underline" onClick={() => void updateServiceWorker(true)}>Update Writin</button></div> : null}
 
     <Dialog
       open={showInstallHelp}
@@ -114,7 +114,7 @@ export function PwaStatus() {
           <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <ArrowDownTrayIcon aria-hidden="true" className="size-6" />
           </div>
-          <DialogTitle>Install MyBook</DialogTitle>
+          <DialogTitle>Install Writin</DialogTitle>
           <div className="text-sm leading-6 text-muted-foreground">
             {isSafari ? (
               <ol className="list-decimal space-y-2 pl-5">
@@ -123,7 +123,7 @@ export function PwaStatus() {
                 <li>Tap <span className="font-medium text-foreground">Add</span>.</li>
               </ol>
             ) : (
-                <p>Install MyBook for faster access and reliable offline use.</p>
+                <p>Install Writin for faster access and reliable offline use.</p>
               )}
           </div>
         </DialogHeader>
@@ -144,11 +144,11 @@ export function PwaStatus() {
           </div>
           <DialogTitle>Update available</DialogTitle>
           <DialogDescription>
-            A newer version of MyBook is ready. Update now to use the latest fixes.
+            A newer version of Writin is ready. Update now to use the latest fixes.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <AppButton variant="primary" onPress={() => void updateServiceWorker(true)}>Update MyBook</AppButton>
+          <AppButton variant="primary" onPress={() => void updateServiceWorker(true)}>Update Writin</AppButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

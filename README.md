@@ -6,7 +6,7 @@ Read the [feature and module specifications](docs/README.md) for behavior, stora
 
 ## Product name and compatibility
 
-**Writin** is the product name used throughout this documentation. The current code still displays `MyBook` in the login screen, browser title and PWA manifest, uses `MyBook` for the Drive folder, and names the npm package `mybook`. These existing names, storage keys, paths and file formats are retained for compatibility; this documentation update does not rename the running app or migrate saved data.
+**Writin** is the app name, including its title, install name, icon and npm package. On connection, the app renames an existing MyBook Drive folder to **Writin** in place, preserving its ID and contents. A saved folder ID takes priority; a fresh browser searches both names before creating anything. Failed, incomplete or ambiguous discovery never creates a replacement. Legacy storage keys and file formats remain readable without a local-data migration. See [Drive folder migration](docs/google-drive-sync.md#folder-name-migration).
 
 ## Features present in the code
 
@@ -20,7 +20,7 @@ Read the [feature and module specifications](docs/README.md) for behavior, stora
 | Spreadsheets | Univer workbook grid, formulas, sheets, toolbar and zoom; dedicated XLSX import/export |
 | Local saving | IndexedDB autosave; document recovery drafts; local Markdown files and companion attachments; workspace scanning and legacy-layout discovery |
 | Import and backup | DOCX and Markdown document import/export; JSON workspace backup/restore; folder and vault ZIP downloads |
-| Google Drive | Browser or backend OAuth, token renewal/reconnect, `MyBook` backup folder, queued file/folder operations, startup/reconnect imports, conflict handling and stored versions |
+| Google Drive | Browser or backend OAuth, token renewal/reconnect, `Writin` backup folder, queued file/folder operations, startup/reconnect imports, conflict handling and stored versions |
 | App experience | Light/dark themes, responsive navigation, PWA/offline configuration, settings and diagnostics; Storybook and design-system page |
 
 These are source-reviewed capabilities, not a claim that every browser, format round trip, or live cloud flow has passed acceptance testing. AI summaries, user mentions, and a references/citations workflow are not implemented features.

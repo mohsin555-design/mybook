@@ -11,7 +11,7 @@ Use these settings to connect Writin to Google Identity Services and Drive with 
 ## 2. OAuth consent screen
 
 1. Open **APIs & Services > OAuth consent screen**.
-2. Set the application name, support email, and branding.
+2. Set the application name to **Writin**, and update the support email/logo as needed. For an existing deployment, keep the same Google project and OAuth client IDs so existing Drive grants remain usable.
 3. Add the scope:
    - `https://www.googleapis.com/auth/drive.file`
 4. Keep the app in **Testing** while you validate it.

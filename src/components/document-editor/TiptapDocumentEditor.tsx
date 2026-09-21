@@ -1882,10 +1882,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const exportMarkdown = async (download: boolean) => {
     try {
       const markdown = documentToMyBookMarkdown(documentTitle, editor.getJSON(), { documentId: file.id })
-      setDocxMessage(download ? 'MyBook Markdown downloaded.' : 'MyBook Markdown ready.')
+      setDocxMessage(download ? 'Writin Markdown downloaded.' : 'Writin Markdown ready.')
       if (download) downloadMyBookMarkdown(markdown, documentTitle)
     } catch (error) {
-      devLog('error', 'Could not export MyBook Markdown.', error)
+      devLog('error', 'Could not export Writin Markdown.', error)
       setDocxMessage('Markdown export failed.')
     }
   }
@@ -1909,7 +1909,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         lastSavedTitleRef.current = importedTitle
         updateTitle(importedTitle)
       }
-      if (/\.md$/i.test(selectedFile.name)) setDocxMessage('MyBook Markdown imported.')
+      if (/\.md$/i.test(selectedFile.name)) setDocxMessage('Writin Markdown imported.')
     } catch (error) {
       devLog('error', 'Could not import document.', error)
       setDocxMessage('Document import failed.')
@@ -2137,7 +2137,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <Dropdown.Item id="backup">Sync now</Dropdown.Item>
             <Dropdown.Item id="import">Import document</Dropdown.Item>
             <Dropdown.Item id="duplicate">Duplicate</Dropdown.Item>
-            <Dropdown.Item id="export-markdown">Export MyBook Markdown</Dropdown.Item>
+            <Dropdown.Item id="export-markdown">Export Writin Markdown</Dropdown.Item>
             <Dropdown.Item id="download-docx">Download DOCX</Dropdown.Item>
             <Dropdown.Item id="prepare-docx">Prepare DOCX</Dropdown.Item>
             <Dropdown.Item id="delete" variant="danger">Move to Trash</Dropdown.Item>

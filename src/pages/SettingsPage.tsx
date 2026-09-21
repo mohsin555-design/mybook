@@ -106,7 +106,7 @@ export function SettingsPage() {
       toast.add({ title: 'Backup imported', description: `${result.fileCount} files restored into a new folder.`, type: 'success', priority: 'low' })
       navigate(`/folders/${result.folderId}`)
     } catch (error) {
-      toast.add({ title: 'Could not import backup', description: error instanceof Error ? error.message : 'Choose a valid MyBook backup file.', type: 'error', priority: 'low' })
+      toast.add({ title: 'Could not import backup', description: error instanceof Error ? error.message : 'Choose a valid Writin backup file.', type: 'error', priority: 'low' })
     } finally {
       setBackupAction(null)
       if (backupInputRef.current) backupInputRef.current.value = ''
@@ -122,7 +122,7 @@ export function SettingsPage() {
     <div className="mx-auto max-w-3xl space-y-4 px-4">
       <section aria-labelledby="appearance-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="appearance-heading" className="text-base font-semibold leading-6">Appearance</h2>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">Choose how MyBook looks on this device.</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">Choose how Writin looks on this device.</p>
         <AppButton className="mt-3" variant="secondary" onPress={toggleTheme}>
           {theme === 'light' ? <MoonIcon aria-hidden="true" className="size-5" /> : <SunIcon aria-hidden="true" className="size-5" />}
           Use {theme === 'light' ? 'dark' : 'light'} theme
@@ -144,13 +144,13 @@ export function SettingsPage() {
           {isLocalMode
             ? 'Google Drive is not connected for this local workspace.'
             : isPreparing
-            ? 'Checking your MyBook Drive folder...'
+            ? 'Checking your Writin Drive folder...'
             : storedFolderId
-              ? 'MyBook folder is connected.'
-              : 'MyBook folder is not connected yet.'}
+              ? 'Writin folder is connected.'
+              : 'Writin folder is not connected yet.'}
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {isLocalMode ? 'Files are saved locally first. Connect Google Drive to start automatic cloud backup.' : statusMessage ?? 'MyBook syncs your files across signed-in devices using Drive backups.'}
+          {isLocalMode ? 'Files are saved locally first. Connect Google Drive to start automatic cloud backup.' : statusMessage ?? 'Writin syncs your files across signed-in devices using Drive backups.'}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <AppButton
@@ -160,7 +160,7 @@ export function SettingsPage() {
               if (storedFolderId) openMyBookFolderInDrive(storedFolderId)
             }}
           >
-            Open MyBook folder in Drive
+            Open Writin folder in Drive
           </AppButton>
           <AppButton variant="secondary" isDisabled={isLocalMode} onPress={() => void reconnect()}>
             Reconnect
@@ -235,9 +235,9 @@ export function SettingsPage() {
       </section>
       <section aria-labelledby="privacy-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="privacy-heading" className="text-base font-semibold leading-6">Privacy and personal use</h2>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">MyBook keeps editable files locally in this browser. Google Drive is used only for the visible MyBook folder and file-level backups you request. Access tokens stay in session storage and are never included in links or logs.</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">Writin keeps editable files locally in this browser. Google Drive stores your backups in the Writin folder and syncs them across connected devices. Access tokens are never included in links or logs.</p>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">This application is provided for personal use. Keep independent copies of important information and review Google permissions before connecting an account.</p>
-        <p className="mt-4 text-sm text-muted-foreground">MyBook version {APP_VERSION}</p>
+        <p className="mt-4 text-sm text-muted-foreground">Writin version {APP_VERSION}</p>
       </section>
       <section aria-labelledby="diagnostics-heading" className="rounded-2xl bg-muted/70 p-4">
         <h2 id="diagnostics-heading" className="text-base font-semibold leading-6">Sync diagnostics</h2>

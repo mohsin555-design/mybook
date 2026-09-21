@@ -1,14 +1,14 @@
 import type { JSONContent } from '@tiptap/core'
 
 import { db } from '../database/db'
-import type { MyBookFile } from '../types/files'
+import type { MyBookFile, MyBookFolder } from '../types/files'
 import { documentToMyBookMarkdown, myBookMarkdownToDocument } from '../utils/mybookMarkdown'
 import { devLog } from '../utils/safeLog'
 
-const ROOT_DIR = 'Writin'
-const FILES_DIR = 'files'
-const LOCAL_DIRECTORY_HANDLE_KEY = 'local-workspace.directory-handle'
-const LOCAL_WORKSPACE_DETAILS_KEY = 'local-workspace.details'
+const LEGACY_ROOT_DIR = 'Writin'
+const LEGACY_FILES_DIR = 'files'
+export const LOCAL_DIRECTORY_HANDLE_KEY = 'local-workspace.directory-handle'
+export const LOCAL_WORKSPACE_DETAILS_KEY = 'local-workspace.details'
 
 type StorageNavigator = Navigator & {
   storage?: StorageManager & {
@@ -28,7 +28,10 @@ type PermissionDescriptor = { mode?: PermissionMode }
 type PermissionedDirectoryHandle = FileSystemDirectoryHandle & {
   queryPermission?: (descriptor?: PermissionDescriptor) => Promise<PermissionState>
   requestPermission?: (descriptor?: PermissionDescriptor) => Promise<PermissionState>
+  values?: () => AsyncIterableIterator<FileSystemHandle>
+  entries?: () => AsyncIterableIterator<[string, FileSystemHandle]>
 }
+
 export type LocalWorkspaceStorageKind = 'file-system' | 'opfs' | 'indexeddb'
 export type LocalWorkspaceStoragePreference = 'file-system' | 'private'
 
@@ -72,24 +75,37 @@ export function canPickDeviceDirectory() {
   return typeof (window as FileSystemWindow).showDirectoryPicker === 'function'
 }
 
-async function hasReadWritePermission(handle: FileSystemDirectoryHandle, { request = true } = {}) {
+export async function hasReadWritePermission(handle: FileSystemDirectoryHandle, { request = true } = {}) {
   const permissioned = handle as PermissionedDirectoryHandle
   if (!permissioned.queryPermission || !permissioned.requestPermission) return true
-  if (await permissioned.queryPermission({ mode: 'readwrite' }) === 'granted') return true
-  if (!request) return false
-  return await permissioned.requestPermission({ mode: 'readwrite' }) === 'granted'
+  try {
+    if (await permissioned.queryPermission({ mode: 'readwrite' }) === 'granted') return true
+    if (!request) return false
+    return await permissioned.requestPermission({ mode: 'readwrite' }) === 'granted'
+  } catch {
+    return false
+  }
 }
 
-async function saveDeviceDirectoryHandle(handle: FileSystemDirectoryHandle) {
+export async function saveDeviceDirectoryHandle(handle: FileSystemDirectoryHandle) {
   await db.settings.put({ key: LOCAL_DIRECTORY_HANDLE_KEY, value: handle, updatedAt: new Date().toISOString() })
 }
 
-async function forgetDeviceDirectoryHandle() {
+export async function forgetDeviceDirectoryHandle() {
   await db.settings.delete(LOCAL_DIRECTORY_HANDLE_KEY)
 }
 
-async function saveLocalWorkspaceDetails(details: LocalWorkspaceDetails) {
+export async function getDeviceDirectoryHandle(): Promise<FileSystemDirectoryHandle | undefined> {
+  return (await db.settings.get(LOCAL_DIRECTORY_HANDLE_KEY))?.value as FileSystemDirectoryHandle | undefined
+}
+
+export async function saveLocalWorkspaceDetails(details: LocalWorkspaceDetails) {
   await db.settings.put({ key: LOCAL_WORKSPACE_DETAILS_KEY, value: details, updatedAt: new Date().toISOString() })
+}
+
+export async function getLocalWorkspaceDetails(): Promise<LocalWorkspaceDetails | null> {
+  const record = await db.settings.get(LOCAL_WORKSPACE_DETAILS_KEY)
+  return (record?.value as LocalWorkspaceDetails | undefined) ?? null
 }
 
 export async function pickLocalWorkspaceDirectory(): Promise<PickedLocalWorkspaceDirectory | null> {
@@ -109,33 +125,69 @@ export async function pickLocalWorkspaceDirectory(): Promise<PickedLocalWorkspac
   }
 }
 
-async function getDeviceDirectoryHandle() {
-  return (await db.settings.get(LOCAL_DIRECTORY_HANDLE_KEY))?.value as FileSystemDirectoryHandle | undefined
+export function sanitizeFileName(name: string): string {
+  const trimmed = name.trim() || 'Untitled'
+  return trimmed.replace(/[\\/:*?"<>|]/g, '_')
 }
 
-async function createFilesDirectory(root: FileSystemDirectoryHandle) {
-  const workspace = await root.getDirectoryHandle(ROOT_DIR, { create: true })
-  return workspace.getDirectoryHandle(FILES_DIR, { create: true })
-}
-
-async function filesDirectory() {
-  const deviceDirectory = await getDeviceDirectoryHandle()
-  if (deviceDirectory && await hasReadWritePermission(deviceDirectory, { request: false })) {
-    try {
-      return await createFilesDirectory(deviceDirectory)
-    } catch (error) {
-      devLog('warn', 'Could not open device folder workspace.', error)
-    }
-  }
-
-  const getDirectory = opfsRoot()
-  if (!getDirectory) return null
-  const root = await getDirectory.call(navigator.storage)
-  return createFilesDirectory(root)
+export function cleanDocumentName(filename: string): string {
+  return filename
+    .replace(/\.mybook\.md$/i, '')
+    .replace(/\.md$/i, '')
+    .replace(/\.xlsx$/i, '')
+    .replace(/\.content\.json$/i, '')
+    .trim() || 'Untitled'
 }
 
 function privateStorageKind(): LocalWorkspaceStorageKind {
   return isOpfsAvailable() ? 'opfs' : 'indexeddb'
+}
+
+export async function getWorkspaceRootDirectory(): Promise<FileSystemDirectoryHandle | null> {
+  const deviceDirectory = await getDeviceDirectoryHandle()
+  if (deviceDirectory && await hasReadWritePermission(deviceDirectory, { request: false })) {
+    return deviceDirectory
+  }
+
+  const getDirectory = opfsRoot()
+  if (!getDirectory) return null
+  try {
+    const root = await getDirectory.call(navigator.storage)
+    return root
+  } catch {
+    return null
+  }
+}
+
+async function resolveDirectoryHandleForFolder(
+  root: FileSystemDirectoryHandle,
+  folderId: string | null,
+  create = false,
+): Promise<FileSystemDirectoryHandle | null> {
+  if (!folderId) return root
+
+  const folderPath: string[] = []
+  let currentId: string | null = folderId
+  const visited = new Set<string>()
+
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId)
+    const folder: MyBookFolder | undefined = await db.folders.get(currentId)
+    if (!folder) break
+    folderPath.unshift(sanitizeFileName(folder.name))
+    currentId = folder.parentId
+  }
+
+  let currentDir = root
+  for (const segment of folderPath) {
+    try {
+      currentDir = await currentDir.getDirectoryHandle(segment, { create })
+    } catch {
+      return null
+    }
+  }
+
+  return currentDir
 }
 
 export async function initializeLocalWorkspace({
@@ -155,6 +207,7 @@ export async function initializeLocalWorkspace({
     await forgetDeviceDirectoryHandle()
     const storage = privateStorageKind()
     await saveLocalWorkspaceDetails({ name, storage, createdAt })
+    await scanAndHydrateLocalWorkspace()
     return { storage }
   }
 
@@ -169,9 +222,10 @@ export async function initializeLocalWorkspace({
       await saveLocalWorkspaceDetails({ name, storage, createdAt })
       return { storage }
     }
-    await createFilesDirectory(handle)
     await saveDeviceDirectoryHandle(handle)
-    await saveLocalWorkspaceDetails({ name, storage: 'file-system', createdAt })
+    const workspaceName = handle.name || name
+    await saveLocalWorkspaceDetails({ name: workspaceName, storage: 'file-system', createdAt })
+    await scanAndHydrateLocalWorkspace(handle)
     return { storage: 'file-system' as const }
   } catch (error) {
     if (!allowPrivateFallback && error instanceof DOMException && error.name === 'AbortError') {
@@ -186,75 +240,565 @@ export async function initializeLocalWorkspace({
   return { storage }
 }
 
-function exactContentFileName(file: Pick<MyBookFile, 'id'>) {
-  return `${file.id}.content.json`
+export function isAttachmentDirectoryName(name: string): boolean {
+  const lower = name.toLowerCase()
+  return (
+    lower.endsWith('_attachments') ||
+    lower.endsWith('-attachments') ||
+    lower.endsWith('.attachments')
+  )
 }
 
-function portableFileName(file: Pick<MyBookFile, 'id' | 'type'>) {
-  return file.type === 'spreadsheet' ? `${file.id}.mybook.json` : `${file.id}.mybook.md`
-}
-
-function documentMarkdown(file: Pick<MyBookFile, 'id' | 'name' | 'content'>) {
+export function parseDataUrl(dataUrl: string): { mimeType: string; data: Uint8Array } | null {
+  const match = /^data:([^;,]+)?(?:;charset=[^;,]+)?;base64,(.*)$/u.exec(dataUrl)
+  if (!match || !match[2]) return null
+  const mimeType = match[1] || 'application/octet-stream'
   try {
-    return documentToMyBookMarkdown(file.name, JSON.parse(file.content) as JSONContent, { documentId: file.id })
+    const binaryString = atob(match[2])
+    const len = binaryString.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    return { mimeType, data: bytes }
   } catch {
-    return file.content
+    return null
   }
 }
 
-function appContentFromStoredFile(file: Pick<MyBookFile, 'type'>, value: string) {
+export function uint8ArrayToDataUrl(bytes: Uint8Array, mimeType: string): string {
+  let binary = ''
+  const len = bytes.byteLength
+  for (let i = 0; i < len; i++) {
+    const byte = bytes[i]
+    if (byte !== undefined) {
+      binary += String.fromCharCode(byte)
+    }
+  }
+  const base64 = btoa(binary)
+  return `data:${mimeType};base64,${base64}`
+}
+
+export function mimeToExtension(mimeType: string): string {
+  const map: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/svg+xml': 'svg',
+    'image/avif': 'avif',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'video/ogg': 'ogv',
+    'video/quicktime': 'mov',
+    'audio/mpeg': 'mp3',
+    'audio/mp3': 'mp3',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/webm': 'weba',
+    'audio/aac': 'aac',
+    'application/pdf': 'pdf',
+    'text/plain': 'txt',
+  }
+  return map[mimeType.toLowerCase()] || 'bin'
+}
+
+export async function extractAndSaveAttachments(
+  docDir: FileSystemDirectoryHandle,
+  docSafeName: string,
+  docJson: JSONContent
+): Promise<JSONContent> {
+  if (!docDir || !docJson || typeof docDir.getDirectoryHandle !== 'function') return docJson
+  try {
+    const cloned = JSON.parse(JSON.stringify(docJson)) as JSONContent
+    let mediaCounter = 0
+    let attachmentsDirHandle: FileSystemDirectoryHandle | null = null
+
+    async function getAttachmentsDir() {
+      if (!attachmentsDirHandle) {
+        attachmentsDirHandle = await docDir.getDirectoryHandle(`${docSafeName}_attachments`, { create: true })
+      }
+      return attachmentsDirHandle
+    }
+
+    async function processNode(node: JSONContent) {
+      if (
+        (node.type === 'imageBlock' || node.type === 'videoBlock' || node.type === 'audioBlock' || node.type === 'fileAttachment') &&
+        typeof node.attrs?.src === 'string'
+      ) {
+        const src = node.attrs.src.trim()
+        if (src.startsWith('data:')) {
+          const parsed = parseDataUrl(src)
+          if (parsed) {
+            mediaCounter += 1
+            const ext = mimeToExtension(parsed.mimeType)
+            let fileName = ''
+            if (node.type === 'fileAttachment' && typeof node.attrs.name === 'string' && node.attrs.name.trim()) {
+              fileName = sanitizeFileName(node.attrs.name.trim())
+              if (!fileName.includes('.')) fileName = `${fileName}.${ext}`
+            } else {
+              fileName = `media_${mediaCounter}.${ext}`
+            }
+
+            try {
+              const dir = await getAttachmentsDir()
+              const fileHandle = await dir.getFileHandle(fileName, { create: true })
+              const writable = await fileHandle.createWritable()
+              await writable.write(parsed.data)
+              await writable.close()
+
+              node.attrs.src = `./${docSafeName}_attachments/${fileName}`
+            } catch (err) {
+              devLog('warn', 'Failed to write attachment to disk.', err)
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(node.content)) {
+        for (const child of node.content) {
+          await processNode(child)
+        }
+      }
+    }
+
+    await processNode(cloned)
+    return cloned
+  } catch (err) {
+    devLog('warn', 'Failed to extract attachments from document.', err)
+    return docJson
+  }
+}
+
+export async function hydrateAttachments(
+  docDir: FileSystemDirectoryHandle,
+  docSafeName: string,
+  docJson: JSONContent
+): Promise<JSONContent> {
+  if (!docDir || !docJson || typeof docDir.getDirectoryHandle !== 'function') return docJson
+  try {
+    const cloned = JSON.parse(JSON.stringify(docJson)) as JSONContent
+
+    async function resolveAttachmentHandle(relativeSrc: string): Promise<FileSystemFileHandle | null> {
+      const cleanSrc = relativeSrc.replace(/^\.\//u, '')
+      const parts = cleanSrc.split('/')
+      if (parts.length < 2) return null
+      const folderName = parts[0]
+      const fileName = parts.slice(1).join('/')
+
+      const candidateFolders = [
+        folderName,
+        `${docSafeName}_attachments`,
+        `${docSafeName}-attachments`,
+        `${docSafeName}.attachments`,
+      ]
+
+      for (const folder of candidateFolders) {
+        if (!folder) continue
+        try {
+          const folderHandle = await docDir.getDirectoryHandle(folder)
+          return await folderHandle.getFileHandle(fileName)
+        } catch {
+          // Folder/file not found in this candidate
+        }
+      }
+      return null
+    }
+
+    async function processNode(node: JSONContent) {
+      if (
+        (node.type === 'imageBlock' || node.type === 'videoBlock' || node.type === 'audioBlock' || node.type === 'fileAttachment') &&
+        typeof node.attrs?.src === 'string'
+      ) {
+        const src = node.attrs.src.trim()
+        if (src.startsWith('./') || isAttachmentDirectoryName(src.split('/')[0] || '')) {
+          try {
+            const fileHandle = await resolveAttachmentHandle(src)
+            if (fileHandle) {
+              const file = await fileHandle.getFile()
+              const buffer = await file.arrayBuffer()
+              const bytes = new Uint8Array(buffer)
+              const mimeType = file.type || 'application/octet-stream'
+              node.attrs.src = uint8ArrayToDataUrl(bytes, mimeType)
+            }
+          } catch (err) {
+            devLog('warn', 'Failed to hydrate attachment from disk.', err)
+          }
+        }
+      }
+
+      if (Array.isArray(node.content)) {
+        for (const child of node.content) {
+          await processNode(child)
+        }
+      }
+    }
+
+    await processNode(cloned)
+    return cloned
+  } catch (err) {
+    devLog('warn', 'Failed to hydrate attachments.', err)
+    return docJson
+  }
+}
+
+export async function syncAttachmentsOnRenameOrMove(
+  oldFile: Pick<MyBookFile, 'id' | 'name' | 'folderId'>,
+  newFile: Pick<MyBookFile, 'id' | 'name' | 'folderId'>
+) {
+  try {
+    const root = await getWorkspaceRootDirectory()
+    if (!root) return
+    const oldDir = await resolveDirectoryHandleForFolder(root, oldFile.folderId ?? null, false)
+    if (!oldDir) return
+    const newDir = await resolveDirectoryHandleForFolder(root, newFile.folderId ?? null, true)
+    if (!newDir) return
+
+    const oldSafe = sanitizeFileName(oldFile.name)
+    const newSafe = sanitizeFileName(newFile.name)
+
+    const candidateOldFolders = [
+      `${oldSafe}_attachments`,
+      `${oldSafe}-attachments`,
+      `${oldSafe}.attachments`,
+    ]
+
+    for (const oldFolderName of candidateOldFolders) {
+      try {
+        const oldAttachmentsDir = await oldDir.getDirectoryHandle(oldFolderName)
+        const newAttachmentsDir = await newDir.getDirectoryHandle(`${newSafe}_attachments`, { create: true })
+
+        const dirPermission = oldAttachmentsDir as PermissionedDirectoryHandle
+        if (typeof dirPermission.entries === 'function') {
+          for await (const [fileName, entry] of dirPermission.entries()) {
+            if (entry.kind === 'file') {
+              const fileHandle = entry as FileSystemFileHandle
+              const fileData = await (await fileHandle.getFile()).arrayBuffer()
+              const targetHandle = await newAttachmentsDir.getFileHandle(fileName, { create: true })
+              const writable = await targetHandle.createWritable()
+              await writable.write(fileData)
+              await writable.close()
+            }
+          }
+        }
+        await oldDir.removeEntry(oldFolderName, { recursive: true })
+        break
+      } catch {
+        // Old attachment directory not found, continue checking
+      }
+    }
+  } catch (error) {
+    devLog('warn', 'Could not sync attachments on rename/move.', error)
+  }
+}
+
+export function documentMarkdown(
+  file: Pick<MyBookFile, 'id' | 'name' | 'content'>,
+  dirHandle?: FileSystemDirectoryHandle | null
+): Promise<string> | string {
+  let json: JSONContent
+  try {
+    json = file.content ? (JSON.parse(file.content) as JSONContent) : { type: 'doc', content: [{ type: 'paragraph' }] }
+  } catch {
+    json = { type: 'doc', content: [{ type: 'paragraph' }] }
+  }
+
+  if (dirHandle) {
+    const safeName = sanitizeFileName(file.name)
+    return extractAndSaveAttachments(dirHandle, safeName, json).then((processed) =>
+      documentToMyBookMarkdown(file.name, processed, { documentId: file.id })
+    )
+  }
+
+  return documentToMyBookMarkdown(file.name, json, { documentId: file.id })
+}
+
+export async function appContentFromStoredFile(
+  file: Pick<MyBookFile, 'name' | 'type'>,
+  value: string,
+  dirHandle?: FileSystemDirectoryHandle | null
+): Promise<string> {
   if (file.type === 'spreadsheet') return value
   try {
-    return JSON.stringify(myBookMarkdownToDocument(value))
+    const parsed = myBookMarkdownToDocument(value)
+    if (dirHandle) {
+      const safeName = sanitizeFileName(file.name)
+      const hydrated = await hydrateAttachments(dirHandle, safeName, parsed.document)
+      return JSON.stringify(hydrated)
+    }
+    return JSON.stringify(parsed.document)
   } catch {
     return value
   }
 }
 
-export async function writeLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'content'>) {
-  try {
-    const directory = await filesDirectory()
-    if (!directory) return
-    const exactHandle = await directory.getFileHandle(exactContentFileName(file), { create: true })
-    const exactWritable = await exactHandle.createWritable()
-    await exactWritable.write(file.content)
-    await exactWritable.close()
+export async function scanAndHydrateLocalWorkspace(
+  customRoot?: FileSystemDirectoryHandle | null,
+): Promise<{ discoveredCount: number; restoredCount: number }> {
+  const root = customRoot ?? (await getWorkspaceRootDirectory())
+  if (!root) return { discoveredCount: 0, restoredCount: 0 }
 
-    const portableHandle = await directory.getFileHandle(portableFileName(file), { create: true })
-    const portableWritable = await portableHandle.createWritable()
-    await portableWritable.write(file.type === 'spreadsheet' ? file.content : documentMarkdown(file))
-    await portableWritable.close()
+  let discoveredCount = 0
+  let restoredCount = 0
+
+  let effectiveRoot = root
+  try {
+    const writinDir = await root.getDirectoryHandle(LEGACY_ROOT_DIR)
+    const filesDir = await writinDir.getDirectoryHandle(LEGACY_FILES_DIR)
+    effectiveRoot = filesDir
+  } catch {
+    effectiveRoot = root
+  }
+
+  async function scanDirectory(dirHandle: FileSystemDirectoryHandle, parentFolderId: string | null) {
+    const dirPermission = dirHandle as PermissionedDirectoryHandle
+    if (typeof dirPermission.entries !== 'function') return
+
+    const subdirectories: Array<{ name: string; handle: FileSystemDirectoryHandle }> = []
+    const fileEntries: Array<{ name: string; handle: FileSystemFileHandle }> = []
+
+    for await (const [name, entry] of dirPermission.entries()) {
+      if (entry.kind === 'directory') {
+        if (
+          isAttachmentDirectoryName(name) ||
+          name === '.git' ||
+          name === 'node_modules' ||
+          name === LEGACY_ROOT_DIR
+        ) {
+          continue
+        }
+        subdirectories.push({ name, handle: entry as FileSystemDirectoryHandle })
+      } else if (entry.kind === 'file') {
+        if (isAttachmentDirectoryName(name) || name.startsWith('.')) continue
+        fileEntries.push({ name, handle: entry as FileSystemFileHandle })
+      }
+    }
+
+    // Process subdirectories
+    for (const { name, handle } of subdirectories) {
+      let existingFolder = await db.folders
+        .filter((f) => f.workspaceType === 'local' && !f.isDeleted && f.parentId === parentFolderId && f.name.toLowerCase() === name.toLowerCase())
+        .first()
+
+      if (!existingFolder) {
+        const now = new Date().toISOString()
+        const newFolder: MyBookFolder = {
+          id: crypto.randomUUID(),
+          driveFolderId: null,
+          workspaceType: 'local',
+          name,
+          parentId: parentFolderId,
+          createdAt: now,
+          updatedAt: now,
+          isDeleted: false,
+        }
+        await db.folders.add(newFolder)
+        existingFolder = newFolder
+        restoredCount += 1
+      }
+
+      await scanDirectory(handle, existingFolder.id)
+    }
+
+    // Process files
+    for (const { name, handle } of fileEntries) {
+      if (isAttachmentDirectoryName(name) || name.startsWith('.')) continue
+
+      const isMarkdown = name.endsWith('.md') || name.endsWith('.mybook.md')
+      const isSpreadsheet = name.endsWith('.xlsx') || name.endsWith('.mybook.json')
+      const isLegacyJson = name.endsWith('.content.json')
+
+      if (!isMarkdown && !isSpreadsheet && !isLegacyJson) continue
+
+      discoveredCount += 1
+
+      try {
+        const fileObj = await handle.getFile()
+        const text = await fileObj.text()
+        const docName = cleanDocumentName(name)
+        const now = new Date(fileObj.lastModified || Date.now()).toISOString()
+
+        if (isMarkdown) {
+          const parsed = myBookMarkdownToDocument(text)
+          const documentId = parsed.metadata?.documentId
+          const hydratedDoc = await hydrateAttachments(dirHandle, docName, parsed.document)
+
+          let existingFile: MyBookFile | undefined
+          if (documentId) {
+            existingFile = await db.files.get(documentId)
+          }
+          if (!existingFile) {
+            existingFile = await db.files
+              .filter((f) => f.workspaceType === 'local' && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
+              .first()
+          }
+
+          if (!existingFile) {
+            const newFile: MyBookFile = {
+              id: documentId || crypto.randomUUID(),
+              driveFileId: null,
+              workspaceType: 'local',
+              name: docName,
+              type: 'document',
+              folderId: parentFolderId,
+              content: JSON.stringify(hydratedDoc),
+              mimeType: 'application/x-mybook-document',
+              createdAt: now,
+              updatedAt: now,
+              lastSyncedAt: null,
+              syncStatus: 'local',
+              isDeleted: false,
+            }
+            await db.files.add(newFile)
+            restoredCount += 1
+          } else if (!existingFile.content) {
+            await db.files.update(existingFile.id, {
+              content: JSON.stringify(hydratedDoc),
+              updatedAt: now,
+            })
+          }
+        } else if (isSpreadsheet) {
+          const existingFile = await db.files
+            .filter((f) => f.workspaceType === 'local' && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
+            .first()
+
+          if (!existingFile) {
+            const newFile: MyBookFile = {
+              id: crypto.randomUUID(),
+              driveFileId: null,
+              workspaceType: 'local',
+              name: docName,
+              type: 'spreadsheet',
+              folderId: parentFolderId,
+              content: text,
+              mimeType: 'application/x-mybook-spreadsheet',
+              createdAt: now,
+              updatedAt: now,
+              lastSyncedAt: null,
+              syncStatus: 'local',
+              isDeleted: false,
+            }
+            await db.files.add(newFile)
+            restoredCount += 1
+          }
+        } else if (isLegacyJson) {
+          const rawId = name.replace(/\.content\.json$/i, '')
+          const existingFile = await db.files.get(rawId)
+          if (existingFile && !existingFile.content) {
+            await db.files.update(existingFile.id, { content: text, updatedAt: now })
+          }
+        }
+      } catch (err) {
+        devLog('warn', `Failed to read disk file during workspace scan: ${name}`, err)
+      }
+    }
+  }
+
+  await scanDirectory(effectiveRoot, null)
+  return { discoveredCount, restoredCount }
+}
+
+export async function writeLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId' | 'content'>) {
+  try {
+    const root = await getWorkspaceRootDirectory()
+    if (!root) return
+
+    const dir = await resolveDirectoryHandleForFolder(root, file.folderId ?? null, true)
+    if (!dir) return
+
+    const safeName = sanitizeFileName(file.name)
+    const fileName = file.type === 'spreadsheet' ? `${safeName}.xlsx` : `${safeName}.md`
+
+    const fileHandle = await dir.getFileHandle(fileName, { create: true })
+    const writable = await fileHandle.createWritable()
+    const contentToWrite = file.type === 'spreadsheet' ? file.content : await documentMarkdown(file, dir)
+    await writable.write(contentToWrite)
+    await writable.close()
   } catch (error) {
     devLog('warn', 'Could not write local workspace file.', error)
   }
 }
 
-export async function readLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type'>) {
+export async function readLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId'>): Promise<string | null> {
   try {
-    const directory = await filesDirectory()
-    if (!directory) return null
+    const root = await getWorkspaceRootDirectory()
+    if (!root) return null
+
+    const dir = await resolveDirectoryHandleForFolder(root, file.folderId ?? null, false)
+    if (!dir) return null
+
+    const safeName = sanitizeFileName(file.name)
+    const fileName = file.type === 'spreadsheet' ? `${safeName}.xlsx` : `${safeName}.md`
+
     try {
-      const exactHandle = await directory.getFileHandle(exactContentFileName(file))
-      return await (await exactHandle.getFile()).text()
+      const fileHandle = await dir.getFileHandle(fileName)
+      const stored = await (await fileHandle.getFile()).text()
+      return await appContentFromStoredFile(file, stored, dir)
     } catch {
-      const portableHandle = await directory.getFileHandle(portableFileName(file))
-      const stored = await (await portableHandle.getFile()).text()
-      return appContentFromStoredFile(file, stored)
+      // Try legacy portable filename fallback
+      try {
+        const legacyName = file.type === 'spreadsheet' ? `${file.id}.mybook.json` : `${file.id}.mybook.md`
+        const legacyHandle = await dir.getFileHandle(legacyName)
+        const stored = await (await legacyHandle.getFile()).text()
+        return await appContentFromStoredFile(file, stored, dir)
+      } catch {
+        return null
+      }
     }
   } catch {
     return null
   }
 }
 
-export async function deleteLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type'>) {
+export async function deleteLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId'>) {
   try {
-    const directory = await filesDirectory()
-    if (!directory) return
+    const root = await getWorkspaceRootDirectory()
+    if (!root) return
+
+    const dir = await resolveDirectoryHandleForFolder(root, file.folderId ?? null, false)
+    if (!dir) return
+
+    const safeName = sanitizeFileName(file.name)
+    const fileName = file.type === 'spreadsheet' ? `${safeName}.xlsx` : `${safeName}.md`
+
     await Promise.allSettled([
-      directory.removeEntry(exactContentFileName(file)),
-      directory.removeEntry(portableFileName(file)),
+      dir.removeEntry(fileName),
+      dir.removeEntry(`${safeName}_attachments`, { recursive: true }),
+      dir.removeEntry(`${safeName}-attachments`, { recursive: true }),
+      dir.removeEntry(`${safeName}.attachments`, { recursive: true }),
+      dir.removeEntry(`${file.id}.content.json`),
+      dir.removeEntry(`${file.id}.mybook.md`),
+      dir.removeEntry(`${file.id}.mybook.json`),
     ])
   } catch {
-    // Removing a missing OPFS mirror should not block app-level deletion.
+    // Non-blocking cleanup
   }
 }
+
+export async function ensureLocalWorkspaceFolder(folderId: string): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const root = await getWorkspaceRootDirectory()
+    if (!root) return null
+    return await resolveDirectoryHandleForFolder(root, folderId, true)
+  } catch (error) {
+    devLog('warn', 'Could not ensure local workspace folder.', error)
+    return null
+  }
+}
+
+export async function deleteLocalWorkspaceFolder(folderId: string) {
+  try {
+    const root = await getWorkspaceRootDirectory()
+    if (!root) return
+    const folder = await db.folders.get(folderId)
+    if (!folder) return
+    const parentDir = await resolveDirectoryHandleForFolder(root, folder.parentId, false)
+    if (!parentDir) return
+    const safeName = sanitizeFileName(folder.name)
+    await parentDir.removeEntry(safeName, { recursive: true })
+  } catch {
+    // Non-blocking cleanup
+  }
+}
+

@@ -7,6 +7,7 @@ import { AppButton } from '../components/common/AppButton'
 import { useDriveBootstrap } from '../hooks/useDriveBootstrap'
 import { getDriveFolderStatus, openMyBookFolderInDrive } from '../services/googleDrive'
 import { exportLocalWorkspaceBackup, importLocalWorkspaceBackup } from '../services/localBackup'
+import { downloadVaultZip } from '../services/vaultExport'
 import { getLocalStorageProtectionStatus, requestPersistentLocalStorage } from '../services/localWorkspace'
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
@@ -203,7 +204,11 @@ export function SettingsPage() {
             </AppButton>
             <AppButton variant="secondary" isLoading={backupAction === 'export'} loadingLabel="Preparing..." onPress={() => void exportBackup()}>
               <ArrowUpTrayIcon aria-hidden="true" className="size-5" />
-              Export backup
+              Export JSON backup
+            </AppButton>
+            <AppButton variant="secondary" onPress={() => void downloadVaultZip()}>
+              <ArrowUpTrayIcon aria-hidden="true" className="size-5" />
+              Export full vault (ZIP)
             </AppButton>
             <AppButton variant="secondary" isLoading={backupAction === 'import'} loadingLabel="Importing..." onPress={() => backupInputRef.current?.click()}>
               <ArrowDownTrayIcon aria-hidden="true" className="size-5" />

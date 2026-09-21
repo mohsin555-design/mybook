@@ -5,6 +5,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppLayout } from './AppLayout'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import type { MyBookFile, MyBookFolder } from '../../types/files'
 
 const mockLibraryData = vi.hoisted((): { files: MyBookFile[]; folders: MyBookFolder[]; isLoading: boolean } => ({
@@ -219,6 +221,30 @@ describe('AppLayout sidebar favorites', () => {
 
     expect(screen.queryByRole('navigation', { name: 'breadcrumb' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Library' })).toBeInTheDocument()
+  })
+
+  it('opens Google connect modal in-place when clicking Connect Cloud Vault in local workspace', () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+    useAuthStore.setState({ email: null, isAuthenticated: false })
+    renderLayout()
+
+    const connectButton = screen.getByRole('button', { name: 'Connect Cloud Vault (Google)' })
+    expect(connectButton).toBeInTheDocument()
+
+    fireEvent.click(connectButton)
+    expect(screen.getByRole('dialog', { name: 'Connect Cloud Vault' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog', { name: 'Connect Cloud Vault' })).not.toBeInTheDocument()
+  })
+
+  it('displays the connected Google email address under the vault name when signed in', () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+    useAuthStore.setState({ email: 'author@example.com', isAuthenticated: true })
+    renderLayout()
+
+    expect(screen.getByText('author@example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Connect Cloud Vault (Google)' })).not.toBeInTheDocument()
   })
 })
 

@@ -1,3 +1,8 @@
+import crypto from 'node:crypto'
+if (!globalThis.crypto) {
+  Object.defineProperty(globalThis, 'crypto', { value: crypto })
+}
+
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'

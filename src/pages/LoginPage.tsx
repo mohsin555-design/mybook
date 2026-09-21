@@ -28,8 +28,11 @@ export function LoginPage() {
   const location = useLocation()
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const [isLocalSetupOpen, setIsLocalSetupOpen] = useState(false)
-  const [workspaceName, setWorkspaceName] = useState('My Workspace')
-  const [storagePreference, setStoragePreference] = useState<LocalWorkspaceStoragePreference>('private')
+  const supportsDeviceFolder = useMemo(() => canPickDeviceDirectory(), [])
+  const isAppleMobile = useMemo(() => typeof navigator !== 'undefined' && /iPad|iPhone|iPod/i.test(navigator.userAgent), [])
+
+  const [workspaceName, setWorkspaceName] = useState(supportsDeviceFolder ? 'My Workspace' : 'Private Device Vault')
+  const [storagePreference, setStoragePreference] = useState<LocalWorkspaceStoragePreference>(supportsDeviceFolder ? 'file-system' : 'private')
   const [selectedDirectory, setSelectedDirectory] = useState<PickedLocalWorkspaceDirectory | null>(null)
   const [localSetupError, setLocalSetupError] = useState<string | null>(null)
   const [isPickingDirectory, setIsPickingDirectory] = useState(false)
@@ -39,7 +42,6 @@ export function LoginPage() {
   const destination = getSafeReturnPath((location.state as LoginLocationState | null)?.from)
   const queryError = new URLSearchParams(location.search).get('error')
   const configError = getAuthConfigError()
-  const supportsDeviceFolder = useMemo(() => canPickDeviceDirectory(), [])
 
   useEffect(() => {
     clearError()
@@ -96,6 +98,7 @@ export function LoginPage() {
 
   useEffect(() => {
     setStoragePreference(supportsDeviceFolder ? 'file-system' : 'private')
+    setWorkspaceName(supportsDeviceFolder ? 'My Workspace' : 'Private Device Vault')
   }, [supportsDeviceFolder])
 
   const openLocalSetup = () => {
@@ -114,15 +117,17 @@ export function LoginPage() {
         return
       }
       setSelectedDirectory(directory)
+      setWorkspaceName(directory.name)
     } finally {
       setIsPickingDirectory(false)
     }
   }
 
   const startLocalWorkspace = async () => {
-    const name = workspaceName.trim() || 'My Workspace'
+    const defaultName = storagePreference === 'file-system' ? 'My Workspace' : 'Private Device Vault'
+    const name = workspaceName.trim() || selectedDirectory?.name || defaultName
     if (storagePreference === 'file-system' && !selectedDirectory) {
-      setLocalSetupError('Choose a folder before creating this workspace, or use private app storage.')
+      setLocalSetupError('Choose a folder before creating this workspace, or use private device storage.')
       return
     }
     setIsCreatingLocalWorkspace(true)
@@ -134,7 +139,7 @@ export function LoginPage() {
       directoryHandle: selectedDirectory?.handle,
     })
     if ('cancelled' in result && result.cancelled) {
-      setLocalSetupError('Choose a folder to create a device-folder workspace, or switch to private app storage.')
+      setLocalSetupError('Choose a folder to create a device-folder workspace, or switch to private device storage.')
       setIsCreatingLocalWorkspace(false)
       return
     }
@@ -168,7 +173,7 @@ export function LoginPage() {
             onClick={openLocalSetup}
             className="min-h-11 rounded-[var(--radius-control)] bg-foreground px-5 text-base font-semibold text-background transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
           >
-            Create Local Workspace
+            {supportsDeviceFolder ? 'Select a Local Vault Folder' : 'Create a Private Device Vault'}
           </button>
           {isBackendAuthEnabled ? (
             <button
@@ -176,7 +181,7 @@ export function LoginPage() {
               onClick={startBackendLogin}
               className="min-h-11 rounded-[var(--radius-control)] bg-primary px-5 text-base font-semibold text-primary-foreground transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
             >
-              Continue with Google
+              {isAppleMobile ? 'Connect Cloud Vault (Recommended for iOS)' : 'Continue with Google'}
             </button>
           ) : (
             <div className="flex justify-center" ref={googleButtonRef} />
@@ -218,26 +223,28 @@ export function LoginPage() {
               </div>
               <div>
                 <h2 id="local-workspace-title" className="text-lg font-semibold leading-7">
-                  Create local workspace
+                  {supportsDeviceFolder ? 'Select Local Vault Folder' : 'Create Private Device Vault'}
                 </h2>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Choose where this device should keep your Writin files.
+                  {supportsDeviceFolder
+                    ? 'Choose where this device should keep your files and folders.'
+                    : "This browser doesn't support saving directly into a chosen folder. Your documents stay in this browser's private storage on this device."}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  Local workspaces are tied to this browser unless you choose the same device folder again on a supported browser. Use Google Drive when you need the same files everywhere.
+                  Local vaults stay private to this device. Export copies to Files or optionally connect Google Drive at any time.
                 </p>
               </div>
             </div>
 
             <label htmlFor="workspace-name" className="mt-5 block text-sm font-medium text-foreground">
-              Workspace name
+              Vault name
             </label>
             <input
               id="workspace-name"
               value={workspaceName}
               onChange={(event) => setWorkspaceName(event.target.value)}
               className="mt-2 h-11 w-full rounded-[var(--radius-control)] border border-[var(--app-border)] bg-background px-3 text-base outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
-              placeholder="My Workspace"
+              placeholder={supportsDeviceFolder ? 'My Workspace' : 'Private Device Vault'}
             />
 
             <fieldset className="mt-5">
@@ -258,11 +265,11 @@ export function LoginPage() {
                   <span>
                     <span className="block text-sm font-medium text-foreground">Choose a folder on this device</span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
-                      Best for macOS, Windows, and supported Android browsers. Files stay visible outside the app.
+                      Best for macOS, Windows, and supported browsers. Files stay visible directly outside the app.
                     </span>
                     {!supportsDeviceFolder ? (
                       <span className="mt-1 block text-xs font-medium text-muted-foreground">
-                        Folder selection is not available in this browser.
+                        Direct folder selection is not available in this browser.
                       </span>
                     ) : null}
                     {supportsDeviceFolder ? (
@@ -296,9 +303,9 @@ export function LoginPage() {
                     className="mt-1 size-4 accent-[var(--accent)]"
                   />
                   <span>
-                    <span className="block text-sm font-medium text-foreground">Use private app storage</span>
+                    <span className="block text-sm font-medium text-foreground">Use private device storage</span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
-                      Works across devices including iPhone and iPad. Export backups or connect Drive to protect local-only work.
+                      Works across devices including iPhone and iPad. Export copies or connect Google Drive to back up work.
                     </span>
                   </span>
                 </label>
@@ -326,7 +333,7 @@ export function LoginPage() {
                 disabled={isCreatingLocalWorkspace}
                 className="min-h-11 rounded-[var(--radius-control)] bg-foreground px-4 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-60"
               >
-                {isCreatingLocalWorkspace ? 'Creating...' : 'Create Workspace'}
+                {isCreatingLocalWorkspace ? 'Opening...' : 'Open Vault'}
               </button>
             </div>
           </section>

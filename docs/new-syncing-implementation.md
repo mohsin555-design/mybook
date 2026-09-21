@@ -1,8 +1,8 @@
 # New Syncing Implementation
 
-Status: Open — documented only; no fix implemented.
+This document retains the original issue and proposed requirements. Current implementations and remaining module work are described in [local vaults](./local-vaults.md), [backup/export](./backup-and-export.md), [Drive synchronization](./google-drive-sync.md) and [spreadsheets](./spreadsheet-editor.md). Scanning, Markdown disk writes, companion attachments, onboarding, ZIP exports and cloud upload queuing now have implementations; historical descriptions below should not be read as current behavior.
 
-## Issue
+## Original reported issue
 
 Selecting a device folder that already contains `Writin/files` does not discover
 its existing documents and spreadsheets. The app lists files from its browser

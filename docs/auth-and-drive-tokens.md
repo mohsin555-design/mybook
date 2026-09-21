@@ -1,67 +1,35 @@
-# Authentication and Drive Tokens
+# Authentication and Drive tokens
 
-## Purpose
+## Modes and access rules
 
-Authentication identifies the MyBook user and authorizes Google Drive backup/sync.
+`src/stores/useAuthStore.ts` implements Google authentication. `src/stores/useWorkspaceStore.ts` separately records local/Drive mode. `src/app/AuthGuards.tsx` permits app access when authenticated **or** in local mode, so local vaults need no account.
 
-## Browser Flow
+`VITE_GOOGLE_AUTH_MODE=browser` uses Google Identity Services in the frontend. `server` uses the backend refresh-token endpoints. Setup values and Google origins are documented in [Google OAuth setup](../GOOGLE_OAUTH_SETUP.md).
 
-1. The login page renders the Google Sign-In button.
-2. Google returns an ID credential.
-3. MyBook verifies the credential payload and stores the verified email.
-4. MyBook requests a Google Drive access token with the `drive.file` scope.
-5. The auth state is persisted in `localStorage` under `mybook-auth`.
-6. Protected app routes use `isAuthenticated` to decide whether the user can enter the app.
+## Browser authentication
 
-## Backend Flow
+Google Sign-In supplies an ID credential; the frontend decodes its payload and requests a short-lived Drive token with `drive.file`. The token flow obtains account identity for the session. Do not describe client-side JWT decoding as server-side cryptographic verification.
 
-Set `VITE_GOOGLE_AUTH_MODE=server` to use backend refresh-token auth.
+Current browser-mode persistence uses `localStorage` under `mybook-auth` and includes email, display name, access token and expiry. This is not session-storage-only authentication. Tokens must never be placed in URLs, logs or exported documents.
 
-1. The login page sends the user to `/api/auth/google/start` on Razor/cPanel Node hosting.
-2. The backend redirects to Google OAuth with `access_type=offline`.
-3. Google redirects back to `/api/auth/google/callback` with an authorization code.
-4. The backend exchanges the code for tokens and stores the refresh token in an encrypted HttpOnly cookie.
-5. The frontend restores the session through `/api/auth/session`.
-6. Drive operations request a short-lived access token from `/api/auth/token`.
-7. If refresh fails, MyBook keeps local files available and asks the user to reconnect Google Drive.
+## Backend authentication
 
-## Token Model
+The frontend navigates to the auth start endpoint; the server completes the code exchange and stores the refresh token in an encrypted HttpOnly cookie. Session and token endpoints restore identity and issue short-lived access tokens. Backend-mode persisted frontend state omits access tokens.
 
-Google Drive access tokens are short-lived. MyBook should not treat token expiry as full logout.
+API configuration uses `VITE_AUTH_API_BASE` and `VITE_AUTH_API_EXTENSION`. The code has a legacy `.php` extension default; the Node/Vercel examples explicitly set the extension to an empty value. Vite alone does not provide the auth backend.
 
-The browser-mode model is:
+Required server-only variables include `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_COOKIE_SECRET`, `APP_ORIGIN` and `GOOGLE_REDIRECT_URI`. Never prefix server secrets with `VITE_`. Implementations are in `api/auth/` and `server/server.js`.
 
-- `email` present means the user has a remembered MyBook session.
-- `isAuthenticated` can stay `true` even when the Drive token has expired.
-- `accessToken` and `accessTokenExpiresAt` represent only the current Drive API token.
-- `getAccessToken()` silently requests a fresh Drive token with `prompt: ''` when the stored token is missing or expired.
+## Expiry and reconnect
 
-The backend-mode model is:
+A token is considered fresh only when more than 60 seconds remain. `getAccessToken()` reuses a fresh token or shares an in-flight refresh request. Browser renewal requests an empty prompt; backend renewal calls the token endpoint.
 
-- `email` present means the user has a remembered MyBook session.
-- The refresh token is not exposed to frontend JavaScript.
-- `getAccessToken()` asks the backend for a fresh Drive access token when the stored access token is missing or expired.
-- If the backend cookie is missing or Google rejects the refresh token, Drive sync pauses until the user reconnects.
+The expiry timer clears token fields. During persisted-state rehydration an expired/missing token also clears authentication. Backend refresh failure and some reconnect failures can clear `isAuthenticated`. Consequently, remembered email alone does not guarantee access to Drive-mode routes after reload/failure; account-free local mode still passes the guard.
 
-## Silent Renewal
+Renewal can fail when permission is revoked, Google requires interaction, cookies are unavailable or backend session state is lost. Surface reconnect errors without claiming cloud operations succeeded. Preserving local access through every Drive-mode failure remains an acceptance requirement, not a guarantee established by the present guard logic.
 
-`prompt: ''` is sent to Google Identity Services. It means "try to return a new access token without showing UI."
+## Logout and verification
 
-Silent renewal can succeed when:
+Logout clears identity/token state, clears the expiry timer, attempts backend logout or browser token revocation, and disables Google auto-select. It does not itself delete the IndexedDB document database.
 
-- The user is still signed in to Google in the browser.
-- The user already granted MyBook Drive permission.
-- Browser privacy settings allow the Google session to be used.
-
-Silent renewal can fail when:
-
-- The user signed out of Google.
-- The user revoked permission.
-- The browser cleared cookies/storage.
-- The Google session requires interaction.
-
-When silent renewal fails, MyBook keeps local files available and asks the user to reconnect Drive.
-
-## Explicit Logout
-
-Logout clears the remembered user, clears the access token, revokes the current token when possible, and disables Google auto-select.
+Tests: `src/stores/useAuthStore.test.ts`, `src/app/AuthGuards.test.tsx`, and `src/pages/LoginPage.test.tsx`. Verify browser and server login, expired-token reload, denied consent, reconnect and account switching with live credentials separately.

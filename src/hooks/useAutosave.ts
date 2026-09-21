@@ -40,9 +40,11 @@ export function useAutosave(file: MyBookFile | undefined) {
     }
 
     if (contentRef.current === lastSaved.current) {
-      setContent(next)
-      contentRef.current = next
-      lastSaved.current = next
+      if (next || !contentRef.current) {
+        setContent(next)
+        contentRef.current = next
+        lastSaved.current = next
+      }
     }
     setIsHydrated(true)
   }, [file])

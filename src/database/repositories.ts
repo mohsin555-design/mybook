@@ -148,6 +148,7 @@ async function finalizeLocalFolderPermanentDelete(folderId: string) {
 async function hydrateLocalFile(file: MyBookFile | undefined) {
   if (!file || !fileBelongsToActiveWorkspace(file)) return undefined
   if (!isLocalWorkspace()) return file
+  if (file.content) return file
   const localContent = await readLocalWorkspaceFile(file)
   return localContent === null ? file : { ...file, content: localContent }
 }

@@ -789,7 +789,7 @@ describe('googleDrive helpers', () => {
     })
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ parents: ['mybook-root'] }) })
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Notes.mybook.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Notes.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
     stubDriveFetch(fetchMock)
 
     const result = await backupDocumentToDrive({
@@ -868,7 +868,7 @@ describe('googleDrive helpers', () => {
       syncStatus: 'pending',
       isDeleted: false,
     })
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Database Note.mybook.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Database Note.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
     stubDriveFetch(fetchMock)
 
     const result = await backupDocumentToDrive({
@@ -934,7 +934,7 @@ describe('googleDrive helpers', () => {
       .mockResolvedValueOnce(changedDuringUpload)
     stubDriveFetch(vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Race Note.mybook.md', modifiedTime: '2026-08-29T10:00:00.000Z' }),
+      json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Race Note.md', modifiedTime: '2026-08-29T10:00:00.000Z' }),
     }))
 
     const result = await backupDocumentToDrive({
@@ -1235,4 +1235,40 @@ describe('googleDrive helpers', () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('addParents=mybook-root')
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('removeParents=old-parent')
   })
+
+  it('backs up documents using .md extension while safely stripping legacy .mybook.md', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFiles.get.mockResolvedValue({
+      id: 'file-1',
+      name: 'Legacy.mybook.md',
+      type: 'document',
+      folderId: null,
+      content: '{"type":"doc","content":[{"type":"paragraph"}]}',
+      mimeType: 'application/x-mybook-document',
+      createdAt: '2026-08-29T00:00:00.000Z',
+      updatedAt: '2026-08-29T00:00:00.000Z',
+      lastSyncedAt: null,
+      syncStatus: 'pending',
+      isDeleted: false,
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Legacy.md', modifiedTime: '2026-08-29T10:00:00.000Z' }),
+    })
+    stubDriveFetch(fetchMock)
+
+    const result = await backupDocumentToDrive({
+      fileId: 'file-1',
+      title: 'Legacy.mybook.md',
+      content: '{"type":"doc","content":[{"type":"paragraph"}]}',
+      folderId: null,
+    })
+
+    expect(result.success).toBe(true)
+    const uploadBody = fetchMock.mock.calls[0]?.[1]?.body as Blob
+    const uploadText = await uploadBody.text()
+    expect(uploadText).toContain('"name":"Legacy.md"')
+    expect(uploadText).not.toContain('"name":"Legacy.mybook.md"')
+  })
 })
+

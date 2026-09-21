@@ -2,7 +2,7 @@
 
 ## Representation
 
-Tiptap JSON is the in-app document representation. The portable representation is Markdown with Writin metadata and extensions. Local disk files and direct downloads use `.md`; Drive document backups use `.mybook.md`. Both extensions are accepted on import. Implementation: `src/utils/mybookMarkdown.ts` and the extensions/node views in `src/components/document-editor/`.
+Tiptap JSON is the in-app document representation. The portable representation is Markdown with Writin metadata and extensions. Local disk files, direct downloads, and Drive document backups use `.md`. Legacy `.mybook.md` files are also accepted on import and during Drive sync. Implementation: `src/utils/mybookMarkdown.ts` and the extensions/node views in `src/components/document-editor/`.
 
 ## Block modules
 
@@ -31,7 +31,7 @@ Current picker limits are 5 MB per image and 50 MB per audio, video or generic a
 
 ## Markdown format
 
-The existing `mybook_version` frontmatter key and `.mybook.md` backup extension are compatibility identifiers. Keep them unchanged when using the current parser/serializer.
+The existing `mybook_version` frontmatter key and legacy `.mybook.md` format are compatibility identifiers. The parser continues to support them seamlessly when reading older files.
 
 The serializer favors standard Markdown for ordinary text, headings, lists, quotes, links and images. Frontmatter carries Writin version/type/title and, when supplied, document identity. Advanced blocks use additional syntax/data handled by the paired parser. Other Markdown editors may preserve the text without rendering the same blocks.
 

@@ -32,7 +32,7 @@ Current Mybook browser OAuth scope:
   https://www.googleapis.com/auth/drive.file
 
 The token must allow creating folders/files, setting appProperties, trashing,
-restoring, listing trashed items, downloading created .mybook.md files, and
+restoring, listing trashed items, downloading created .md files, and
 deleting the isolated test root during cleanup.
 `)
   process.exit(1)
@@ -212,7 +212,7 @@ async function run() {
   const initialB = await createFolder('B', initialA.id, { mybookFolderId: 'folder-test-b' })
   const initialC = await createFolder('C', initialA.id, { mybookFolderId: 'folder-test-c' })
   const docContent = `---\nmybook_version: 1\ntype: document\ntitle: "Trash Test"\ndocument_id: "doc-trash-test"\n---\n\nTrash test document.\n`
-  const testDocument = await createMarkdownFile('test-document.mybook.md', testRoot.id, docContent)
+  const testDocument = await createMarkdownFile('test-document.md', testRoot.id, docContent)
   report.created.initialIds = { A: initialA.id, B: initialB.id, C: initialC.id, document: testDocument.id }
   report.initialMetadata = await capture({ A: initialA.id, B: initialB.id, C: initialC.id, document: testDocument.id })
   section('Initial Metadata', report.initialMetadata)

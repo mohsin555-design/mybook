@@ -4,7 +4,7 @@
 
 | Content | Import | Export / backup |
 | --- | --- | --- |
-| Document | `.docx`, `.md`, `.mybook.md` in the editor | `.docx` and `.md` downloads; `.mybook.md` Drive backup |
+| Document | `.docx`, `.md`, legacy `.mybook.md` in the editor | `.docx` and `.md` downloads; `.md` Drive backup |
 | Spreadsheet | Dedicated editor `.xlsx` import | Dedicated editor `.xlsx` export and Drive backup |
 | Local workspace | Versioned `.mybook-backup.json` in Settings | JSON backup through browser share or download |
 | Folder or active vault | No general ZIP restore flow | ZIP containing document Markdown, extracted embedded attachments and folder paths; spreadsheet caveat below |
@@ -19,7 +19,7 @@ Import validates the backup envelope and restores into a newly named **Imported 
 
 ## Markdown and media
 
-Document downloads use `.md`, with the same Writin frontmatter/container format used by `.mybook.md` backups. See [the format specification](./advanced-editor-and-format-spec.md). DOCX import uses Mammoth; complex layouts and advanced blocks may be simplified when converting formats.
+Document downloads and Drive backups use `.md`, with the same Writin frontmatter/container format. See [the format specification](./advanced-editor-and-format-spec.md). DOCX import uses Mammoth; complex layouts and advanced blocks may be simplified when converting formats.
 
 `src/services/vaultExport.ts` builds folder/vault ZIPs from the active workspace's non-deleted records. It preserves file folder paths and extracts data-URL media into `<document>_attachments/`. Remote media URLs remain remote. Empty folders are not independently emitted. Individual Markdown downloads do not create a companion-media ZIP; embedded data URLs and custom syntax may not render in other Markdown tools.
 

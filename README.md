@@ -59,7 +59,7 @@ Follow [Google OAuth setup](GOOGLE_OAUTH_SETUP.md). Browser auth uses `VITE_GOOG
 
 ## Storage and current limitations
 
-- Documents use Tiptap JSON internally. Local-folder documents and document downloads use `.md`; Drive document backups still use `.mybook.md`. Advanced blocks use Writin-specific syntax and may render differently in other Markdown editors.
+- Documents use Tiptap JSON internally. Local-folder documents, document downloads, and Drive document backups use `.md`. Legacy `.mybook.md` files remain supported on import. Advanced blocks use Writin-specific syntax and may render differently in other Markdown editors.
 - Local media can be extracted into `<document>_attachments` folders. ZIP export packages embedded media with document paths; externally hosted media is not downloaded into the archive.
 - **Spreadsheet caveat:** local-folder writes and vault ZIP exports currently put workbook text under an `.xlsx` filename. Use the spreadsheet editor's dedicated XLSX export for an actual Excel file. Importing arbitrary binary XLSX through the folder scanner is also incomplete.
 - Connecting Drive queues local items for cloud backup, but continued saving into the previously selected device folder is incomplete: file persistence is gated on local workspace mode. Do not assume the proposed combined local-folder/cloud workflow is finished.

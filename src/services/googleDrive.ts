@@ -468,7 +468,7 @@ async function runSingleFileBackup(fileId: string, task: () => Promise<DriveSetu
 }
 
 function safeMarkdownName(name: string) {
-  return `${name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').trim() || 'Untitled'}.mybook.md`
+  return `${name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').trim() || 'Untitled'}.md`
 }
 
 async function uploadMarkdownFile(title: string, content: string, parentId: string, fileId?: string | null) {

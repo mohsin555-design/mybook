@@ -4,7 +4,7 @@
 
 Google Drive provides remote copies and synchronization for the Google-connected workspace. This is not real-time collaborative editing. Implementation lives in `src/services/googleDrive.ts`, `src/hooks/useDriveBootstrap.ts`, `src/database/repositories.ts`, and the editor save/conflict flows.
 
-The visible root folder is **Writin**, with its ID stored under `google-drive.mybook-folder-id`. Documents upload as `.mybook.md`; spreadsheets use XLSX conversion. App folders mirror into Drive folders. Authentication uses the narrow `drive.file` permission; see [authentication](./auth-and-drive-tokens.md).
+The visible root folder is **Writin**, with its ID stored under `google-drive.mybook-folder-id`. Documents upload as `.md`; spreadsheets use XLSX conversion. App folders mirror into Drive folders. Authentication uses the narrow `drive.file` permission; see [authentication](./auth-and-drive-tokens.md).
 
 ## Folder-name migration
 
@@ -17,7 +17,7 @@ The visible root folder is **Writin**, with its ID stored under `google-drive.my
 
 Rename failure retains the ID and data and exposes a retryable setup error. Cloud setup pauses rather than creating a replacement; local-only use is independent. Bootstrap always invokes this migration, including when an ID is already cached, and retries on reconnection. Calls within a tab share setup; Web Locks serialize same-origin tabs where supported. Separate devices do not share that lock, so simultaneous first-time creation across devices still needs live acceptance testing.
 
-Keep `google-drive.mybook-folder-id`, database/auth keys, cookie names, Drive app-property keys and `.mybook.md` formats unchanged. This is a folder-name migration, not a data-format migration. Do not create a new OAuth project/client or change the deployed origin as part of branding; existing `drive.file` access and local browser storage must remain available.
+Keep `google-drive.mybook-folder-id`, database/auth keys, cookie names, and Drive app-property keys unchanged. Drive supports existing `.mybook.md` legacy backups on import while new backups upload as `.md`. Do not create a new OAuth project/client or change the deployed origin as part of branding; existing `drive.file` access and local browser storage must remain available.
 
 ## Connection and bootstrap
 

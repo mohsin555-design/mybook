@@ -1250,6 +1250,27 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           return true
         }
 
+        if (event.key === 'Backspace' && editorRef.current && editorRef.current.state.selection.empty) {
+          const { state } = editorRef.current
+          const { selection, doc } = state
+          if (selection.from === 1 && doc.firstChild && doc.firstChild.isTextblock && doc.firstChild.content.size === 0) {
+            if (doc.childCount > 1) {
+              event.preventDefault()
+              const firstNodeSize = doc.firstChild.nodeSize
+              const tr = state.tr.delete(0, firstNodeSize)
+              const newSelection = TextSelection.create(tr.doc, 1)
+              tr.setSelection(newSelection)
+              editorRef.current.view.dispatch(tr)
+              editorRef.current.view.focus()
+              return true
+            } else {
+              event.preventDefault()
+              editorRef.current.view.focus()
+              return true
+            }
+          }
+        }
+
         if (event.key === 'Escape' && pasteAsMenuRef.current) {
           event.preventDefault()
           closePasteAsMenu()

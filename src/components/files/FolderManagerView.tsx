@@ -81,7 +81,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
             meta={`Updated ${formatUpdatedAt(file.updatedAt)}`}
             type={file.type}
             syncStatus={file.syncStatus}
-            folderName={currentFolder?.name ?? 'MyBook'}
+            folderName={currentFolder?.name ?? 'Writin'}
             onOpen={() => navigate(`/${file.type}/${file.id}`)}
             action={
               <FileActionsMenu

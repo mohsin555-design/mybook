@@ -1,12 +1,12 @@
-# MyBook
+# Writin
 
 A local-first browser workspace for documents and spreadsheets, with account-free local vaults and optional Google Drive backup and synchronization.
 
 Read the [feature and module specifications](docs/README.md) for behavior, storage formats, implementation references and remaining work for each feature.
 
-## MyBook or Writin?
+## Product name and compatibility
 
-The current app name is **MyBook**: the login screen, browser title, PWA manifest, and Google Drive folder use it. The npm package is `mybook`. **Writin** remains in backup filenames and the share title, legacy `Writin/files` folder support, and planning documents. A complete rename to Writin has not happened.
+**Writin** is the app name, including its title, install name, icon and npm package. On connection, the app renames an existing MyBook Drive folder to **Writin** in place, preserving its ID and contents. A saved folder ID takes priority; a fresh browser searches both names before creating anything. Failed, incomplete or ambiguous discovery never creates a replacement. Legacy storage keys and file formats remain readable without a local-data migration. See [Drive folder migration](docs/google-drive-sync.md#folder-name-migration).
 
 ## Features present in the code
 
@@ -20,7 +20,7 @@ The current app name is **MyBook**: the login screen, browser title, PWA manifes
 | Spreadsheets | Univer workbook grid, formulas, sheets, toolbar and zoom; dedicated XLSX import/export |
 | Local saving | IndexedDB autosave; document recovery drafts; local Markdown files and companion attachments; workspace scanning and legacy-layout discovery |
 | Import and backup | DOCX and Markdown document import/export; JSON workspace backup/restore; folder and vault ZIP downloads |
-| Google Drive | Browser or backend OAuth, token renewal/reconnect, `MyBook` backup folder, queued file/folder operations, startup/reconnect imports, conflict handling and stored versions |
+| Google Drive | Browser or backend OAuth, token renewal/reconnect, `Writin` backup folder, queued file/folder operations, startup/reconnect imports, conflict handling and stored versions |
 | App experience | Light/dark themes, responsive navigation, PWA/offline configuration, settings and diagnostics; Storybook and design-system page |
 
 These are source-reviewed capabilities, not a claim that every browser, format round trip, or live cloud flow has passed acceptance testing. AI summaries, user mentions, and a references/citations workflow are not implemented features.
@@ -59,7 +59,7 @@ Follow [Google OAuth setup](GOOGLE_OAUTH_SETUP.md). Browser auth uses `VITE_GOOG
 
 ## Storage and current limitations
 
-- Documents use Tiptap JSON internally. Local-folder documents and document downloads use `.md`; Drive document backups still use `.mybook.md`. Advanced blocks use MyBook-specific syntax and may render differently in other Markdown editors.
+- Documents use Tiptap JSON internally. Local-folder documents, document downloads, and Drive document backups use `.md`. Legacy `.mybook.md` files remain supported on import. Advanced blocks use Writin-specific syntax and may render differently in other Markdown editors.
 - Local media can be extracted into `<document>_attachments` folders. ZIP export packages embedded media with document paths; externally hosted media is not downloaded into the archive.
 - **Spreadsheet caveat:** local-folder writes and vault ZIP exports currently put workbook text under an `.xlsx` filename. Use the spreadsheet editor's dedicated XLSX export for an actual Excel file. Importing arbitrary binary XLSX through the folder scanner is also incomplete.
 - Connecting Drive queues local items for cloud backup, but continued saving into the previously selected device folder is incomplete: file persistence is gated on local workspace mode. Do not assume the proposed combined local-folder/cloud workflow is finished.

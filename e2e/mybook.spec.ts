@@ -6,8 +6,15 @@ async function signInForTest(page: Page) {
   })
   await page.route('https://www.googleapis.com/**', async (route) => {
     const request = route.request()
-    if (request.method() === 'GET') await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ files: [] }) })
-    else await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: `drive-${Date.now()}`, name: 'MyBook', webViewLink: 'https://drive.google.com/test' }) })
+    const root = { id: 'test-drive-root', name: 'Writin', mimeType: 'application/vnd.google-apps.folder', trashed: false }
+    if (request.method() === 'GET') {
+      const data = new URL(request.url()).pathname.endsWith('/test-drive-root') ? root : { files: [] }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+    } else {
+      const isRootCreation = request.postData()?.includes('"name":"Writin"')
+      const data = isRootCreation ? root : { id: `drive-${Date.now()}`, name: 'Writin', webViewLink: 'https://drive.google.com/test' }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) })
+    }
   })
   await page.goto('/home')
 }
@@ -21,9 +28,18 @@ test('a returning signed-in user goes directly to home', async ({ page }) => {
 })
 
 test('login page provides Google sign-in without calling Drive', async ({ page }) => {
+  const driveRequests: string[] = []
+  page.on('request', (request) => {
+    if (request.url().startsWith('https://www.googleapis.com/drive/')) driveRequests.push(request.url())
+  })
   await page.goto('/login')
-  await expect(page.getByRole('heading', { name: 'Welcome to MyBook' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /continue with google/i })).toBeVisible()
+  await expect(page).toHaveTitle('Writin')
+  await expect(page.getByRole('heading', { name: 'Writin', exact: true })).toBeVisible()
+  await expect(page.locator('link[rel=icon]')).toHaveAttribute('href', '/pwa-192.svg')
+  await expect(page.locator('img[src="/pwa-192.svg"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: /continue with google|sign in with google/i })).toBeVisible()
+  expect(driveRequests).toEqual([])
+  await test.info().attach('Writin login', { body: await page.screenshot(), contentType: 'image/png' })
 })
 
 test('document create, local save, backup, home open, rename, and delete', async ({ page }) => {

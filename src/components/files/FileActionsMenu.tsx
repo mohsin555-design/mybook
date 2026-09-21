@@ -37,7 +37,7 @@ export function FileActionsMenu({ fileName, folders, currentFolderId, isFavorite
           <Dropdown.Item id="rename"><PencilSquareIcon aria-hidden="true" className="size-5" />Rename</Dropdown.Item>
           <Dropdown.Item id="duplicate"><DocumentDuplicateIcon aria-hidden="true" className="size-5" />Duplicate</Dropdown.Item>
           {onToggleFavorite ? <Dropdown.Item id="favorite" aria-label={`${isFavorite ? 'Remove from' : 'Add to'} favorites`}><FavoriteIcon aria-hidden="true" className="size-5" />{isFavorite ? 'Remove from favorites' : 'Add to favorites'}</Dropdown.Item> : null}
-          {currentFolderId ? <Dropdown.Item id="root"><FolderArrowDownIcon aria-hidden="true" className="size-5" />Move to MyBook root</Dropdown.Item> : null}
+          {currentFolderId ? <Dropdown.Item id="root"><FolderArrowDownIcon aria-hidden="true" className="size-5" />Move to Writin root</Dropdown.Item> : null}
           {folders.filter((folder) => folder.id !== currentFolderId).map((folder) => <Dropdown.Item key={folder.id} id={`move:${folder.id}`}><FolderArrowDownIcon aria-hidden="true" className="size-5" />Move to {folder.name}</Dropdown.Item>)}
           <Dropdown.Item id="delete" variant="danger"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-5" />Move to Trash</Dropdown.Item>
         </Dropdown.Menu>

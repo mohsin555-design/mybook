@@ -89,6 +89,16 @@ function mockEmptyFileFilter() {
   } as never)
 }
 
+function stubDriveFetch(fetchMock: (url: string, init?: RequestInit) => unknown) {
+  vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+    const match = /\/files\/(mybook-root|stored-folder)\?fields=id,name,mimeType,trashed$/.exec(String(url))
+    if (match && !init?.method) {
+      return Promise.resolve({ ok: true, json: async () => ({ id: match[1], name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }) })
+    }
+    return fetchMock(url, init)
+  }))
+}
+
 describe('googleDrive helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -106,8 +116,8 @@ describe('googleDrive helpers', () => {
   })
 
   it('lists visible folders by name', async () => {
-    const json = vi.fn().mockResolvedValue({ files: [{ id: '1', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json }))
+    const json = vi.fn().mockResolvedValue({ files: [{ id: '1', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] })
+    stubDriveFetch(vi.fn().mockResolvedValue({ ok: true, json }))
 
     const folders = await listVisibleFoldersByName('MyBook')
 
@@ -115,12 +125,12 @@ describe('googleDrive helpers', () => {
     expect(folders[0]?.id).toBe('1')
   })
 
-  it('creates the MyBook folder when one is not stored or found', async () => {
+  it('creates the Writin folder when one is not stored or found', async () => {
     mockedSettings.get.mockResolvedValue({ success: true, data: { key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' } })
     mockedSettings.put.mockResolvedValue('google-drive.mybook-folder-id')
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'folder-1', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }) }))
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'folder-1', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }) }))
 
     const result = await ensureMyBookDriveFolder()
 
@@ -132,15 +142,17 @@ describe('googleDrive helpers', () => {
     expect(mockedSettings.put).toHaveBeenCalled()
   })
 
-  it('reuses a stored MyBook folder id without calling Drive', async () => {
+  it('validates and reuses a stored folder id', async () => {
     mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'stored-folder', updatedAt: '2026-07-24T00:00:00.000Z' })
+    stubDriveFetch(vi.fn())
     const result = await ensureMyBookDriveFolder()
 
-    expect(result).toEqual({ success: true, folderId: 'stored-folder', folderName: 'MyBook', created: false })
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/files/stored-folder?'), expect.any(Object))
+    expect(result).toEqual({ success: true, folderId: 'stored-folder', folderName: 'Writin', created: false })
   })
 
   it('returns a friendly offline error when the network is unavailable', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+    stubDriveFetch(vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
     vi.stubGlobal('navigator', { onLine: false })
 
     await expect(createVisibleFolder('MyBook')).rejects.toThrow(/offline/i)
@@ -148,7 +160,7 @@ describe('googleDrive helpers', () => {
 
   it('permanently deletes a Drive item with files.delete', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json: vi.fn() })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await expect(permanentlyDeleteDriveFile('drive-file')).resolves.toBeUndefined()
 
@@ -159,13 +171,13 @@ describe('googleDrive helpers', () => {
   })
 
   it('treats an already-missing Drive item as permanent-delete success', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, json: vi.fn().mockResolvedValue({ error: { message: 'File not found' } }) }))
+    stubDriveFetch(vi.fn().mockResolvedValue({ ok: false, status: 404, json: vi.fn().mockResolvedValue({ error: { message: 'File not found' } }) }))
 
     await expect(permanentlyDeleteDriveFile('missing-drive-file')).resolves.toBeUndefined()
   })
 
   it('keeps permission failures retryable for permanent Drive delete callers', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 403, json: vi.fn().mockResolvedValue({ error: { message: 'insufficient permissions' } }) }))
+    stubDriveFetch(vi.fn().mockResolvedValue({ ok: false, status: 403, json: vi.fn().mockResolvedValue({ error: { message: 'insufficient permissions' } }) }))
 
     await expect(permanentlyDeleteDriveFile('drive-file')).rejects.toThrow('insufficient permissions')
   })
@@ -184,7 +196,7 @@ describe('googleDrive helpers', () => {
       }],
     })
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     const files = await listTrashedMyBookDriveFiles('drive-folder')
 
@@ -227,7 +239,7 @@ describe('googleDrive helpers', () => {
         },
       ],
     })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json }))
+    stubDriveFetch(vi.fn().mockResolvedValue({ ok: true, json }))
 
     const folders = await listTrashedMyBookDriveFolders('mybook-root')
 
@@ -320,7 +332,7 @@ describe('googleDrive helpers', () => {
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'trashed-doc', name: 'Deleted.mybook.md', mimeType: 'text/markdown', parents: ['mybook-root'], modifiedTime: '2026-09-05T00:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\nmybook_version: 1\ntype: document\ndocument_id: "doc-deleted"\ntitle: "Deleted"\n---\n\nDeleted content') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await importDriveFilesToLocal()
 
@@ -335,8 +347,8 @@ describe('googleDrive helpers', () => {
     mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
     mockedFolders.toArray.mockResolvedValue([])
     mockedFiles.toArray.mockResolvedValue([])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'doc-1', name: 'Drive Note', mimeType: 'application/x-mybook-document' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello"}]}]}') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
@@ -367,8 +379,8 @@ describe('googleDrive helpers', () => {
       syncStatus: 'pending',
       isDeleted: false,
     }])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'doc-1', name: 'Drive Note.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\ntitle: Drive Note\n---\n\nHello') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
@@ -403,10 +415,10 @@ describe('googleDrive helpers', () => {
       isDeleted: false,
     }])
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'doc-1', name: 'Drive Note.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T09:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await importDriveFilesToLocal()
 
@@ -434,10 +446,10 @@ describe('googleDrive helpers', () => {
       isDeleted: false,
     }])
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-sheet', name: 'Budget.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', modifiedTime: '2026-08-22T09:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await importDriveFilesToLocal()
 
@@ -464,11 +476,11 @@ describe('googleDrive helpers', () => {
       isDeleted: false,
     }])
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'doc-1', name: 'Drive Note.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\nmybook_version: 1\ntype: document\ntitle: "Drive Note"\n---\n\nNew content') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await importDriveFilesToLocal()
 
@@ -498,11 +510,11 @@ describe('googleDrive helpers', () => {
       isDeleted: false,
     }])
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-sheet', name: 'Budget.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, blob: vi.fn().mockResolvedValue(new Blob(['xlsx'])) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await importDriveFilesToLocal()
 
@@ -543,7 +555,7 @@ describe('googleDrive helpers', () => {
       updatedAt: '2026-08-22T12:00:00.000Z',
       errorMessage: status === 'failed' ? 'temporary failure' : null,
     }])
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-doc', name: 'Project.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T13:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
 
@@ -584,7 +596,7 @@ describe('googleDrive helpers', () => {
       isDeleted: false,
     }])
     mockUnresolvedSyncQueue([{ id: 'completed', entityId: 'file-1', entityType: 'file', operation: 'update', status: 'completed', retryCount: 0, createdAt: '', updatedAt: '', errorMessage: null }])
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-doc', name: 'Project.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T13:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\nmybook_version: 1\ntype: document\ntitle: "Project"\n---\n\nDrive') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
@@ -618,7 +630,7 @@ describe('googleDrive helpers', () => {
       isDeleted: true,
     }])
     mockUnresolvedSyncQueue([{ id: 'queue-delete', entityId: 'file-1', entityType: 'file', operation: 'delete', status: 'pending', retryCount: 0, createdAt: '', updatedAt: '', errorMessage: null }])
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-doc', name: 'Deleted Note.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T13:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
 
@@ -652,7 +664,7 @@ describe('googleDrive helpers', () => {
       isDeleted: false,
     }])
     mockUnresolvedSyncQueue([{ id: 'queue-file', entityId: 'file-1', entityType: 'file', operation: 'update', status: 'pending', retryCount: 0, createdAt: '', updatedAt: '', errorMessage: null }])
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
 
@@ -675,7 +687,7 @@ describe('googleDrive helpers', () => {
       isDeleted: false,
     }])
     mockUnresolvedSyncQueue([{ id: 'queue-folder', entityId: 'folder-1', entityType: 'folder', operation: 'update', status: 'pending', retryCount: 0, createdAt: '', updatedAt: '', errorMessage: null }])
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-folder', name: 'Project', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
 
@@ -700,7 +712,7 @@ describe('googleDrive helpers', () => {
       updatedAt: '2026-08-22T12:00:00.000Z',
       isDeleted: false,
     }])
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-folder', name: 'Project', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
 
@@ -728,7 +740,7 @@ describe('googleDrive helpers', () => {
       isDeleted: true,
     }])
     mockUnresolvedSyncQueue([{ id: 'queue-folder-delete', entityId: 'folder-1', entityType: 'folder', operation: 'delete', status: 'failed', retryCount: 1, createdAt: '', updatedAt: '', errorMessage: 'temporary failure' }])
-    vi.stubGlobal('fetch', vi.fn()
+    stubDriveFetch(vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-folder', name: 'Archive', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
 
@@ -741,7 +753,7 @@ describe('googleDrive helpers', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ parents: ['old-parent'] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'file-1', name: 'Notes.docx', parents: ['new-parent'] }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await updateDriveFile('file-1', { parentId: 'new-parent' })
 
@@ -777,8 +789,8 @@ describe('googleDrive helpers', () => {
     })
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ parents: ['mybook-root'] }) })
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Notes.mybook.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
-    vi.stubGlobal('fetch', fetchMock)
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Notes.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
+    stubDriveFetch(fetchMock)
 
     const result = await backupDocumentToDrive({
       fileId: 'file-1',
@@ -856,8 +868,8 @@ describe('googleDrive helpers', () => {
       syncStatus: 'pending',
       isDeleted: false,
     })
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Database Note.mybook.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Database Note.md', modifiedTime: '2026-08-29T10:00:00.000Z' }) })
+    stubDriveFetch(fetchMock)
 
     const result = await backupDocumentToDrive({
       fileId: 'file-1',
@@ -920,9 +932,9 @@ describe('googleDrive helpers', () => {
       .mockResolvedValueOnce(beforeUpload)
       .mockResolvedValueOnce(beforeUpload)
       .mockResolvedValueOnce(changedDuringUpload)
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    stubDriveFetch(vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Race Note.mybook.md', modifiedTime: '2026-08-29T10:00:00.000Z' }),
+      json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Race Note.md', modifiedTime: '2026-08-29T10:00:00.000Z' }),
     }))
 
     const result = await backupDocumentToDrive({
@@ -947,8 +959,8 @@ describe('googleDrive helpers', () => {
     mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
     mockedFolders.toArray.mockResolvedValue([])
     mockedFiles.toArray.mockResolvedValue([])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [
         { id: 'drive-a', name: 'Document A.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' },
         { id: 'drive-b', name: 'Document B.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' },
@@ -975,8 +987,8 @@ describe('googleDrive helpers', () => {
     mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
     mockedFolders.toArray.mockResolvedValue([])
     mockedFiles.toArray.mockResolvedValue([])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [
         { id: 'drive-a', name: 'Document A.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' },
         { id: 'drive-b', name: 'Document B.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' },
@@ -1033,8 +1045,8 @@ describe('googleDrive helpers', () => {
       syncStatus: 'pending',
       isDeleted: false,
     }])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-other', name: 'Different.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\nmybook_version: 1\ntype: document\ndocument_id: "doc-a"\ntitle: "Different"\n---\n\nDifferent') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
@@ -1064,8 +1076,8 @@ describe('googleDrive helpers', () => {
       syncStatus: 'backed-up',
       isDeleted: false,
     }])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-doc', name: 'Existing.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\nmybook_version: 1\ntype: document\ndocument_id: "doc-from-file"\ntitle: "Existing"\n---\n\nUpdated') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
@@ -1083,8 +1095,8 @@ describe('googleDrive helpers', () => {
     mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
     mockedFolders.toArray.mockResolvedValue([])
     mockedFiles.toArray.mockResolvedValue([])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-legacy', name: 'Legacy.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\nmybook_version: 1\ntype: document\ntitle: "Legacy"\n---\n\nLegacy body') })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
@@ -1155,8 +1167,8 @@ describe('googleDrive helpers', () => {
     mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
     mockedFolders.toArray.mockResolvedValue([])
     mockedFiles.toArray.mockResolvedValue([])
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'MyBook', mimeType: 'application/vnd.google-apps.folder' }] }) })
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'doc-1', name: 'Database Note.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z' }] }) })
       .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue(markdown) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
@@ -1216,11 +1228,47 @@ describe('googleDrive helpers', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ parents: ['old-parent'] }) })
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ id: 'folder-1', name: 'Projects', mimeType: 'application/vnd.google-apps.folder' }) })
-    vi.stubGlobal('fetch', fetchMock)
+    stubDriveFetch(fetchMock)
 
     await updateDriveFolder('folder-1', { parentId: 'mybook-root' })
 
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('addParents=mybook-root')
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('removeParents=old-parent')
   })
+
+  it('backs up documents using .md extension while safely stripping legacy .mybook.md', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: 'mybook-root', updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFiles.get.mockResolvedValue({
+      id: 'file-1',
+      name: 'Legacy.mybook.md',
+      type: 'document',
+      folderId: null,
+      content: '{"type":"doc","content":[{"type":"paragraph"}]}',
+      mimeType: 'application/x-mybook-document',
+      createdAt: '2026-08-29T00:00:00.000Z',
+      updatedAt: '2026-08-29T00:00:00.000Z',
+      lastSyncedAt: null,
+      syncStatus: 'pending',
+      isDeleted: false,
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ id: 'drive-doc', name: 'Legacy.md', modifiedTime: '2026-08-29T10:00:00.000Z' }),
+    })
+    stubDriveFetch(fetchMock)
+
+    const result = await backupDocumentToDrive({
+      fileId: 'file-1',
+      title: 'Legacy.mybook.md',
+      content: '{"type":"doc","content":[{"type":"paragraph"}]}',
+      folderId: null,
+    })
+
+    expect(result.success).toBe(true)
+    const uploadBody = fetchMock.mock.calls[0]?.[1]?.body as Blob
+    const uploadText = await uploadBody.text()
+    expect(uploadText).toContain('"name":"Legacy.md"')
+    expect(uploadText).not.toContain('"name":"Legacy.mybook.md"')
+  })
 })
+

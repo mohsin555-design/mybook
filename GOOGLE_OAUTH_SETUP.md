@@ -1,6 +1,6 @@
 # Google OAuth Setup
 
-Use these settings to connect MyBook to Google Identity Services and Drive with the narrow `drive.file` scope.
+Use these settings to connect Writin to Google Identity Services and Drive with the narrow `drive.file` scope.
 
 ## 1. Google Cloud project
 
@@ -11,7 +11,7 @@ Use these settings to connect MyBook to Google Identity Services and Drive with 
 ## 2. OAuth consent screen
 
 1. Open **APIs & Services > OAuth consent screen**.
-2. Set the application name, support email, and branding.
+2. Set the application name to **Writin**, and update the support email/logo as needed. For an existing deployment, keep the same Google project and OAuth client IDs so existing Drive grants remain usable.
 3. Add the scope:
    - `https://www.googleapis.com/auth/drive.file`
 4. Keep the app in **Testing** while you validate it.
@@ -20,7 +20,7 @@ Use these settings to connect MyBook to Google Identity Services and Drive with 
 
 ## 3. Authorized origins
 
-Add every origin where MyBook runs, for example:
+Add every origin where Writin runs, for example:
 
 - `http://localhost:5173`
 - your production app origin
@@ -77,7 +77,7 @@ On Razor/cPanel Node.js hosting, create a Node app that uses `server/` as the ap
 
 ## 7. Notes
 
-- MyBook requests `drive.file` access so it can create and manage MyBook backups in Drive without broad access to the user's whole Drive.
+- Writin requests `drive.file` access so it can create and manage Writin backups in Drive without broad access to the user's whole Drive.
 - Any Google account permitted by the OAuth consent-screen publishing status can sign in.
 - OAuth client secrets must stay out of frontend code.
 - Browser mode stores the auth session in browser storage and clears it on logout.

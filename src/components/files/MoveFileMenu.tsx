@@ -19,7 +19,7 @@ export function MoveFileMenu({ fileName, folders, currentFolderId, onMove }: Mov
       <Dropdown.Popover placement="bottom end">
         <Dropdown.Menu aria-label={`Move ${fileName} to`} onAction={(key) => onMove(key === 'root' ? null : String(key))}>
           {currentFolderId !== null ? (
-            <Dropdown.Item id="root"><ArrowUturnLeftIcon aria-hidden="true" className="size-5" />MyBook root</Dropdown.Item>
+            <Dropdown.Item id="root"><ArrowUturnLeftIcon aria-hidden="true" className="size-5" />Writin root</Dropdown.Item>
           ) : null}
           {folders.filter((folder) => folder.id !== currentFolderId).map((folder) => (
             <Dropdown.Item key={folder.id} id={folder.id}>{folder.name}</Dropdown.Item>

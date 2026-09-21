@@ -1,6 +1,6 @@
-# MyBook Node Auth Server
+# Writin Node Auth Server
 
-Use this folder as the Razor/cPanel Node.js application root.
+Use this folder as the Razor/cPanel Node.js application root. Existing `mybook` deployment paths below match the current configuration; documentation branding does not rename those directories.
 
 Recommended cPanel fields:
 

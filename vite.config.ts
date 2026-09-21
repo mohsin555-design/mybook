@@ -27,9 +27,9 @@ export default defineConfig({
     registerType: 'prompt',
     includeAssets: ['pwa-192.svg', 'pwa-512.svg', 'pwa-maskable.svg'],
     manifest: {
-      name: 'MyBook',
-      short_name: 'MyBook',
-      description: 'MyBook file and document workspace',
+      name: 'Writin',
+      short_name: 'Writin',
+      description: 'Writin file and document workspace',
       theme_color: '#f7f4ee',
       background_color: '#f7f4ee',
       display: 'standalone',

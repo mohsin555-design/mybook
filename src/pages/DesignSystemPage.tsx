@@ -27,7 +27,7 @@ export function DesignSystemPage() {
     <div className="mx-auto max-w-4xl space-y-10 px-4">
       <PageHeader
         eyebrow="Temporary review page"
-        title="MyBook design system"
+        title="Writin design system"
         description="Reusable patterns for a quiet, reading-focused workspace."
         actions={<AppButton variant="primary"><PlusIcon className="size-5" />New file</AppButton>}
       />

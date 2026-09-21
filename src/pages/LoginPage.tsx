@@ -1,5 +1,4 @@
 import {
-  BookOpenIcon,
   ExclamationCircleIcon,
   FolderOpenIcon,
   ShieldCheckIcon,
@@ -151,10 +150,10 @@ export function LoginPage() {
     <main className="flex h-full min-h-0 items-center justify-center overflow-y-auto overscroll-contain bg-background px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-[calc(2.5rem+env(safe-area-inset-top))] text-foreground sm:px-6">
       <section className="w-full max-w-sm" aria-labelledby="login-title">
         <div className="mb-6 flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <BookOpenIcon aria-hidden="true" className="size-7" />
+          <img src="/pwa-192.svg" alt="" className="size-12 rounded-xl" />
         </div>
         <h1 id="login-title" className="text-2xl font-semibold leading-8">
-          MyBook
+          Writin
         </h1>
         <p className="mt-2 text-base leading-7 text-muted-foreground">
           Your private documents and spreadsheets, on this device or backed up to your Drive.
@@ -192,7 +191,7 @@ export function LoginPage() {
         {configError ? <p role="alert" className="mt-3 text-center text-sm text-yellow-700">Google sign-in is not configured.</p> : null}
 
         <p aria-live="polite" className="sr-only">
-          {isLoading ? 'Signing in to MyBook' : error ?? queryError ?? ''}
+          {isLoading ? 'Signing in to Writin' : error ?? queryError ?? ''}
         </p>
 
         <div className="mt-6 flex items-start gap-3 border-t border-[var(--app-border)] pt-5">

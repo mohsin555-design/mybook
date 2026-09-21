@@ -20,7 +20,7 @@ The editor registers callouts, toggles, image/video/audio blocks, file attachmen
 
 ## Import/export and sync
 
-The editor imports `.docx`, `.md` and `.mybook.md`; downloads `.docx` or `.md`. DOCX uses Mammoth for import and can simplify unsupported content. Markdown downloads preserve MyBook metadata and custom blocks. Drive document copies still use `.mybook.md`.
+The editor imports `.docx`, `.md` and legacy `.mybook.md`; downloads `.docx` or `.md`. DOCX uses Mammoth for import and can simplify unsupported content. Markdown downloads preserve Writin metadata and custom blocks. Drive document backups also use `.md`.
 
 Local saves and cloud upload are different stages. Connected workspaces can import remote changes during bootstrap/reconnect, with conflict/version handling in the Drive services. See [Drive sync](./google-drive-sync.md), [local vaults](./local-vaults.md) and [backup/export](./backup-and-export.md).
 

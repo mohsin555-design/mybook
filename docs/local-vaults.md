@@ -16,7 +16,7 @@ Implementation: `src/services/localWorkspace.ts`, `src/stores/useWorkspaceStore.
 
 ## Local files and attachments
 
-The selected folder itself is the root for new writes. Folder paths are resolved from database parent relationships. Documents are written as `<name>.md` with MyBook metadata and advanced-block syntax. Embedded image, audio, video and attachment data can be extracted into `<name>_attachments/`; Markdown uses relative media paths. Loading hydrates recognized companion attachments back into editor data URLs.
+The selected folder itself is the root for new writes. Folder paths are resolved from database parent relationships. Documents are written as `<name>.md` with Writin metadata and advanced-block syntax. Embedded image, audio, video and attachment data can be extracted into `<name>_attachments/`; Markdown uses relative media paths. Loading hydrates recognized companion attachments back into editor data URLs.
 
 Names are sanitized for filesystem use. New empty workspaces do not need an app-created `Writin/files` directory. Spreadsheet disk handling has a [format limitation](./spreadsheet-editor.md#local-folder-and-zip-limitation).
 

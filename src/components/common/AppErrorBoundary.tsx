@@ -19,6 +19,6 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.error) return this.props.children
-    return <main className="mx-auto flex min-h-dvh max-w-2xl items-center px-4 py-8"><ErrorState title="MyBook could not display this screen" message="Your local files are still stored in the browser. Reload the app, and if the problem continues, use Settings to review sync diagnostics." action={<AppButton variant="primary" onPress={() => window.location.reload()}>Reload MyBook</AppButton>} /></main>
+    return <main className="mx-auto flex min-h-dvh max-w-2xl items-center px-4 py-8"><ErrorState title="Writin could not display this screen" message="Your local files are still stored in the browser. Reload the app, and if the problem continues, use Settings to review sync diagnostics." action={<AppButton variant="primary" onPress={() => window.location.reload()}>Reload Writin</AppButton>} /></main>
   }
 }

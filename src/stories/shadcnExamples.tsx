@@ -388,7 +388,7 @@ export function AvatarExample() {
   return (
     <div className="flex flex-wrap items-center gap-6">
       <Avatar>
-        <AvatarImage src="/pwa-192.svg" alt="MyBook workspace" />
+        <AvatarImage src="/pwa-192.svg" alt="Writin workspace" />
         <AvatarFallback>MB</AvatarFallback>
         <AvatarBadge />
       </Avatar>
@@ -417,7 +417,7 @@ export function BreadcrumbExample() {
   return (
     <Breadcrumb>
       <BreadcrumbList>
-        <BreadcrumbItem><BreadcrumbLink href="#">MyBook</BreadcrumbLink></BreadcrumbItem>
+        <BreadcrumbItem><BreadcrumbLink href="#">Writin</BreadcrumbLink></BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem><BreadcrumbLink href="#">Projects</BreadcrumbLink></BreadcrumbItem>
         <BreadcrumbSeparator />
@@ -624,7 +624,7 @@ export function DataTableExample() {
   return (
     <div className="max-w-3xl rounded-lg border border-[var(--app-border)]">
       <Table>
-        <TableCaption>Recent MyBook documents.</TableCaption>
+        <TableCaption>Recent Writin documents.</TableCaption>
         <TableHeader>
           <TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Status</TableHead></TableRow>
         </TableHeader>
@@ -758,7 +758,7 @@ export function HoverCardExample() {
     <HoverCard>
       <HoverCardTrigger render={<Button variant="link" />}>Hover workspace</HoverCardTrigger>
       <HoverCardContent className="w-72">
-        <p className="text-sm font-medium">MyBook workspace</p>
+        <p className="text-sm font-medium">Writin workspace</p>
         <p className="mt-1 text-sm text-muted-foreground">A quiet place for local and Drive-backed files.</p>
       </HoverCardContent>
     </HoverCard>
@@ -875,7 +875,7 @@ export function MessageExample() {
       <Message>
         <MessageAvatar><Avatar><AvatarFallback>MB</AvatarFallback></Avatar></MessageAvatar>
         <MessageContent>
-          <MessageHeader>MyBook</MessageHeader>
+          <MessageHeader>Writin</MessageHeader>
           <Bubble variant="muted"><BubbleContent>Your document is ready.</BubbleContent></Bubble>
           <MessageFooter>Just now</MessageFooter>
         </MessageContent>

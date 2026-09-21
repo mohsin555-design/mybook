@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { backfillLocalFoldersToDrive, ensureMyBookDriveFolder, getDriveFolderStatus, importDriveFilesToLocal, importDriveFoldersToLocal } from '../services/googleDrive'
+import { backfillLocalFoldersToDrive, ensureMyBookDriveFolder, importDriveFilesToLocal, importDriveFoldersToLocal } from '../services/googleDrive'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { folderRepository, processPendingDriveFolderSync, queueLocalItemsForDriveBackup, settingsRepository } from '../database/repositories'
@@ -32,16 +32,16 @@ export function useDriveBootstrap() {
     const run = async () => {
       setIsPreparing(true)
       try {
-        const existingFolderId = await getDriveFolderStatus()
-        const result = existingFolderId ? { success: true as const, folderId: existingFolderId, folderName: 'MyBook', created: false } : await ensureMyBookDriveFolder()
+        const result = await ensureMyBookDriveFolder()
         if (!cancelled) {
           if (result.success) setFolderId(result.folderId)
           setStatusMessage(result.success
             ? result.created
-              ? 'MyBook Drive folder created.'
-              : 'MyBook Drive folder connected.'
+              ? 'Writin Drive folder created.'
+              : 'Writin Drive folder connected.'
             : result.error)
         }
+        if (!result.success) return
         await processPendingDriveFolderSync()
         try {
           await importDriveBackupsToLocal()
@@ -62,13 +62,15 @@ export function useDriveBootstrap() {
         }
         await queueLocalItemsForDriveBackup()
         await processPendingDriveFolderSync()
+      } catch (error) {
+        if (!cancelled) setStatusMessage(error instanceof Error ? error.message : 'Sync paused. Please retry.')
       } finally {
         if (!cancelled) setIsPreparing(false)
       }
     }
     void run()
     const onlineHandler = () => {
-      void processPendingDriveFolderSync().then(() => importDriveBackupsToLocal()).catch(() => undefined)
+      void run()
     }
     window.addEventListener('online', onlineHandler)
     return () => {

@@ -57,7 +57,7 @@ async function fetchPage(raw: string, signal: AbortSignal, redirects = 0): Promi
       signal,
       family: 4,
       lookup: (_hostname, _options, callback) => callback(null, addresses[0].address, 4),
-      headers: { Accept: 'text/html', 'User-Agent': 'MyBook-LinkPreview/1.0' },
+      headers: { Accept: 'text/html', 'User-Agent': 'Writin-LinkPreview/1.0' },
     }, (response) => {
       const status = response.statusCode ?? 500
       if (status >= 300 && status < 400 && response.headers.location) {

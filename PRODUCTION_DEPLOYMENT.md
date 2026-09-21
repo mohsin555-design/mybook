@@ -1,6 +1,6 @@
-# MyBook production deployment
+# Writin production deployment
 
-MyBook can run as a client-only Vite application or with Node.js backend auth on Razor/cPanel hosting. Editable content is stored in IndexedDB and optional backups use the user's Google Drive file-level permission.
+Writin can run as a client-only Vite application or with Node.js backend auth on Razor/cPanel hosting. Editable content is stored in IndexedDB and optional backups use the user's Google Drive file-level permission.
 
 ## Environment
 
@@ -22,6 +22,8 @@ Required only when `VITE_GOOGLE_AUTH_MODE=server`:
 - `GOOGLE_REDIRECT_URI`: `https://your-production-domain.example/api/auth/google/callback`
 
 ## Razor/cPanel Static App
+
+Existing deployment paths and configured origins below are retained as technical examples. Writin branding does not change hosting paths, OAuth origins, storage keys or OAuth credentials. The package name is now `writin`; existing MyBook Drive folders are renamed in place without changing IDs.
 
 The `.cpanel.yml` deployment copies `dist/.` to `/home/celztxeo/mybook`. This remains the static frontend folder.
 
@@ -52,7 +54,7 @@ If Razor is serving only static files and Node.js is disabled, use `VITE_GOOGLE_
 
 ## Domain and verification
 
-Use the same exact HTTPS origin in `VITE_PRODUCTION_ORIGIN`, the OAuth JavaScript origins list, and the browser address bar. After deployment, verify that Google login completes, the visible MyBook folder is reused, and DOCX/XLSX files open from Drive.
+Use the same exact HTTPS origin in `VITE_PRODUCTION_ORIGIN`, the OAuth JavaScript origins list, and the browser address bar. After deployment, verify that Google login completes, the existing Drive folder is renamed to `Writin` with the same ID and contents, and DOCX/XLSX files open from Drive.
 
 ## Release checklist
 
@@ -62,4 +64,10 @@ Use the same exact HTTPS origin in `VITE_PRODUCTION_ORIGIN`, the OAuth JavaScrip
 - Test desktop Chrome and Edge, Android Chrome, and iPhone Safari.
 - Confirm Settings shows version and diagnostics.
 - Confirm Drive files remain visible and openable.
-- Do not enable error monitoring that captures document content or access tokens. MyBook currently uses development-only sanitized console diagnostics instead.
+- Do not enable error monitoring that captures document content or access tokens. Writin currently uses development-only sanitized console diagnostics instead.
+
+## Writin branding rollout
+
+Keep the same production origin and Google OAuth project/client so existing browser storage and Drive grants remain usable. Update the OAuth consent-screen application name/logo separately to Writin. Reopen installed PWAs to pick up updates; launcher name/icon refresh timing depends on the browser/device.
+
+Verify a populated legacy Drive folder retains its ID after migration, no second folder is created, and a fresh browser finds Writin. Ambiguous or inaccessible workspaces must show a retryable error without creating replacement folders. Do not label the migration live-verified until these checks pass with a real account.

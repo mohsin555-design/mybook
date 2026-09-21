@@ -119,7 +119,7 @@ export const RadiusAndTypography: Story = {
           <p className="text-xs text-muted-foreground">--font-sans</p>
           <p className="mt-1 text-2xl font-semibold">{cssVar('font-sans')}</p>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            MyBook uses the same global font stack in Storybook as the production app.
+            Writin uses the same global font stack in Storybook as the production app.
           </p>
         </div>
       </section>

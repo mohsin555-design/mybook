@@ -8,7 +8,8 @@ const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
 const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
 const GOOGLE_SHEET_MIME = 'application/vnd.google-apps.spreadsheet'
 const MYBOOK_MARKDOWN_MIME = 'text/markdown'
-const MYBOOK_FOLDER_NAME = 'MyBook'
+const WRITIN_FOLDER_NAME = 'Writin'
+// Keep the existing setting key so installed users retain their Drive root ID.
 const MYBOOK_FOLDER_KEY = 'google-drive.mybook-folder-id'
 
 export interface DriveFolder {
@@ -467,7 +468,7 @@ async function runSingleFileBackup(fileId: string, task: () => Promise<DriveSetu
 }
 
 function safeMarkdownName(name: string) {
-  return `${name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').trim() || 'Untitled'}.mybook.md`
+  return `${name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').trim() || 'Untitled'}.md`
 }
 
 async function uploadMarkdownFile(title: string, content: string, parentId: string, fileId?: string | null) {
@@ -499,7 +500,7 @@ async function uploadMarkdownFile(title: string, content: string, parentId: stri
   })
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
-    throw new Error(body?.error?.message ?? 'Could not upload the MyBook Markdown file to Google Drive.')
+    throw new Error(body?.error?.message ?? 'Could not upload the Writin Markdown file to Google Drive.')
   }
   return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
 }
@@ -542,7 +543,7 @@ export async function backupDocumentToDrive(input: {
         syncStatus: 'backed-up',
         lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString(),
       })
-      return { success: true, folderId: driveParentId, folderName: 'MyBook', created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
+      return { success: true, folderId: driveParentId, folderName: WRITIN_FOLDER_NAME, created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not back up the document to Google Drive.'
       await db.files.update(file.id, { syncStatus: 'failed', syncError: message })
@@ -620,7 +621,7 @@ export async function backupSpreadsheetToDrive(input: {
       await db.files.update(file.id, changedDuringUpload
         ? { driveFileId: result.id, workspaceType: 'drive', syncStatus: current?.syncStatus === 'failed' ? 'failed' : 'pending' }
         : { driveFileId: result.id, workspaceType: 'drive', syncStatus: 'backed-up', lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
-      return { success: true, folderId: driveParentId, folderName: 'MyBook', created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
+      return { success: true, folderId: driveParentId, folderName: WRITIN_FOLDER_NAME, created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not back up the spreadsheet to Google Drive.'
       await db.files.update(file.id, { syncStatus: 'failed', syncError: message })
@@ -1116,21 +1117,92 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
   }
 }
 
-export async function ensureMyBookDriveFolder(): Promise<DriveSetupResult> {
-  const storedFolderId = (await db.settings.get(MYBOOK_FOLDER_KEY))?.value
-  if (typeof storedFolderId === 'string' && storedFolderId.trim()) {
-    return { success: true, folderId: storedFolderId, folderName: MYBOOK_FOLDER_NAME, created: false }
-  }
+// Share setup within a tab; Web Locks also serialize tabs on the same origin.
+let driveRootFlight: Promise<DriveSetupResult> | null = null
 
+async function prepareWritinDriveFolder(): Promise<DriveSetupResult> {
   try {
-    const matches = await listVisibleFoldersByName(MYBOOK_FOLDER_NAME)
-    const existing = matches.find((folder) => folder.mimeType === DRIVE_FOLDER_MIME && !folder.trashed)
-    const folder = existing ?? await createVisibleFolder(MYBOOK_FOLDER_NAME)
-    await db.settings.put({ key: MYBOOK_FOLDER_KEY, value: folder.id, updatedAt: new Date().toISOString() })
-    return { success: true, folderId: folder.id, folderName: folder.name, created: !existing }
+    const storedFolderId = (await db.settings.get(MYBOOK_FOLDER_KEY))?.value
+    let folder: DriveFolder | undefined
+    let created = false
+    if (typeof storedFolderId === 'string' && storedFolderId.trim()) {
+      const result = await driveFetch(`/files/${encodeURIComponent(storedFolderId)}?fields=id,name,mimeType,trashed`)
+      if (!result.success) throw new Error(result.error)
+      folder = await result.response.json() as DriveFolder
+      if (folder.id !== storedFolderId || folder.mimeType !== DRIVE_FOLDER_MIME || folder.trashed) {
+        throw new Error('Your existing Drive workspace is unavailable. Restore or reconnect it before syncing. No replacement folder was created.')
+      }
+    } else {
+      // Search both generations before creating anything, including historical casing.
+      const names = ['Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']
+      const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (${names.map((name) => `name='${name}'`).join(' or ')})`
+      const candidates = new Map<string, DriveFolder>()
+      const seenPages = new Set<string>()
+      let pageToken: string | undefined
+      do {
+        const params = new URLSearchParams({
+          q: query,
+          fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,trashed)',
+          spaces: 'drive',
+          pageSize: '1000',
+        })
+        if (pageToken) params.set('pageToken', pageToken)
+        const result = await driveFetch(`/files?${params}`)
+        if (!result.success) throw new Error(result.error)
+        const data = await result.response.json() as { files?: DriveFolder[]; nextPageToken?: string; incompleteSearch?: boolean }
+        if (data.incompleteSearch || !Array.isArray(data.files)) {
+          throw new Error('Drive workspace discovery was incomplete. Please retry; no new folder was created.')
+        }
+        for (const candidate of data.files) {
+          if (!candidate || typeof candidate.id !== 'string' || !candidate.id || typeof candidate.name !== 'string' || candidate.mimeType !== DRIVE_FOLDER_MIME || candidate.trashed) {
+            throw new Error('Drive returned incomplete workspace metadata. Please retry; no new folder was created.')
+          }
+          candidates.set(candidate.id, candidate)
+        }
+        pageToken = data.nextPageToken
+        if (pageToken) {
+          if (seenPages.has(pageToken)) throw new Error('Drive workspace discovery could not finish. Please retry.')
+          seenPages.add(pageToken)
+        }
+      } while (pageToken)
+      if (candidates.size > 1) {
+        throw new Error('Multiple existing Drive workspaces were found. Open the browser already connected to your workspace to rename it safely. No folders were created or merged.')
+      }
+      folder = candidates.values().next().value
+      if (!folder) {
+        folder = await createVisibleFolder(WRITIN_FOLDER_NAME)
+        created = true
+      }
+      if (!folder.id || folder.mimeType !== DRIVE_FOLDER_MIME || folder.trashed) {
+        throw new Error('Drive returned an invalid workspace folder. Please reconnect before syncing.')
+      }
+      // Preserve the identity even if the subsequent rename fails or is interrupted.
+      await db.settings.put({ key: MYBOOK_FOLDER_KEY, value: folder.id, updatedAt: new Date().toISOString() })
+    }
+    if (folder.name !== WRITIN_FOLDER_NAME) {
+      const result = await driveFetch(`/files/${encodeURIComponent(folder.id)}?fields=id,name,mimeType,trashed`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: WRITIN_FOLDER_NAME }),
+      })
+      if (!result.success) throw new Error(`Could not rename your existing Drive folder to Writin. ${result.error} Your folder and files have not been replaced.`)
+      const renamed = await result.response.json() as DriveFolder
+      if (renamed.id !== folder.id || renamed.name !== WRITIN_FOLDER_NAME) {
+        throw new Error('Drive folder rename could not be confirmed. Please retry; the existing folder ID is retained.')
+      }
+    }
+    return { success: true, folderId: folder.id, folderName: WRITIN_FOLDER_NAME, created }
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Could not prepare the MyBook Drive folder.' }
+    return { success: false, error: error instanceof Error ? error.message : 'Could not prepare the Writin Drive folder.' }
   }
+}
+
+// Retain the internal export name for compatibility with existing callers.
+export function ensureMyBookDriveFolder(): Promise<DriveSetupResult> {
+  driveRootFlight ??= (typeof navigator !== 'undefined' && navigator.locks
+    ? navigator.locks.request('mybook-drive-root-setup', prepareWritinDriveFolder)
+    : prepareWritinDriveFolder()
+  ).finally(() => { driveRootFlight = null })
+  return driveRootFlight
 }
 
 export async function getDriveFolderStatus() {

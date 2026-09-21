@@ -10,13 +10,13 @@
 
 ## Offline and installation
 
-`vite.config.ts` configures a MyBook PWA manifest and prompt-based service-worker updates. Static assets are precached; navigation falls back to the app shell except under `/api/`. Google Drive and Google account requests are network-only. Offline cached app access does not supply remote media or authenticated cloud requests.
+`vite.config.ts` configures the PWA manifest (currently named `MyBook` in code) and prompt-based service-worker updates. Static assets are precached; navigation falls back to the app shell except under `/api/`. Google Drive and Google account requests are network-only. Offline cached app access does not supply remote media or authenticated cloud requests.
 
 `PwaStatus.tsx` displays offline/update notices, uses the browser install prompt where available, and supplies Safari Add to Home Screen guidance. Its automatic install-help flow is currently gated on authenticated email. Update checks run on registration, visibility/focus/page-show events and periodically.
 
 ## Naming
 
-The browser title, login screen, PWA name and Drive root are **MyBook**; npm uses `mybook`. Writin remains in JSON-backup filenames/share text, legacy directory handling and proposed naming. A full product rename would need coordinated metadata/UI changes and compatibility for existing data and Drive folders.
+**Writin** is the documentation product name. Existing runtime names remain `MyBook` in the browser title, login screen, PWA manifest and Drive root; npm uses `mybook`. JSON-backup filenames/share text and legacy directory handling already use Writin. These technical and runtime names are documented as they exist. Renaming them requires a separate code/configuration change with compatibility for saved data and Drive folders; no such change is part of this documentation update.
 
 ## Verification and remaining work
 

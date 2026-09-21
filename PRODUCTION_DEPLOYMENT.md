@@ -1,6 +1,6 @@
-# MyBook production deployment
+# Writin production deployment
 
-MyBook can run as a client-only Vite application or with Node.js backend auth on Razor/cPanel hosting. Editable content is stored in IndexedDB and optional backups use the user's Google Drive file-level permission.
+Writin can run as a client-only Vite application or with Node.js backend auth on Razor/cPanel hosting. Editable content is stored in IndexedDB and optional backups use the user's Google Drive file-level permission.
 
 ## Environment
 
@@ -22,6 +22,8 @@ Required only when `VITE_GOOGLE_AUTH_MODE=server`:
 - `GOOGLE_REDIRECT_URI`: `https://your-production-domain.example/api/auth/google/callback`
 
 ## Razor/cPanel Static App
+
+Existing deployment paths and configured origins below are retained as technical examples. The Writin documentation branding does not change hosting paths, OAuth origins, the `mybook` package name or the `MyBook` Drive folder.
 
 The `.cpanel.yml` deployment copies `dist/.` to `/home/celztxeo/mybook`. This remains the static frontend folder.
 
@@ -52,7 +54,7 @@ If Razor is serving only static files and Node.js is disabled, use `VITE_GOOGLE_
 
 ## Domain and verification
 
-Use the same exact HTTPS origin in `VITE_PRODUCTION_ORIGIN`, the OAuth JavaScript origins list, and the browser address bar. After deployment, verify that Google login completes, the visible MyBook folder is reused, and DOCX/XLSX files open from Drive.
+Use the same exact HTTPS origin in `VITE_PRODUCTION_ORIGIN`, the OAuth JavaScript origins list, and the browser address bar. After deployment, verify that Google login completes, the existing `MyBook` Drive folder is reused, and DOCX/XLSX files open from Drive.
 
 ## Release checklist
 
@@ -62,4 +64,4 @@ Use the same exact HTTPS origin in `VITE_PRODUCTION_ORIGIN`, the OAuth JavaScrip
 - Test desktop Chrome and Edge, Android Chrome, and iPhone Safari.
 - Confirm Settings shows version and diagnostics.
 - Confirm Drive files remain visible and openable.
-- Do not enable error monitoring that captures document content or access tokens. MyBook currently uses development-only sanitized console diagnostics instead.
+- Do not enable error monitoring that captures document content or access tokens. Writin currently uses development-only sanitized console diagnostics instead.

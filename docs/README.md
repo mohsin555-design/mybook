@@ -1,4 +1,4 @@
-# MyBook feature and module specifications
+# Writin feature and module specifications
 
 Each guide documents the module's behavior, data flow, implementation files, verification and remaining work. Existing guides are updated in place; separate guides cover modules that previously had no dedicated specification.
 

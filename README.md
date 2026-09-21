@@ -1,12 +1,12 @@
-# MyBook
+# Writin
 
 A local-first browser workspace for documents and spreadsheets, with account-free local vaults and optional Google Drive backup and synchronization.
 
 Read the [feature and module specifications](docs/README.md) for behavior, storage formats, implementation references and remaining work for each feature.
 
-## MyBook or Writin?
+## Product name and compatibility
 
-The current app name is **MyBook**: the login screen, browser title, PWA manifest, and Google Drive folder use it. The npm package is `mybook`. **Writin** remains in backup filenames and the share title, legacy `Writin/files` folder support, and planning documents. A complete rename to Writin has not happened.
+**Writin** is the product name used throughout this documentation. The current code still displays `MyBook` in the login screen, browser title and PWA manifest, uses `MyBook` for the Drive folder, and names the npm package `mybook`. These existing names, storage keys, paths and file formats are retained for compatibility; this documentation update does not rename the running app or migrate saved data.
 
 ## Features present in the code
 
@@ -59,7 +59,7 @@ Follow [Google OAuth setup](GOOGLE_OAUTH_SETUP.md). Browser auth uses `VITE_GOOG
 
 ## Storage and current limitations
 
-- Documents use Tiptap JSON internally. Local-folder documents and document downloads use `.md`; Drive document backups still use `.mybook.md`. Advanced blocks use MyBook-specific syntax and may render differently in other Markdown editors.
+- Documents use Tiptap JSON internally. Local-folder documents and document downloads use `.md`; Drive document backups still use `.mybook.md`. Advanced blocks use Writin-specific syntax and may render differently in other Markdown editors.
 - Local media can be extracted into `<document>_attachments` folders. ZIP export packages embedded media with document paths; externally hosted media is not downloaded into the archive.
 - **Spreadsheet caveat:** local-folder writes and vault ZIP exports currently put workbook text under an `.xlsx` filename. Use the spreadsheet editor's dedicated XLSX export for an actual Excel file. Importing arbitrary binary XLSX through the folder scanner is also incomplete.
 - Connecting Drive queues local items for cloud backup, but continued saving into the previously selected device folder is incomplete: file persistence is gated on local workspace mode. Do not assume the proposed combined local-folder/cloud workflow is finished.

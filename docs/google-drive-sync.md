@@ -4,7 +4,7 @@
 
 Google Drive provides remote copies and synchronization for the Google-connected workspace. This is not real-time collaborative editing. Implementation lives in `src/services/googleDrive.ts`, `src/hooks/useDriveBootstrap.ts`, `src/database/repositories.ts`, and the editor save/conflict flows.
 
-The visible root folder is currently **MyBook**, with its ID stored under `google-drive.mybook-folder-id`. Documents upload as `.mybook.md`; spreadsheets use XLSX conversion. App folders mirror into Drive folders. Authentication uses the narrow `drive.file` permission; see [authentication](./auth-and-drive-tokens.md).
+The visible root folder is currently `MyBook` (the existing compatibility name), with its ID stored under `google-drive.mybook-folder-id`. Documents upload as `.mybook.md`; spreadsheets use XLSX conversion. App folders mirror into Drive folders. Authentication uses the narrow `drive.file` permission; see [authentication](./auth-and-drive-tokens.md).
 
 ## Connection and bootstrap
 
@@ -18,7 +18,7 @@ File/folder operations include create, update, delete, restore and permanent-del
 
 ## Remote import and conflicts
 
-Remote import walks the MyBook tree and matches files using Drive ID or name/parent. New Markdown documents can recover portable document IDs when available and unused. Newer remote contents can update local records when no unresolved local operation blocks replacement; a version snapshot is stored before replacing changed content.
+Remote import walks the existing `MyBook` Drive tree and matches files using Drive ID or name/parent. New Markdown documents can recover portable document IDs when available and unused. Newer remote contents can update local records when no unresolved local operation blocks replacement; a version snapshot is stored before replacing changed content.
 
 Unresolved local intent protects pending work from ordinary remote replacement. Remote disappearance can mark corresponding local records deleted when no unresolved operation exists. Editors also expose conflict-resolution paths for choosing local/remote content or downloading copies. Version records exist in the database/repository; this does not imply a complete user-facing history browser.
 
@@ -31,7 +31,7 @@ The status model distinguishes editing, local saving, saved locally, pending, ba
 ## Remaining work and acceptance checks
 
 - Complete combined device-folder and Drive saving without losing the chosen folder or creating duplicate records.
-- Reconcile the proposed Writin root with the existing MyBook folder before changing names.
+- Reconcile the proposed Writin root with the existing `MyBook` folder before changing names.
 - Verify fresh-browser recovery, offline edits, simultaneous devices, local/remote deletion, token expiry and reconnect.
 - Verify attachments and advanced document blocks survive upload/download, and cloud-success labels wait for the required content.
 - Exercise error paths and interrupted uploads against a real account; passing mocked service tests is not live cloud validation.

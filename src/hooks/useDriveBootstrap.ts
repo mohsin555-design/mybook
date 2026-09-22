@@ -6,12 +6,19 @@ import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { folderRepository, processPendingDriveFolderSync, queueLocalItemsForDriveBackup, settingsRepository } from '../database/repositories'
 
 const DRIVE_BACKFILL_KEY = 'google-drive.folder-backfill-complete'
+const DRIVE_INITIAL_SYNC_KEY = (email: string) => `google-drive.initial-sync-complete:${email}`
 let importDriveBackupsFlight: Promise<void> | null = null
 
-async function importDriveBackupsToLocal() {
+async function importDriveBackupsToLocal(
+  onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
+) {
   importDriveBackupsFlight ??= (async () => {
-    await importDriveFoldersToLocal()
-    await importDriveFilesToLocal()
+    await importDriveFoldersToLocal((p) => {
+      onProgress?.({ loaded: p.loaded, total: p.total, percent: Math.round(p.percent * 0.3) })
+    })
+    await importDriveFilesToLocal((p) => {
+      onProgress?.({ loaded: p.loaded, total: p.total, percent: 30 + Math.round(p.percent * 0.7) })
+    })
   })().finally(() => {
     importDriveBackupsFlight = null
   })
@@ -23,6 +30,8 @@ export function useDriveBootstrap() {
   const email = useAuthStore((state) => state.email)
   const workspaceMode = useWorkspaceStore((state) => state.mode)
   const [isPreparing, setIsPreparing] = useState(false)
+  const [isFetchingFiles, setIsFetchingFiles] = useState(false)
+  const [fetchProgress, setFetchProgress] = useState(0)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [folderId, setFolderId] = useState<string | null>(null)
 
@@ -31,6 +40,14 @@ export function useDriveBootstrap() {
     let cancelled = false
     const run = async () => {
       setIsPreparing(true)
+      const initialSyncFlag = (await settingsRepository.get(DRIVE_INITIAL_SYNC_KEY(email))).data?.value === true
+      const shouldShowInitialFetch = !initialSyncFlag
+
+      if (shouldShowInitialFetch && !cancelled) {
+        setIsFetchingFiles(true)
+        setFetchProgress(5)
+      }
+
       try {
         const result = await ensureMyBookDriveFolder()
         if (!cancelled) {
@@ -42,9 +59,16 @@ export function useDriveBootstrap() {
             : result.error)
         }
         if (!result.success) return
+        if (shouldShowInitialFetch && !cancelled) {
+          setFetchProgress(15)
+        }
         await processPendingDriveFolderSync()
         try {
-          await importDriveBackupsToLocal()
+          await importDriveBackupsToLocal((p) => {
+            if (shouldShowInitialFetch && !cancelled) {
+              setFetchProgress(15 + Math.round(p.percent * 0.75))
+            }
+          })
           if (!cancelled) setStatusMessage('Synced across devices.')
         } catch (error) {
           if (!cancelled) setStatusMessage(error instanceof Error ? error.message : 'Sync paused.')
@@ -62,10 +86,17 @@ export function useDriveBootstrap() {
         }
         await queueLocalItemsForDriveBackup()
         await processPendingDriveFolderSync()
+        if (shouldShowInitialFetch && !cancelled) {
+          setFetchProgress(100)
+          await settingsRepository.update(DRIVE_INITIAL_SYNC_KEY(email), true)
+        }
       } catch (error) {
         if (!cancelled) setStatusMessage(error instanceof Error ? error.message : 'Sync paused. Please retry.')
       } finally {
-        if (!cancelled) setIsPreparing(false)
+        if (!cancelled) {
+          setIsFetchingFiles(false)
+          setIsPreparing(false)
+        }
       }
     }
     void run()
@@ -79,5 +110,5 @@ export function useDriveBootstrap() {
     }
   }, [email, isAuthenticated, workspaceMode])
 
-  return { isPreparing, statusMessage, folderId }
+  return { isPreparing, isFetchingFiles, fetchProgress, statusMessage, folderId }
 }

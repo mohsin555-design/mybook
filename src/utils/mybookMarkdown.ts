@@ -142,6 +142,61 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   return (node.content ?? []).map((child) => blockMarkdown(child, depth)).join('\n\n')
 }
 
+export function contentToMarkdown(nodes: JSONContent | JSONContent[]): string {
+  const list = Array.isArray(nodes) ? nodes : [nodes]
+  return list.map((node) => {
+    if (node.type === 'text' || (!node.type && node.text)) return inlineMarkdown(node)
+    return blockMarkdown(node)
+  }).filter(Boolean).join('\n\n')
+}
+
+export function isMarkdownText(text: string): boolean {
+  if (!text || typeof text !== 'string') return false
+  const trimmed = text.trim()
+  if (!trimmed) return false
+
+  // Headings: # Heading
+  if (/^#{1,6}\s+\S+/m.test(trimmed)) return true
+
+  // Task list: - [ ] or - [x] or * [ ]
+  if (/^\s*[-*+]\s+\[[ xX]\]\s+\S+/m.test(trimmed)) return true
+
+  // Bullet list with multiple items or indented items or formatting
+  if (/^\s*[-*+]\s+\S+/m.test(trimmed)) {
+    const bulletMatches = trimmed.match(/^\s*[-*+]\s+\S+/gm)
+    if (bulletMatches && bulletMatches.length >= 2) return true
+    if (/^\s*[-*+]\s+.*\n\s*[-*+]\s+/m.test(trimmed)) return true
+    if (/^\s*[-*+]\s+.*(?:\*\*|__|\*|_|`|\[)/m.test(trimmed)) return true
+  }
+
+  // Numbered list: 1. item
+  if (/^\s*1\.\s+\S+/m.test(trimmed)) {
+    const numMatches = trimmed.match(/^\s*\d+\.\s+\S+/gm)
+    if (numMatches && numMatches.length >= 2) return true
+    if (/^\s*1\.\s+.*(?:\*\*|__|\*|_|`|\[)/m.test(trimmed)) return true
+  }
+
+  // Code block fence: ``` or ~~~
+  if (/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\1/m.test(trimmed)) return true
+
+  // Blockquote: > text
+  if (/^>\s+\S+/m.test(trimmed)) return true
+
+  // Table: | a | b |\n|---|---|\n| c | d |
+  if (/^\|[^\n]+\|\r?\n\|[-:\s|]+\|\r?\n\|[^\n]+\|/m.test(trimmed)) return true
+
+  // Horizontal rule: --- or *** or ___
+  if (/^(?:---|\*\*\*|___)\s*$/m.test(trimmed)) return true
+
+  // Custom blocks: :::callout, :::toggle, :::file, :::table, :::video, :::audio
+  if (/^:::(?:callout|toggle|file|table|video|audio|toc|bookmark|embed|database)/m.test(trimmed)) return true
+
+  // Inline formatting spanning multiple words with links or formatting combinations
+  if (/(\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~)\s*(?:and|or|,\s*|\[[^\]]+\]\([^)]+\)|\*)/.test(trimmed)) return true
+
+  return false
+}
+
 export function documentToMyBookMarkdown(title: string, json: JSONContent, options: { documentId?: string | null } = {}) {
   const safeTitle = title.trim() || 'Untitled'
   const body = (json.content ?? []).map((node) => blockMarkdown(node)).filter(Boolean).join('\n\n')

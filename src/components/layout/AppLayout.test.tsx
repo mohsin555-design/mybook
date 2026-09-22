@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppLayout } from './AppLayout'
+import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import type { MyBookFile, MyBookFolder } from '../../types/files'
@@ -16,7 +17,7 @@ const mockLibraryData = vi.hoisted((): { files: MyBookFile[]; folders: MyBookFol
 }))
 
 vi.mock('../../hooks/useDriveBootstrap', () => ({
-  useDriveBootstrap: vi.fn(),
+  useDriveBootstrap: vi.fn(() => ({ isPreparing: false, statusMessage: null, isFetchingFiles: false, fetchProgress: 0, folderId: null })),
 }))
 
 vi.mock('../../hooks/useLibraryData', () => ({
@@ -245,6 +246,20 @@ describe('AppLayout sidebar favorites', () => {
 
     expect(screen.getByText('author@example.com')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect Cloud Vault (Google)' })).not.toBeInTheDocument()
+  })
+
+  it('renders sync progress toast when fetching files', () => {
+    vi.mocked(useDriveBootstrap).mockReturnValueOnce({
+      isPreparing: true,
+      statusMessage: 'Connecting...',
+      isFetchingFiles: true,
+      fetchProgress: 42,
+      folderId: null,
+    })
+    renderLayout()
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByText('Fetching your data…')).toBeInTheDocument()
+    expect(screen.getByText('42%')).toBeInTheDocument()
   })
 })
 

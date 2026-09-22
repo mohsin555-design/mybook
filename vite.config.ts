@@ -25,7 +25,17 @@ export default defineConfig({
     },
   }, react(), tailwindcss(), VitePWA({
     registerType: 'prompt',
-    includeAssets: ['pwa-192.svg', 'pwa-512.svg', 'pwa-maskable.svg'],
+    includeAssets: [
+      'pwa-192.svg',
+      'pwa-512.svg',
+      'pwa-maskable.svg',
+      'pwa-192.png',
+      'pwa-512.png',
+      'pwa-maskable.png',
+      'apple-touch-icon.png',
+      'favicon-32x32.png',
+      'favicon-16x16.png',
+    ],
     manifest: {
       name: 'Writin',
       short_name: 'Writin',
@@ -34,6 +44,9 @@ export default defineConfig({
       background_color: '#f7f4ee',
       display: 'standalone',
       icons: [
+        { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: '/pwa-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         { src: '/pwa-192.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
         { src: '/pwa-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any' },
         { src: '/pwa-maskable.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'maskable' },

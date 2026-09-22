@@ -122,13 +122,22 @@ function insertCodeBlock(editor: Editor, range: SlashMenuState['range']) {
     .run()
 }
 
-export function runSlashCommand(editor: Editor, commandId: string, range: SlashMenuState['range']) {
-  const chain = editor.chain().focus().deleteRange(range)
+export function runSlashCommand(
+  editor: Editor,
+  commandId: string,
+  range: SlashMenuState['range'],
+  isConversion = false,
+) {
+  let chain = editor.chain().focus()
+  if (!isConversion && range.from < range.to) {
+    chain = chain.deleteRange(range)
+  }
+
   if (commandId === 'paragraph') chain.setParagraph().run()
   else if (commandId === 'h1') chain.setHeading({ level: 1 }).run()
   else if (commandId === 'h2') chain.setHeading({ level: 2 }).run()
   else if (commandId === 'h3') chain.setHeading({ level: 3 }).run()
-    else if (commandId === 'h4') chain.setHeading({ level: 4 }).run()
+  else if (commandId === 'h4') chain.setHeading({ level: 4 }).run()
   else if (commandId === 'bullet') chain.toggleBulletList().run()
   else if (commandId === 'numbered') chain.toggleOrderedList().run()
   else if (commandId === 'task') chain.toggleTaskList().run()
@@ -156,8 +165,20 @@ export function runSlashCommand(editor: Editor, commandId: string, range: SlashM
     chain.run()
     window.dispatchEvent(new CustomEvent('mybook:insert-file'))
   }
-  else if (commandId === 'quote') insertQuoteBlock(editor, range)
-  else if (commandId === 'code-block') insertCodeBlock(editor, range)
+  else if (commandId === 'quote') {
+    if (isConversion) {
+      chain.setBlockquote().run()
+    } else {
+      insertQuoteBlock(editor, range)
+    }
+  }
+  else if (commandId === 'code-block') {
+    if (isConversion) {
+      chain.setCodeBlock().run()
+    } else {
+      insertCodeBlock(editor, range)
+    }
+  }
   else if (commandId === 'table') chain.insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()
   else if (commandId === 'hr') chain.setHorizontalRule().insertContent({ type: 'paragraph' }).run()
 }

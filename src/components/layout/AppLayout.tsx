@@ -12,6 +12,7 @@ import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { activeFavoriteItems } from '../../utils/favorites'
 import { AppHeader } from '../common/AppHeader'
+import { SyncProgressToast } from '../common/SyncProgressToast'
 import { getFolderPath } from '../files/FolderBreadcrumb'
 import { FolderNameDialog } from '../files/FolderNameDialog'
 import { DeleteFolderDialog } from '../files/DeleteFolderDialog'
@@ -55,7 +56,7 @@ export function AppLayout() {
   const { email, displayName: accountDisplayName, isAuthenticated, completeLogin, logout } = useAuthStore()
   const { mode: workspaceMode, selectGoogleWorkspace } = useWorkspaceStore()
   const { files, folders } = useLibraryData()
-  useDriveBootstrap()
+  const { isFetchingFiles = false, fetchProgress = 0 } = useDriveBootstrap() ?? {}
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
@@ -422,6 +423,7 @@ export function AppLayout() {
             <Outlet />
           </div>
         </main>
+        <SyncProgressToast isVisible={isFetchingFiles} progress={fetchProgress} />
         {!isEditor ? <MobileBottomNavigation /> : null}
       </SidebarInset>
 

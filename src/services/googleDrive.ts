@@ -695,6 +695,7 @@ export async function backfillLocalFoldersToDrive(folders: Array<{ id: string; n
 }
 
 export async function importDriveFoldersToLocal(
+  onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
 ) {
   const bootstrap = await ensureMyBookDriveFolder()
   if (!bootstrap.success) throw new Error(bootstrap.error)
@@ -704,9 +705,15 @@ export async function importDriveFoldersToLocal(
   const byDriveId = new Map(localFolders.filter((folder) => folder.driveFolderId).map((folder) => [folder.driveFolderId as string, folder]))
   const byNameAndParent = new Map(localFolders.map((folder) => [`${folder.parentId ?? 'root'}:${folder.name.toLowerCase()}`, folder]))
   const seenDriveIds = new Set<string>()
+  let processedFolders = 0
+  let totalDiscoveredFolders = 0
 
   const syncChildren = async (parentDriveId: string, parentLocalId: string | null) => {
     const children = await listChildFolders(parentDriveId)
+    totalDiscoveredFolders += children.length
+    if (totalDiscoveredFolders === 0) {
+      onProgress?.({ loaded: 0, total: 0, percent: 100 })
+    }
     for (const driveFolder of children) {
       seenDriveIds.add(driveFolder.id)
       const localMatch = byDriveId.get(driveFolder.id) ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`)
@@ -728,6 +735,9 @@ export async function importDriveFoldersToLocal(
         await db.folders.add({ id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', createdAt: now, updatedAt: now, isDeleted: false })
         byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, { id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', createdAt: now, updatedAt: now, isDeleted: false })
       }
+      processedFolders += 1
+      const percent = totalDiscoveredFolders > 0 ? Math.min(100, Math.round((processedFolders / totalDiscoveredFolders) * 100)) : 100
+      onProgress?.({ loaded: processedFolders, total: totalDiscoveredFolders, percent })
       await syncChildren(driveFolder.id, matchedLocalId)
     }
   }
@@ -957,7 +967,9 @@ async function saveVersionBeforeDriveUpdate(existingId: string, driveModifiedTim
   })
 }
 
-export async function importDriveFilesToLocal() {
+export async function importDriveFilesToLocal(
+  onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
+) {
   const bootstrap = await ensureMyBookDriveFolder()
   if (!bootstrap.success) throw new Error(bootstrap.error)
 
@@ -975,9 +987,15 @@ export async function importDriveFilesToLocal() {
   }
   const folderByDriveId = new Map(localFolders.filter((folder) => folder.driveFolderId).map((folder) => [folder.driveFolderId as string, folder]))
   const seenDriveFileIds = new Set<string>()
+  let processedFiles = 0
+  let totalDiscoveredFiles = 0
 
   const syncFiles = async (parentDriveId: string, parentLocalId: string | null) => {
     const children = await listChildFiles(parentDriveId)
+    totalDiscoveredFiles += children.length
+    if (totalDiscoveredFiles === 0) {
+      onProgress?.({ loaded: 0, total: 0, percent: 100 })
+    }
     for (const driveFile of children) {
       seenDriveFileIds.add(driveFile.id)
       const fileType = inferFileType(driveFile.name, driveFile.mimeType)
@@ -1056,6 +1074,9 @@ export async function importDriveFilesToLocal() {
           isDeleted: false,
         })
       }
+      processedFiles += 1
+      const percent = totalDiscoveredFiles > 0 ? Math.min(100, Math.round((processedFiles / totalDiscoveredFiles) * 100)) : 100
+      onProgress?.({ loaded: processedFiles, total: totalDiscoveredFiles, percent })
     }
   }
 

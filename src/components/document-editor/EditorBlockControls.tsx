@@ -10,7 +10,7 @@ import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, slashCommands, type SlashCommand } from './slashCommands'
 
-interface BlockTarget {
+export interface BlockTarget {
   node: ProseMirrorNode
   pos: number
   rect: DOMRect
@@ -203,7 +203,7 @@ function GripHandleIcon({ className }: { className?: string }) {
   )
 }
 
-export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor; onInsertBlock: (commandId: string) => void }) {
+export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor; onInsertBlock: (commandId: string, target?: BlockTarget | null) => void }) {
   const [target, setTarget] = useState<BlockTarget | null>(null)
   const [gutterTargets, setGutterTargets] = useState<BlockTarget[]>([])
   const [isInsertOpen, setIsInsertOpen] = useState(false)
@@ -254,26 +254,15 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
       if (related instanceof Node && (rootRef.current?.contains(related) || hoverBridgeRef.current?.contains(related))) return
       setTarget(null)
     }
-    const selectFromDoubleClick = (event: MouseEvent) => {
-      const point = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })
-      if (point && isInsideTable(editor, point.pos)) return
-      const nextTarget = findPointerTarget(editor, event as PointerEvent)
-      if (!nextTarget) return
-      event.preventDefault()
-      setTarget(nextTarget)
-      selectTarget(editor, nextTarget)
-    }
     updateGutterTargets()
     editor.on('transaction', updateGutterTargets)
     document.addEventListener('pointermove', updateFromPointer)
     editorElement.addEventListener('pointerleave', hideFromPointerLeave)
-    editorElement.addEventListener('dblclick', selectFromDoubleClick)
     window.addEventListener('resize', updateOnResize)
     window.addEventListener('scroll', closeOnScroll, true)
     return () => {
       document.removeEventListener('pointermove', updateFromPointer)
       editorElement.removeEventListener('pointerleave', hideFromPointerLeave)
-      editorElement.removeEventListener('dblclick', selectFromDoubleClick)
       editor.off('transaction', updateGutterTargets)
       window.removeEventListener('resize', updateOnResize)
       window.removeEventListener('scroll', closeOnScroll, true)
@@ -320,7 +309,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
         event.preventDefault()
         const command = slashCommands[selectedInsertIndex]
         if (command) {
-          onInsertBlock(command.id)
+          onInsertBlock(command.id, target)
           setIsInsertOpen(false)
           editor.view.focus()
         }
@@ -328,7 +317,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
     }
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [editor, isInsertOpen, onInsertBlock, selectedInsertIndex])
+  }, [editor, isInsertOpen, onInsertBlock, selectedInsertIndex, target])
 
   useEffect(() => {
     if (!dragState) return
@@ -384,7 +373,7 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
   const isDragging = Boolean(dragState?.isDragging)
 
   const runInsertCommand = (command: SlashCommand) => {
-    onInsertBlock(command.id)
+    onInsertBlock(command.id, target)
     setIsInsertOpen(false)
     editor.view.focus()
   }
@@ -447,7 +436,16 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
           title="Add block"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
-            selectTarget(editor, target)
+            if (target) {
+              const selPos = target.node.isTextblock
+                ? Math.min(target.pos + 1, editor.state.doc.content.size)
+                : target.pos
+              const selection = target.node.isTextblock
+                ? TextSelection.create(editor.state.doc, selPos)
+                : NodeSelection.create(editor.state.doc, target.pos)
+              editor.view.dispatch(editor.state.tr.setSelection(selection))
+              editor.view.focus()
+            }
             setIsInsertOpen((open) => !open)
             setIsActionsOpen(false)
           }}

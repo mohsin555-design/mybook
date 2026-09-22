@@ -10,7 +10,7 @@ import TaskList from '@tiptap/extension-task-list'
 import Underline from '@tiptap/extension-underline'
 import { Extension, InputRule } from '@tiptap/core'
 import { EditorContent, useEditor } from '@tiptap/react'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { DOMSerializer, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { AllSelection, NodeSelection, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
@@ -24,14 +24,14 @@ import { useAutosave } from '../../hooks/useAutosave'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
-import { documentToMyBookMarkdown, downloadMyBookMarkdown, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
+import { contentToMarkdown, documentToMyBookMarkdown, downloadMyBookMarkdown, isMarkdownText, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
 import { EmptyState } from '../common/EmptyState'
 import { AppHeader } from '../common/AppHeader'
 import { DeleteFileDialog } from '../files/DeleteFileDialog'
 import { getFolderPath } from '../files/FolderBreadcrumb'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
-import { EditorBlockControls } from './EditorBlockControls'
+import { EditorBlockControls, type BlockTarget } from './EditorBlockControls'
 import { EditorStatus } from './EditorStatus'
 import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { Callout, calloutNode } from './extensions/Callout'
@@ -52,6 +52,7 @@ import { ToggleBlock, toggleBlockNode } from './extensions/ToggleBlock'
 import { FixedTable } from './extensions/FixedTable'
 import { TableInteraction } from './extensions/TableInteraction'
 import { StyledTableCell, StyledTableHeader } from './extensions/TableCellStyles'
+import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { DocumentLinkProvider } from './DocumentLinkContext'
 import { documentLinkLocation, documentLinkTargets } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
@@ -467,28 +468,91 @@ function parseContent(content: string) {
 function cleanPastedHtml(html: string) {
   if (!html || typeof DOMParser === 'undefined') return html
   const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  // Remove unwanted elements
+  doc.body.querySelectorAll('meta, style, script, link, xml, noscript').forEach((element) => element.remove())
+
+  // Normalize checklists / task items from Notion, GitHub, Google Docs, Apple Notes
+  doc.body.querySelectorAll('li').forEach((li) => {
+    const checkbox = li.querySelector('input[type="checkbox"]')
+    const isChecked = checkbox
+      ? (checkbox as HTMLInputElement).checked || checkbox.hasAttribute('checked')
+      : li.getAttribute('data-checked') === 'true' ||
+        li.getAttribute('aria-checked') === 'true' ||
+        li.classList.contains('checked') ||
+        li.classList.contains('task-list-item-checked')
+
+    const hasCheckbox = Boolean(
+      checkbox ||
+      li.hasAttribute('data-checked') ||
+      li.getAttribute('role') === 'checkbox' ||
+      li.classList.contains('task-list-item') ||
+      li.classList.contains('to-do-item') ||
+      li.closest('.to-do-list, .contains-task-list, [data-type="taskList"]')
+    )
+
+    if (hasCheckbox) {
+      if (checkbox) checkbox.remove()
+      li.setAttribute('data-type', 'taskItem')
+      li.setAttribute('data-checked', isChecked ? 'true' : 'false')
+
+      const parent = li.parentElement
+      if (parent && (parent.tagName === 'UL' || parent.tagName === 'OL')) {
+        parent.setAttribute('data-type', 'taskList')
+      }
+    }
+  })
+
+  // Normalize code blocks: extract language from classes/attributes
+  doc.body.querySelectorAll('pre').forEach((pre) => {
+    const code = pre.querySelector('code') ?? pre
+    const className = `${pre.className} ${code.className}`
+    const langMatch = /(?:language-|lang-)(\w+)/i.exec(className) ?? /(?:highlight-source-|source-)(\w+)/i.exec(className)
+    const lang = langMatch?.[1] || pre.getAttribute('lang') || code.getAttribute('lang') || ''
+    if (lang) {
+      pre.setAttribute('data-language', lang)
+      code.setAttribute('class', `language-${lang}`)
+    }
+  })
+
+  // Safe attribute whitelist for rich text formatting
+  const allowedAttrs = new Set([
+    'href', 'src', 'alt', 'title', 'target', 'rel',
+    'colspan', 'rowspan', 'colwidth',
+    'data-type', 'data-checked', 'data-language', 'data-level',
+  ])
+
   doc.body.querySelectorAll('*').forEach((element) => {
-    ;[
-      'class',
-      'style',
-      'id',
-      'lang',
-      'dir',
-      'width',
-      'height',
-      'face',
-      'color',
-      'bgcolor',
-      'align',
-    ].forEach((attribute) => element.removeAttribute(attribute))
-    Array.from(element.attributes).forEach((attribute) => {
-      if (attribute.name.startsWith('data-') || attribute.name.startsWith('aria-')) element.removeAttribute(attribute.name)
+    if (element.tagName === 'CODE' && element.className.startsWith('language-')) {
+      // keep language class
+    } else {
+      element.removeAttribute('class')
+    }
+
+    element.removeAttribute('style')
+    element.removeAttribute('id')
+    element.removeAttribute('dir')
+    element.removeAttribute('face')
+    element.removeAttribute('color')
+    element.removeAttribute('bgcolor')
+    element.removeAttribute('align')
+
+    Array.from(element.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase()
+      if (!allowedAttrs.has(name) && !name.startsWith('data-type') && !name.startsWith('data-checked') && !name.startsWith('data-language')) {
+        element.removeAttribute(attr.name)
+      }
+      if ((name === 'href' || name === 'src') && /^javascript:/i.test(attr.value.trim())) {
+        element.removeAttribute(attr.name)
+      }
     })
   })
-  doc.body.querySelectorAll('meta, style, script, link, xml').forEach((element) => element.remove())
+
+  // Unwrap empty spans
   doc.body.querySelectorAll('span').forEach((span) => {
     if (!span.attributes.length) span.replaceWith(...Array.from(span.childNodes))
   })
+
   return doc.body.innerHTML
 }
 
@@ -1067,6 +1131,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       EmptyBlockPlaceholder,
       ListMarkerDepth,
       BlankBlockSelection,
+      EditorKeyboardShortcuts,
     ],
     content: emptyDocument,
     editorProps: {
@@ -1078,7 +1143,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
       handlePaste: (view, event) => {
-        const copiedEmbed = pastedEmbed(event.clipboardData?.getData('text/html') ?? '')
+        const html = event.clipboardData?.getData('text/html') ?? ''
+        const text = event.clipboardData?.getData('text/plain') ?? ''
+
+        const copiedEmbed = pastedEmbed(html)
         if (copiedEmbed) {
           event.preventDefault()
           editorRef.current?.commands.insertContent(copiedEmbed)
@@ -1086,7 +1154,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           closeInlineLinkToolbar()
           return true
         }
-        const copiedBookmark = pastedBookmark(event.clipboardData?.getData('text/html') ?? '')
+        const copiedBookmark = pastedBookmark(html)
         if (copiedBookmark) {
           event.preventDefault()
           editorRef.current?.commands.insertContent(copiedBookmark)
@@ -1094,15 +1162,29 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           closeInlineLinkToolbar()
           return true
         }
-        const rawUrl = event.clipboardData?.getData('text/plain') ?? ''
+        const rawUrl = text.trim()
         const urlInfo = analyzePastedUrl(rawUrl)
-        if (urlInfo && !view.state.selection.empty) {
+        if (urlInfo && !view.state.selection.empty && /^https?:\/\//i.test(rawUrl)) {
           event.preventDefault()
           editorRef.current?.chain().focus().setLink({ href: urlInfo.url }).run()
           closePasteAsMenu()
           closeInlineLinkToolbar()
           return true
         }
+
+        // Detect Markdown text when pasted without semantic HTML or from raw sources
+        const hasRichHtml = Boolean(html && /<(?:h[1-6]|table|ul|ol|blockquote|img|a\s+href)/i.test(html))
+        if (!hasRichHtml && text && isMarkdownText(text)) {
+          event.preventDefault()
+          const parsedDoc = myBookMarkdownToDocument(text)
+          if (parsedDoc.content && parsedDoc.content.length > 0) {
+            editorRef.current?.commands.insertContent(parsedDoc.content)
+            closePasteAsMenu()
+            closeInlineLinkToolbar()
+            return true
+          }
+        }
+
         const emptyRange = urlInfo ? emptyParagraphRangeForPaste(view) : null
         if (!urlInfo || !emptyRange) {
           closePasteAsMenu()
@@ -1162,6 +1244,39 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         return false
       },
       handleDOMEvents: {
+        copy: (_view, event) => {
+          const currentEditor = editorRef.current
+          if (!currentEditor || currentEditor.state.selection.empty) return false
+          const slice = currentEditor.state.selection.content()
+          const jsonSlice = slice.content.toJSON() as ProseMirrorNode['content'] extends infer T ? T extends { toJSON(): infer R } ? R : unknown : unknown
+          const markdown = contentToMarkdown(jsonSlice as never)
+          if (!markdown || !event.clipboardData) return false
+
+          const div = document.createElement('div')
+          const dom = DOMSerializer.fromSchema(currentEditor.state.schema).serializeFragment(slice.content)
+          div.appendChild(dom)
+          event.clipboardData.setData('text/html', div.innerHTML)
+          event.clipboardData.setData('text/plain', markdown)
+          event.preventDefault()
+          return true
+        },
+        cut: (_view, event) => {
+          const currentEditor = editorRef.current
+          if (!currentEditor || currentEditor.state.selection.empty) return false
+          const slice = currentEditor.state.selection.content()
+          const jsonSlice = slice.content.toJSON() as ProseMirrorNode['content'] extends infer T ? T extends { toJSON(): infer R } ? R : unknown : unknown
+          const markdown = contentToMarkdown(jsonSlice as never)
+          if (!markdown || !event.clipboardData) return false
+
+          const div = document.createElement('div')
+          const dom = DOMSerializer.fromSchema(currentEditor.state.schema).serializeFragment(slice.content)
+          div.appendChild(dom)
+          event.clipboardData.setData('text/html', div.innerHTML)
+          event.clipboardData.setData('text/plain', markdown)
+          currentEditor.commands.deleteSelection()
+          event.preventDefault()
+          return true
+        },
         mouseover: (_view, event) => {
           const target = event.target
           const anchor = target instanceof Element ? target.closest('a[href]') : null
@@ -1636,7 +1751,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [file, updateTitle])
   useEffect(() => {
     if (!editor || !file || !isHydrated) return
-    if (loadedId === file.id && content === editorContentRef.current) return
+    if (loadedId === file.id && (content === editorContentRef.current || editor.isFocused)) return
     editor.commands.setContent(parseContent(content), { emitUpdate: false })
     editorContentRef.current = content
     setLoadedId(file.id)
@@ -2036,12 +2151,46 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     setSlashMenu(null)
   }
 
-  const insertBlock = (commandId: string) => {
+  const insertBlock = (commandId: string, blockTarget?: BlockTarget | null) => {
     const activeSlashMenu = slashMenuRef.current
     if (activeSlashMenu) {
       runSelectedSlashCommand(commandId, activeSlashMenu)
       return
     }
+
+    if (blockTarget) {
+      const doc = editor.state.doc
+      const targetNode = doc.nodeAt(blockTarget.pos) ?? blockTarget.node
+      const targetPos = blockTarget.pos
+      const isEmpty = targetNode.isTextblock && targetNode.content.size === 0
+      const isFormatCommand = ['paragraph', 'h1', 'h2', 'h3', 'h4', 'bullet', 'numbered', 'task', 'quote', 'code-block'].includes(commandId)
+
+      if (isEmpty) {
+        if (isFormatCommand) {
+          const sel = TextSelection.create(editor.state.doc, Math.min(targetPos + 1, editor.state.doc.content.size))
+          editor.view.dispatch(editor.state.tr.setSelection(sel))
+          runSlashCommand(editor, commandId, { from: targetPos + 1, to: targetPos + 1 }, true)
+        } else {
+          const nodeEnd = targetPos + targetNode.nodeSize
+          editor.chain().focus().deleteRange({ from: targetPos, to: nodeEnd }).run()
+          runSlashCommand(editor, commandId, { from: targetPos, to: targetPos })
+        }
+        return
+      }
+
+      if (isFormatCommand) {
+        const sel = TextSelection.create(editor.state.doc, Math.min(targetPos + 1, editor.state.doc.content.size))
+        editor.view.dispatch(editor.state.tr.setSelection(sel))
+        runSlashCommand(editor, commandId, { from: targetPos + 1, to: targetPos + 1 }, true)
+        return
+      }
+
+      const insertPos = targetPos + targetNode.nodeSize
+      editor.chain().focus().setTextSelection(Math.min(insertPos, editor.state.doc.content.size)).run()
+      runSlashCommand(editor, commandId, { from: insertPos, to: insertPos })
+      return
+    }
+
     const { from, to } = editor.state.selection
     runSlashCommand(editor, commandId, { from, to })
   }
@@ -2084,7 +2233,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         onBreadcrumbRename={updateTitle}
         status={<EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} />}
         addNewAction={false}
-        shareAction={true}
+        shareAction={false}
         favoriteAction={true}
         isFavorite={file.isFavorite}
         onFavorite={() => void toggleDocumentFavorite()}
@@ -2343,7 +2492,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                     event.preventDefault()
                     editor.chain().focus('start').run()
                   }}
-                  className="block min-h-[2.1875rem] sm:min-h-[3.5rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.75rem] font-extrabold leading-[1.25] sm:leading-[1.12] tracking-normal text-foreground outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-5xl"
+                  className="block min-h-[2.1875rem] sm:min-h-[3rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.875rem] font-extrabold leading-[1.2] tracking-normal text-foreground outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-[2.75rem] sm:leading-[1.15]"
                   aria-label="Page title"
                 />
               </div>

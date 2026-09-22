@@ -59,6 +59,22 @@
   --app-subtle: #252529;
 }
 
+@keyframes indeterminate-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.animate-indeterminate-progress {
+  animation: indeterminate-progress 1.5s cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+}
+
 @layer base {
   html {
     height: 100%;
@@ -217,10 +233,8 @@
   .tiptap ul:not([data-type="taskList"])[data-list-marker="circle"] { list-style-type: circle; }
   .tiptap ul:not([data-type="taskList"])[data-list-marker="square"] { list-style-type: square; }
   .tiptap blockquote { border-left: 3px solid var(--primary); padding-left: 1rem; color: var(--foreground); }
-  .tiptap blockquote p:has(> br.ProseMirror-trailingBreak) { position: relative; }
   .tiptap blockquote .mybook-empty-block-placeholder::before,
-  .tiptap blockquote .mybook-quote-empty-placeholder::before,
-  .tiptap blockquote p:has(> br.ProseMirror-trailingBreak)::before {
+  .tiptap blockquote .mybook-quote-empty-placeholder::before {
     color: var(--muted-foreground);
     font-weight: 400;
     opacity: 0.6;
@@ -229,13 +243,7 @@
     left: 0;
     top: 0;
     white-space: nowrap;
-  }
-  .tiptap blockquote .mybook-empty-block-placeholder::before,
-  .tiptap blockquote .mybook-quote-empty-placeholder::before {
     content: attr(data-placeholder);
-  }
-  .tiptap blockquote p:has(> br.ProseMirror-trailingBreak)::before {
-    content: "Quote";
   }
   .tiptap hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--app-border); }
   .tiptap a {
@@ -535,8 +543,7 @@
   }
   .tiptap ul[data-type="taskList"] li[data-checked] > div { min-width: 0; flex: 1; }
   .tiptap ul[data-type="taskList"] li[data-checked] > div > p { margin: 0; line-height: 1.5; }
-  .tiptap ul[data-type="taskList"] li[data-checked] > div > .mybook-empty-block-placeholder::before,
-  .tiptap ul[data-type="taskList"] li[data-checked] > div > p:has(> br.ProseMirror-trailingBreak)::before { content: "To-do"; color: var(--muted-foreground); font-size: 1rem; opacity: 0.6; pointer-events: none; }
+  .tiptap ul[data-type="taskList"] li[data-checked] > div > .mybook-empty-block-placeholder::before { content: "To-do"; color: var(--muted-foreground); font-size: 1rem; opacity: 0.6; pointer-events: none; }
   .tiptap ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--muted-foreground); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--muted-foreground) 75%, transparent); }
   .tiptap ul[data-type="taskList"] li[data-checked]:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   .tiptap .tableWrapper { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-bottom: 3rem; padding-bottom: 2.5rem; overflow-x: auto; }

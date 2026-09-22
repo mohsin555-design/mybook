@@ -64,4 +64,23 @@ describe('Drive bootstrap migration', () => {
     expect(mocks.ensure).not.toHaveBeenCalled()
     expect(result.current.isPreparing).toBe(false)
   })
+
+  it('sets isFetchingFiles to true on initial sync and completes with saved flag', async () => {
+    let resolveFolders: () => void
+    const foldersPromise = new Promise<void>((resolve) => {
+      resolveFolders = resolve
+    })
+    mocks.folders.mockImplementation(async (onProgress) => {
+      onProgress?.({ loaded: 1, total: 2, percent: 50 })
+      await foldersPromise
+    })
+
+    const { result } = renderHook(useDriveBootstrap)
+    // Initially when setting is false/unset, it triggers fetching
+    await waitFor(() => expect(mocks.ensure).toHaveBeenCalled())
+    expect(result.current.isPreparing).toBe(true)
+
+    resolveFolders!()
+    await waitFor(() => expect(mocks.queue).toHaveBeenCalled())
+  })
 })

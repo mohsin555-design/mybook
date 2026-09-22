@@ -82,6 +82,18 @@ export const ToggleBlock = Node.create({
       const handleInput = () => updateAttributes({ title: title.value })
       const handleTitleKeyDown = (event: KeyboardEvent) => {
         event.stopPropagation()
+        if (event.key === 'Tab' && !event.shiftKey) {
+          event.preventDefault()
+          if (details.open && typeof getPos === 'function') {
+            const position = getPos()
+            if (typeof position === 'number') {
+              const bodyPosition = Math.min(position + 1, editor.view.state.doc.content.size)
+              editor.view.dispatch(editor.view.state.tr.setSelection(TextSelection.near(editor.view.state.doc.resolve(bodyPosition))))
+              editor.view.focus()
+            }
+          }
+          return
+        }
         if (event.key !== 'Enter') return
         event.preventDefault()
         if (typeof getPos !== 'function') return

@@ -347,7 +347,7 @@ export const CodeBlock = TiptapCodeBlock.extend({
     return {
       ...(typeof this.parent === 'function' ? this.parent() : {}),
       'Mod-a': handleSelectAllInBlock,
-      'Ctrl-a': handleSelectAllInBlock,
+      'Mod-A': handleSelectAllInBlock,
     }
   },
   addProseMirrorPlugins() {

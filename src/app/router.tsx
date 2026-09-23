@@ -43,6 +43,13 @@ export const router = createBrowserRouter([
           },
           { path: '/settings', element: <SettingsPage /> },
           { path: '/design-system', element: <DesignSystemPage /> },
+          {
+            path: '/labs/intelligence',
+            lazy: async () => {
+              const { LocalIntelligenceLabPage } = await import('../pages/LocalIntelligenceLabPage')
+              return { Component: LocalIntelligenceLabPage }
+            },
+          },
         ],
       },
     ],

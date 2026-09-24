@@ -33,7 +33,7 @@ export class OcrEngine {
       const ret = await worker.recognize(imageSource)
       const rawText = (ret.data.text ?? '').trim()
       const confidence = Number(((ret.data.confidence ?? 80) / 100).toFixed(2))
-      const lines = rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+      const lines = rawText.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean)
 
       await worker.terminate()
       onProgress?.(100, 'OCR conversion complete')

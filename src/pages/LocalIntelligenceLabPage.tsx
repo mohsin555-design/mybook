@@ -31,6 +31,7 @@ import { UnsupportedDeviceState } from '../components/labs/intelligence/Unsuppor
 export function LocalIntelligenceLabPage() {
   const [capability, setCapability] = useState<DeviceCapability | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string>(DEFAULT_TEXT_MODEL)
+  const [isModelCached, setIsModelCached] = useState(false)
   const [modelProgress, setModelProgress] = useState<ModelProgressInfo>({
     status: 'idle',
     modelId: DEFAULT_TEXT_MODEL,
@@ -79,13 +80,15 @@ export function LocalIntelligenceLabPage() {
     }))
   }, [])
 
-  // Detect capability on mount
+  // Check cache and detect capability on mount or model change
   useEffect(() => {
     let isMounted = true
     detectDeviceCapability().then(async (cap) => {
       if (!isMounted) return
       setCapability(cap)
       const isCached = await checkOfflineModelCache(selectedModelId)
+      if (!isMounted) return
+      setIsModelCached(isCached)
       setDiagnostics((prev) => ({
         ...prev,
         capability: cap,
@@ -102,8 +105,16 @@ export function LocalIntelligenceLabPage() {
         modelStatus: info.status,
         errorMessage: info.status === 'error' ? info.message ?? 'Unknown error' : null,
       }))
-      if (info.message) {
-        addLog(info.message, info.status === 'error' ? 'error' : 'info')
+
+      // Avoid UI lag by only logging milestones instead of every download tick
+      if (info.status === 'error' && info.message) {
+        addLog(info.message, 'error')
+      } else if (info.status === 'ready') {
+        addLog(info.message || `Model ${info.modelId || ''} ready for local inference`, 'info')
+        setIsModelCached(true)
+        setDiagnostics((prev) => ({ ...prev, offlineCached: true }))
+      } else if (info.status === 'preparing') {
+        addLog(info.message || `Preparing ${info.modelId || ''}...`, 'info')
       }
     })
 
@@ -114,7 +125,8 @@ export function LocalIntelligenceLabPage() {
   }, [addLog, selectedModelId])
 
   const handleLoadModel = async () => {
-    addLog(`Initiating download/load for model: ${selectedModelId}`)
+    const isCached = await checkOfflineModelCache(selectedModelId)
+    addLog(isCached ? `Loading cached model from device storage: ${selectedModelId}` : `Downloading model: ${selectedModelId}`)
     try {
       await modelLoader.loadModel(selectedModelId, 'text')
     } catch (err) {
@@ -283,6 +295,7 @@ export function LocalIntelligenceLabPage() {
           }}
           onLoadModel={handleLoadModel}
           isOnline={capability?.isOnline ?? true}
+          isCached={isModelCached}
         />
 
         {/* Workspace Columns */}

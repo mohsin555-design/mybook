@@ -106,14 +106,37 @@ describe('LocalModelStatusCard', () => {
         onSelectModel={handleSelect}
         onLoadModel={handleLoad}
         isOnline={true}
+        isCached={false}
       />
     )
 
     expect(screen.getByText('Local Writing Model')).toBeInTheDocument()
     expect(screen.getByText(/Runs locally on this device/)).toBeInTheDocument()
 
-    const loadButton = screen.getByRole('button', { name: /Load Full Model/i })
+    const loadButton = screen.getByRole('button', { name: /Download & Load Model/i })
     fireEvent.click(loadButton)
+    expect(handleLoad).toHaveBeenCalled()
+    unmount()
+  })
+
+  it('renders cached status with 0 MB download indicator when model is cached', () => {
+    const handleLoad = vi.fn()
+    const handleSelect = vi.fn()
+
+    const { unmount } = render(
+      <LocalModelStatusCard
+        progressInfo={{ status: 'idle', modelId: DEFAULT_TEXT_MODEL }}
+        selectedModelId={DEFAULT_TEXT_MODEL}
+        onSelectModel={handleSelect}
+        onLoadModel={handleLoad}
+        isOnline={true}
+        isCached={true}
+      />
+    )
+
+    expect(screen.getByText(/Cached on device \(0 MB download\)/i)).toBeInTheDocument()
+    const loadCacheButton = screen.getByRole('button', { name: /Load from Local Cache/i })
+    fireEvent.click(loadCacheButton)
     expect(handleLoad).toHaveBeenCalled()
     unmount()
   })

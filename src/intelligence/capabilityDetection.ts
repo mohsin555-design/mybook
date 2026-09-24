@@ -80,14 +80,37 @@ export async function detectDeviceCapability(forceRefresh = false): Promise<Devi
 }
 
 export async function checkOfflineModelCache(modelId: string): Promise<boolean> {
-  if (typeof window === 'undefined' || !('caches' in window)) return false
+  if (typeof window === 'undefined') return false
+  try {
+    if (localStorage.getItem(`model_cached_${modelId}`) === 'true') {
+      return true
+    }
+  } catch {
+    // Ignore localStorage access restrictions
+  }
+
+  if (!('caches' in window)) return false
   try {
     const cacheNames = await window.caches.keys()
+    const modelBase = modelId.split('/').pop() || modelId
     for (const name of cacheNames) {
       if (name.includes('transformers') || name.includes('onnx') || name.includes('tesseract')) {
         const cache = await window.caches.open(name)
         const keys = await cache.keys()
-        if (keys.some((req) => req.url.includes(modelId) || req.url.includes('traineddata'))) {
+        if (
+          keys.some(
+            (req) =>
+              req.url.includes(modelId) ||
+              req.url.includes(encodeURIComponent(modelId)) ||
+              (modelBase && req.url.includes(modelBase)) ||
+              req.url.includes('traineddata')
+          )
+        ) {
+          try {
+            localStorage.setItem(`model_cached_${modelId}`, 'true')
+          } catch {
+            // Ignore
+          }
           return true
         }
       }

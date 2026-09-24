@@ -28,12 +28,21 @@ function postProgress(status: 'preparing' | 'downloading' | 'loading' | 'ready' 
 }
 
 function makeProgressCallback(modelId: string): ProgressCallback {
+  let lastProgressTime = 0
+  let lastPct = -1
+
   return (info: { status?: string; file?: string; progress?: number }) => {
+    const now = performance.now()
     if (info.status === 'initiate') {
       postProgress('preparing', 0, `Preparing ${info.file || modelId}...`, modelId)
     } else if (info.status === 'download' || info.status === 'progress') {
       const pct = typeof info.progress === 'number' ? Math.round(info.progress) : 0
-      postProgress('downloading', pct, `Downloading ${info.file || 'model components'} (${pct}%)`, modelId)
+      // Rate-limit progress emissions to max once every 100ms or on 5% intervals to avoid locking the UI thread
+      if (now - lastProgressTime > 100 || pct === 100 || pct === 0 || Math.abs(pct - lastPct) >= 5) {
+        lastProgressTime = now
+        lastPct = pct
+        postProgress('downloading', pct, `Downloading ${info.file || 'model components'} (${pct}%)`, modelId)
+      }
     } else if (info.status === 'loading') {
       postProgress('loading', 95, 'Loading model into memory...', modelId)
     } else if (info.status === 'done') {

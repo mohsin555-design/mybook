@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
+import { LoadingOverlay } from '../components/common/LoadingOverlay'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
@@ -10,7 +11,7 @@ export function RequireAuth() {
   const location = useLocation()
 
   if (isLoading) {
-    return <div role="status" className="p-4 text-base text-muted-foreground">Checking session...</div>
+    return <LoadingOverlay message="Checking your session…" />
   }
 
   if (!isAuthenticated && workspaceMode !== 'local') {
@@ -26,8 +27,9 @@ export function RedirectAuthenticated() {
   const workspaceMode = useWorkspaceStore((state) => state.mode)
 
   if (isLoading) {
-    return <div role="status" className="p-4 text-base text-muted-foreground">Checking session...</div>
+    return <LoadingOverlay message="Checking your session…" />
   }
 
   return isAuthenticated || workspaceMode === 'local' ? <Navigate to="/home" replace /> : <Outlet />
 }
+

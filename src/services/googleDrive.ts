@@ -707,11 +707,13 @@ export async function importDriveFoldersToLocal(
   const seenDriveIds = new Set<string>()
   let processedFolders = 0
   let totalDiscoveredFolders = 0
+  let maxPercent = 0
 
   const syncChildren = async (parentDriveId: string, parentLocalId: string | null) => {
     const children = await listChildFolders(parentDriveId)
     totalDiscoveredFolders += children.length
     if (totalDiscoveredFolders === 0) {
+      maxPercent = 100
       onProgress?.({ loaded: 0, total: 0, percent: 100 })
     }
     for (const driveFolder of children) {
@@ -736,8 +738,9 @@ export async function importDriveFoldersToLocal(
         byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, { id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', createdAt: now, updatedAt: now, isDeleted: false })
       }
       processedFolders += 1
-      const percent = totalDiscoveredFolders > 0 ? Math.min(100, Math.round((processedFolders / totalDiscoveredFolders) * 100)) : 100
-      onProgress?.({ loaded: processedFolders, total: totalDiscoveredFolders, percent })
+      const rawPercent = totalDiscoveredFolders > 0 ? Math.min(100, Math.round((processedFolders / totalDiscoveredFolders) * 100)) : 100
+      maxPercent = Math.max(maxPercent, rawPercent)
+      onProgress?.({ loaded: processedFolders, total: totalDiscoveredFolders, percent: maxPercent })
       await syncChildren(driveFolder.id, matchedLocalId)
     }
   }
@@ -989,11 +992,13 @@ export async function importDriveFilesToLocal(
   const seenDriveFileIds = new Set<string>()
   let processedFiles = 0
   let totalDiscoveredFiles = 0
+  let maxPercent = 0
 
   const syncFiles = async (parentDriveId: string, parentLocalId: string | null) => {
     const children = await listChildFiles(parentDriveId)
     totalDiscoveredFiles += children.length
     if (totalDiscoveredFiles === 0) {
+      maxPercent = 100
       onProgress?.({ loaded: 0, total: 0, percent: 100 })
     }
     for (const driveFile of children) {
@@ -1075,8 +1080,9 @@ export async function importDriveFilesToLocal(
         })
       }
       processedFiles += 1
-      const percent = totalDiscoveredFiles > 0 ? Math.min(100, Math.round((processedFiles / totalDiscoveredFiles) * 100)) : 100
-      onProgress?.({ loaded: processedFiles, total: totalDiscoveredFiles, percent })
+      const rawPercent = totalDiscoveredFiles > 0 ? Math.min(100, Math.round((processedFiles / totalDiscoveredFiles) * 100)) : 100
+      maxPercent = Math.max(maxPercent, rawPercent)
+      onProgress?.({ loaded: processedFiles, total: totalDiscoveredFiles, percent: maxPercent })
     }
   }
 

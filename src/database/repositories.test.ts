@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from './db'
-import { fileRepository, folderRepository, processPendingDriveFolderSync, queueLocalItemsForDriveBackup } from './repositories'
+import { clearAccountDriveCache, fileRepository, folderRepository, onClearAccountDriveCache, processPendingDriveFolderSync, queueLocalItemsForDriveBackup } from './repositories'
 import { ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFolder, trashDriveFolder } from '../services/googleDrive'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
@@ -721,4 +721,60 @@ describe('IndexedDB repositories', () => {
     expect(files.map((file) => file.name).sort()).toEqual(['Budget', 'Meeting Notes'])
     expect(document?.name).toBe('Meeting Notes')
   })
+
+  it('clears Drive cached files, folders, sync queue, and Drive settings on account clear without affecting local items', async () => {
+    const now = new Date().toISOString()
+    const listenerMock = vi.fn()
+    const unsubscribe = onClearAccountDriveCache(listenerMock)
+
+    await db.folders.bulkAdd([
+      { id: 'drive-folder-1', driveFolderId: 'drive-folder-id-1', workspaceType: 'drive', name: 'Cloud Folder', parentId: null, createdAt: now, updatedAt: now, isDeleted: false },
+      { id: 'local-folder-1', driveFolderId: null, workspaceType: 'local', name: 'Local Folder', parentId: null, createdAt: now, updatedAt: now, isDeleted: false },
+    ])
+    await db.files.bulkAdd([
+      { id: 'drive-file-1', driveFileId: 'drive-file-id-1', workspaceType: 'drive', name: 'Cloud Notes', type: 'document', folderId: null, content: '', mimeType: 'application/x-mybook-document', createdAt: now, updatedAt: now, lastSyncedAt: now, syncStatus: 'backed-up', isDeleted: false },
+      { id: 'local-file-1', driveFileId: null, workspaceType: 'local', name: 'Local Notes', type: 'document', folderId: null, content: '', mimeType: 'application/x-mybook-document', createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: 'local', isDeleted: false },
+    ])
+    await db.fileVersions.bulkAdd([
+      { id: 'version-drive-1', fileId: 'drive-file-1', source: 'drive', name: 'Cloud Notes', content: '', mimeType: 'application/x-mybook-document', driveFileId: 'drive-file-id-1', driveModifiedTime: now, createdAt: now, label: 'Cloud backup' },
+      { id: 'version-local-1', fileId: 'local-file-1', source: 'local', name: 'Local Notes', content: '', mimeType: 'application/x-mybook-document', driveFileId: null, driveModifiedTime: null, createdAt: now, label: 'Local save' },
+    ])
+    await db.syncQueue.add({
+      id: 'queue-1',
+      entityId: 'drive-file-1',
+      entityType: 'file',
+      operation: 'update',
+      status: 'pending',
+      retryCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      errorMessage: null,
+    })
+    await db.settings.bulkAdd([
+      { key: 'google-drive.mybook-folder-id', value: 'folder-123', updatedAt: now },
+      { key: 'google-drive.initial-sync-complete:user@example.com', value: true, updatedAt: now },
+      { key: 'local-workspace.details', value: { name: 'My Local' }, updatedAt: now },
+    ])
+
+    await clearAccountDriveCache()
+
+    expect(listenerMock).toHaveBeenCalledTimes(1)
+
+    // Drive data should be removed
+    expect(await db.files.get('drive-file-1')).toBeUndefined()
+    expect(await db.folders.get('drive-folder-1')).toBeUndefined()
+    expect(await db.fileVersions.get('version-drive-1')).toBeUndefined()
+    expect(await db.syncQueue.toArray()).toHaveLength(0)
+    expect(await db.settings.get('google-drive.mybook-folder-id')).toBeUndefined()
+    expect(await db.settings.get('google-drive.initial-sync-complete:user@example.com')).toBeUndefined()
+
+    // Local workspace data should be preserved
+    expect(await db.files.get('local-file-1')).toBeDefined()
+    expect(await db.folders.get('local-folder-1')).toBeDefined()
+    expect(await db.fileVersions.get('version-local-1')).toBeDefined()
+    expect((await db.settings.get('local-workspace.details'))?.value).toEqual({ name: 'My Local' })
+
+    unsubscribe()
+  })
 })
+

@@ -11,9 +11,10 @@ import { toast } from '../ui/toast'
 import type { MyBookFile, MyBookFolder } from '../../types/files'
 
 const mockNavigate = vi.hoisted(() => vi.fn())
-const mockLibraryData = vi.hoisted((): { files: MyBookFile[]; folders: MyBookFolder[] } => ({
+const mockLibraryData = vi.hoisted((): { files: MyBookFile[]; folders: MyBookFolder[]; isLoading: boolean } => ({
   files: [],
   folders: [],
+  isLoading: false,
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -25,7 +26,7 @@ vi.mock('react-router-dom', async () => {
 })
 
 vi.mock('../../hooks/useLibraryData', () => ({
-  useLibraryData: () => ({ ...mockLibraryData, isLoading: false }),
+  useLibraryData: () => mockLibraryData,
 }))
 
 vi.mock('../../database/repositories', () => ({
@@ -75,6 +76,7 @@ describe('FolderManagerView folder creation', () => {
     mockNavigate.mockClear()
     mockLibraryData.files = []
     mockLibraryData.folders = []
+    mockLibraryData.isLoading = false
     vi.mocked(folderRepository.create).mockReset()
     vi.mocked(folderRepository.delete).mockReset()
     vi.mocked(folderRepository.restore).mockReset()
@@ -191,4 +193,14 @@ describe('FolderManagerView folder creation', () => {
     toastArg?.actionProps?.onClick?.({} as MouseEvent<HTMLButtonElement>)
     expect(folderRepository.restore).toHaveBeenCalledWith('folder-1')
   })
+
+  it('does not render EmptyState while loading', () => {
+    mockLibraryData.isLoading = true
+    mockLibraryData.files = []
+    mockLibraryData.folders = []
+
+    render(<MemoryRouter><FolderManagerView folderId={null} /></MemoryRouter>)
+    expect(screen.queryByText('No folders or files')).not.toBeInTheDocument()
+  })
 })
+

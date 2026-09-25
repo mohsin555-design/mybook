@@ -25,7 +25,7 @@ interface FolderManagerViewProps {
 
 export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const navigate = useNavigate()
-  const { files, folders } = useLibraryData()
+  const { files, folders, isLoading } = useLibraryData()
   const workspaceMode = useWorkspaceStore((state) => state.mode)
   const [renameTarget, setRenameTarget] = useState<MyBookFolder | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MyBookFolder | null>(null)
@@ -36,6 +36,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
   const childFiles = files.filter((file) => file.folderId === folderId)
 
   if (folderId && !currentFolder) {
+    if (isLoading) return null
     return (
       <EmptyState
         title="Folder not found"
@@ -123,7 +124,7 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
         ))}
       </div>
 
-      {childFolders.length === 0 && childFiles.length === 0 ? (
+      {childFolders.length === 0 && childFiles.length === 0 && !isLoading ? (
         <div className="pt-16">
           <EmptyState
             title={folderId ? 'This folder is empty' : 'No folders or files'}

@@ -706,3 +706,47 @@ export const fileVersionRepository = {
     }
   },
 }
+
+const cacheClearListeners = new Set<() => void>()
+
+export function onClearAccountDriveCache(callback: () => void) {
+  cacheClearListeners.add(callback)
+  return () => {
+    cacheClearListeners.delete(callback)
+  }
+}
+
+export async function clearAccountDriveCache() {
+  try {
+    await db.transaction('rw', [db.files, db.folders, db.fileVersions, db.syncQueue, db.settings], async () => {
+      const driveFiles = await db.files.filter((file) => file.workspaceType !== 'local').toArray()
+      const driveFileIds = new Set(driveFiles.map((file) => file.id))
+      if (driveFileIds.size > 0) {
+        await db.files.bulkDelete(Array.from(driveFileIds))
+        const driveVersions = await db.fileVersions.filter((version) => driveFileIds.has(version.fileId)).toArray()
+        if (driveVersions.length > 0) {
+          await db.fileVersions.bulkDelete(driveVersions.map((version) => version.id))
+        }
+      }
+      const driveFolders = await db.folders.filter((folder) => folder.workspaceType !== 'local').toArray()
+      if (driveFolders.length > 0) {
+        await db.folders.bulkDelete(driveFolders.map((folder) => folder.id))
+      }
+      await db.syncQueue.clear()
+      const driveSettings = await db.settings.filter((setting) => setting.key.startsWith('google-drive.')).toArray()
+      if (driveSettings.length > 0) {
+        await db.settings.bulkDelete(driveSettings.map((setting) => setting.key))
+      }
+    })
+  } catch (error) {
+    devLog('error', 'Could not clear account Drive cache.', error)
+  }
+  cacheClearListeners.forEach((listener) => {
+    try {
+      listener()
+    } catch {
+      // ignore
+    }
+  })
+}
+

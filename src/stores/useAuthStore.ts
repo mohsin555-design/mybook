@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { decodeJwtPayload, loadGoogleIdentity } from '../utils/googleIdentity'
+import { clearAccountDriveCache } from '../database/repositories'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
@@ -206,7 +207,11 @@ export const useAuthStore = create<AuthState>()(
         if (!isBackendAuthEnabled) return
         set({ isLoading: true })
         try {
+          const prevEmail = get().email
           const session = await readBackendSession()
+          if (session.email && prevEmail && prevEmail.toLowerCase() !== session.email.toLowerCase()) {
+            await clearAccountDriveCache().catch(() => undefined)
+          }
           set({
             isAuthenticated: session.authenticated,
             isLoading: false,
@@ -228,7 +233,11 @@ export const useAuthStore = create<AuthState>()(
           return false
         }
         try {
+          const prevEmail = get().email
           const session = await completeLoginWithCredential(credential, prompt)
+          if (prevEmail && prevEmail.toLowerCase() !== session.email.toLowerCase()) {
+            await clearAccountDriveCache().catch(() => undefined)
+          }
           set({
             isAuthenticated: true,
             isLoading: false,
@@ -378,6 +387,7 @@ export const useAuthStore = create<AuthState>()(
         if (isBackendAuthEnabled) {
           await fetch(authApiUrl('/logout'), { method: 'POST', credentials: 'include' }).catch(() => undefined)
         }
+        await clearAccountDriveCache().catch(() => undefined)
         set({
           isAuthenticated: false,
           isLoading: false,

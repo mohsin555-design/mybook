@@ -191,7 +191,7 @@ async function resolveDirectoryHandleForFolder(
 }
 
 export async function initializeLocalWorkspace({
-  name = 'My Workspace',
+  name = 'Writin',
   storagePreference = canPickDeviceDirectory() ? 'file-system' : 'private',
   allowPrivateFallback = true,
   directoryHandle,

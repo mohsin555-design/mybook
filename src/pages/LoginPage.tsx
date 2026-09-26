@@ -1,4 +1,5 @@
 import {
+  CloudArrowUpIcon,
   ExclamationCircleIcon,
   FolderOpenIcon,
   ShieldCheckIcon,
@@ -7,6 +8,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { authApiUrl, getAuthConfigError, isBackendAuthEnabled, useAuthStore } from '../stores/useAuthStore'
+import {
+  type DriveVaultSummary,
+  listExistingDriveVaults,
+  selectExistingDriveVault,
+  setDriveVaultRootName,
+} from '../services/googleDrive'
 import {
   canPickDeviceDirectory,
   initializeLocalWorkspace,
@@ -27,10 +34,19 @@ export function LoginPage() {
   const location = useLocation()
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const [isLocalSetupOpen, setIsLocalSetupOpen] = useState(false)
+  const [isCloudSetupOpen, setIsCloudSetupOpen] = useState(false)
+  const [cloudVaultName, setCloudVaultName] = useState('Writin')
+  const [isCreatingCloudWorkspace, setIsCreatingCloudWorkspace] = useState(false)
+  const [existingVaults, setExistingVaults] = useState<DriveVaultSummary[]>([])
+  const [isLoadingExistingVaults, setIsLoadingExistingVaults] = useState(false)
+  const [vaultChoiceMode, setVaultChoiceMode] = useState<'select' | 'create'>('select')
+  const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null)
+  const [selectedVaultName, setSelectedVaultName] = useState<string>('Writin')
+
   const supportsDeviceFolder = useMemo(() => canPickDeviceDirectory(), [])
   const isAppleMobile = useMemo(() => typeof navigator !== 'undefined' && /iPad|iPhone|iPod/i.test(navigator.userAgent), [])
 
-  const [workspaceName, setWorkspaceName] = useState(supportsDeviceFolder ? 'My Workspace' : 'Private Device Vault')
+  const [workspaceName, setWorkspaceName] = useState('Writin')
   const [storagePreference, setStoragePreference] = useState<LocalWorkspaceStoragePreference>(supportsDeviceFolder ? 'file-system' : 'private')
   const [selectedDirectory, setSelectedDirectory] = useState<PickedLocalWorkspaceDirectory | null>(null)
   const [localSetupError, setLocalSetupError] = useState<string | null>(null)
@@ -45,6 +61,26 @@ export function LoginPage() {
   useEffect(() => {
     clearError()
   }, [clearError])
+
+  const handleGoogleLoginSuccess = async () => {
+    setIsCloudSetupOpen(true)
+    setIsLoadingExistingVaults(true)
+    try {
+      const vaults = await listExistingDriveVaults()
+      setExistingVaults(vaults)
+      const first = vaults[0]
+      if (first) {
+        setVaultChoiceMode('select')
+        setSelectedVaultId(first.id)
+        setSelectedVaultName(first.name)
+      } else {
+        setVaultChoiceMode('create')
+        setCloudVaultName('Writin')
+      }
+    } finally {
+      setIsLoadingExistingVaults(false)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -63,8 +99,7 @@ export function LoginPage() {
             }
             void completeLogin(response.credential, '').then((succeeded) => {
               if (succeeded) {
-                selectGoogleWorkspace()
-                navigate(destination, { replace: true })
+                void handleGoogleLoginSuccess()
               }
             })
           },
@@ -97,7 +132,6 @@ export function LoginPage() {
 
   useEffect(() => {
     setStoragePreference(supportsDeviceFolder ? 'file-system' : 'private')
-    setWorkspaceName(supportsDeviceFolder ? 'My Workspace' : 'Private Device Vault')
   }, [supportsDeviceFolder])
 
   const openLocalSetup = () => {
@@ -123,7 +157,7 @@ export function LoginPage() {
   }
 
   const startLocalWorkspace = async () => {
-    const defaultName = storagePreference === 'file-system' ? 'My Workspace' : 'Private Device Vault'
+    const defaultName = 'Writin'
     const name = workspaceName.trim() || selectedDirectory?.name || defaultName
     if (storagePreference === 'file-system' && !selectedDirectory) {
       setLocalSetupError('Choose a folder before creating this workspace, or use private device storage.')
@@ -144,6 +178,22 @@ export function LoginPage() {
     }
     createLocalWorkspace()
     navigate('/home', { replace: true })
+  }
+
+  const startCloudWorkspace = async () => {
+    setIsCreatingCloudWorkspace(true)
+    try {
+      if (vaultChoiceMode === 'select' && selectedVaultId) {
+        await selectExistingDriveVault(selectedVaultId, selectedVaultName)
+      } else {
+        const name = cloudVaultName.trim() || 'Writin'
+        await setDriveVaultRootName(name)
+      }
+      selectGoogleWorkspace()
+      navigate(destination, { replace: true })
+    } finally {
+      setIsCreatingCloudWorkspace(false)
+    }
   }
 
   return (
@@ -243,7 +293,7 @@ export function LoginPage() {
               value={workspaceName}
               onChange={(event) => setWorkspaceName(event.target.value)}
               className="mt-2 h-11 w-full rounded-[var(--radius-control)] border border-[var(--app-border)] bg-background px-3 text-base outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
-              placeholder={supportsDeviceFolder ? 'My Workspace' : 'Private Device Vault'}
+              placeholder="Writin"
             />
 
             <fieldset className="mt-5">
@@ -333,6 +383,157 @@ export function LoginPage() {
                 className="min-h-11 rounded-[var(--radius-control)] bg-foreground px-4 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-60"
               >
                 {isCreatingLocalWorkspace ? 'Opening...' : 'Open Vault'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isCloudSetupOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/40 px-3 pb-3 pt-[calc(1rem+env(safe-area-inset-top))] sm:items-center sm:justify-center sm:p-6" role="presentation">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cloud-workspace-title"
+            className="max-h-full w-full max-w-lg overflow-y-auto rounded-t-2xl border border-[var(--app-border)] bg-background p-5 shadow-xl sm:rounded-2xl sm:p-6"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <CloudArrowUpIcon aria-hidden="true" className="size-6" />
+              </div>
+              <div>
+                <h2 id="cloud-workspace-title" className="text-lg font-semibold leading-7">
+                  Set Up Google Drive Vault
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {existingVaults.length > 0
+                    ? 'Select an existing vault from your Google Drive or create a new one.'
+                    : 'Choose the name for your root folder in Google Drive. All documents and spreadsheets will be kept inside this folder.'}
+                </p>
+              </div>
+            </div>
+
+            {isLoadingExistingVaults ? (
+              <div className="my-8 flex items-center justify-center gap-3 text-sm text-muted-foreground">
+                <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <span>Checking your Google Drive for existing vaults...</span>
+              </div>
+            ) : existingVaults.length > 0 ? (
+              <fieldset className="mt-5 space-y-3">
+                <legend className="text-sm font-medium text-foreground">Vault selection</legend>
+                <div
+                  className={`rounded-lg border p-4 transition border-[var(--app-border)] hover:border-[var(--accent)]/60 ${vaultChoiceMode === 'select' ? 'ring-2 ring-[var(--accent)]/30' : ''}`}
+                >
+                  <label className="flex cursor-pointer gap-3">
+                    <input
+                      type="radio"
+                      name="vault-choice"
+                      value="select"
+                      checked={vaultChoiceMode === 'select'}
+                      onChange={() => setVaultChoiceMode('select')}
+                      className="mt-1 size-4 accent-[var(--accent)]"
+                    />
+                    <div>
+                      <span className="block text-sm font-medium text-foreground">Select an existing vault</span>
+                      <span className="mt-1 block text-sm leading-6 text-muted-foreground">
+                        Connect to a vault previously created in Google Drive.
+                      </span>
+                    </div>
+                  </label>
+                  {vaultChoiceMode === 'select' ? (
+                    <div className="mt-3 space-y-2 pl-7">
+                      {existingVaults.map((vault) => (
+                        <label
+                          key={vault.id}
+                          className={`flex cursor-pointer items-center justify-between rounded-md border p-2.5 text-sm transition ${selectedVaultId === vault.id ? 'border-[var(--accent)] bg-muted/60 font-medium' : 'border-[var(--app-border)] hover:bg-muted/30'}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <FolderOpenIcon className="size-4 text-primary shrink-0" />
+                            <span>{vault.name}</span>
+                          </span>
+                          <input
+                            type="radio"
+                            name="selected-vault"
+                            value={vault.id}
+                            checked={selectedVaultId === vault.id}
+                            onChange={() => {
+                              setSelectedVaultId(vault.id)
+                              setSelectedVaultName(vault.name)
+                            }}
+                            className="size-4 accent-[var(--accent)]"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div
+                  className={`rounded-lg border p-4 transition border-[var(--app-border)] hover:border-[var(--accent)]/60 ${vaultChoiceMode === 'create' ? 'ring-2 ring-[var(--accent)]/30' : ''}`}
+                >
+                  <label className="flex cursor-pointer gap-3">
+                    <input
+                      type="radio"
+                      name="vault-choice"
+                      value="create"
+                      checked={vaultChoiceMode === 'create'}
+                      onChange={() => setVaultChoiceMode('create')}
+                      className="mt-1 size-4 accent-[var(--accent)]"
+                    />
+                    <div>
+                      <span className="block text-sm font-medium text-foreground">Create a new vault</span>
+                      <span className="mt-1 block text-sm leading-6 text-muted-foreground">
+                        Start a new root folder on Google Drive.
+                      </span>
+                    </div>
+                  </label>
+                  {vaultChoiceMode === 'create' ? (
+                    <div className="mt-3 pl-7">
+                      <label htmlFor="new-cloud-vault-name" className="block text-xs font-medium text-foreground">
+                        Vault name
+                      </label>
+                      <input
+                        id="new-cloud-vault-name"
+                        value={cloudVaultName}
+                        onChange={(event) => setCloudVaultName(event.target.value)}
+                        className="mt-1.5 h-10 w-full rounded-[var(--radius-control)] border border-[var(--app-border)] bg-background px-3 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
+                        placeholder="Writin"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </fieldset>
+            ) : (
+              <div className="mt-5">
+                <label htmlFor="cloud-vault-name" className="block text-sm font-medium text-foreground">
+                  Vault name
+                </label>
+                <input
+                  id="cloud-vault-name"
+                  value={cloudVaultName}
+                  onChange={(event) => setCloudVaultName(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-[var(--radius-control)] border border-[var(--app-border)] bg-background px-3 text-base outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
+                  placeholder="Writin"
+                />
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsCloudSetupOpen(false)}
+                disabled={isCreatingCloudWorkspace}
+                className="min-h-11 rounded-[var(--radius-control)] border border-[var(--app-border)] px-4 text-sm font-semibold transition hover:bg-muted disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void startCloudWorkspace()}
+                disabled={isCreatingCloudWorkspace || isLoadingExistingVaults}
+                className="min-h-11 rounded-[var(--radius-control)] bg-foreground px-4 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-60"
+              >
+                {isCreatingCloudWorkspace ? 'Opening...' : vaultChoiceMode === 'select' && existingVaults.length > 0 ? 'Open Vault' : 'Create Vault'}
               </button>
             </div>
           </section>

@@ -30,6 +30,6 @@ export function RedirectAuthenticated() {
     return <LoadingOverlay message="Checking your session…" />
   }
 
-  return isAuthenticated || workspaceMode === 'local' ? <Navigate to="/home" replace /> : <Outlet />
+  return (isAuthenticated && workspaceMode === 'drive') || workspaceMode === 'local' ? <Navigate to="/home" replace /> : <Outlet />
 }
 

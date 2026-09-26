@@ -7,12 +7,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LoginPage } from './LoginPage'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { initializeLocalWorkspace, pickLocalWorkspaceDirectory } from '../services/localWorkspace'
+import { listExistingDriveVaults, selectExistingDriveVault } from '../services/googleDrive'
 
 const mockLocalWorkspaceSupport = vi.hoisted(() => ({ canPickDeviceDirectory: false }))
 const pickedDirectory = vi.hoisted(() => ({ handle: { name: 'Writing Vault' } as FileSystemDirectoryHandle, name: 'Writing Vault' }))
 
-vi.mock('../utils/googleIdentity', () => ({
-  loadGoogleIdentity: vi.fn().mockResolvedValue(undefined),
+vi.mock('../utils/googleIdentity', async () => {
+  const actual = await vi.importActual<typeof import('../utils/googleIdentity')>('../utils/googleIdentity')
+  return {
+    ...actual,
+    loadGoogleIdentity: vi.fn().mockResolvedValue(undefined),
+  }
+})
+
+vi.mock('../services/googleDrive', () => ({
+  listExistingDriveVaults: vi.fn().mockResolvedValue([]),
+  selectExistingDriveVault: vi.fn().mockResolvedValue(undefined),
+  setDriveVaultRootName: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../services/localWorkspace', async () => {
@@ -24,6 +35,14 @@ vi.mock('../services/localWorkspace', async () => {
     pickLocalWorkspaceDirectory: vi.fn().mockResolvedValue(pickedDirectory),
   }
 })
+
+function createGoogleCredential(payload: Record<string, unknown>) {
+  return [
+    'header',
+    btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+    'signature',
+  ].join('.')
+}
 
 function renderLoginPage() {
   render(
@@ -37,11 +56,31 @@ function renderLoginPage() {
 }
 
 describe('LoginPage local workspace setup', () => {
+  let mockInitialize: ReturnType<typeof vi.fn>
+  let mockRenderButton: ReturnType<typeof vi.fn>
+
   beforeEach(() => {
     useWorkspaceStore.setState({ mode: null })
     mockLocalWorkspaceSupport.canPickDeviceDirectory = false
     vi.mocked(initializeLocalWorkspace).mockResolvedValue({ storage: 'opfs' })
     vi.mocked(pickLocalWorkspaceDirectory).mockResolvedValue(pickedDirectory)
+    mockInitialize = vi.fn()
+    mockRenderButton = vi.fn()
+    window.google = {
+      accounts: {
+        id: {
+          initialize: mockInitialize,
+          renderButton: mockRenderButton,
+        },
+        oauth2: {
+          initTokenClient: vi.fn().mockImplementation(({ callback }) => ({
+            requestAccessToken: vi.fn().mockImplementation(() => {
+              callback({ access_token: 'test-token', expires_in: 3600 })
+            }),
+          })),
+        },
+      },
+    } as unknown as typeof window.google
   })
 
   afterEach(() => {
@@ -62,7 +101,7 @@ describe('LoginPage local workspace setup', () => {
 
     await waitFor(() => expect(screen.getByText('Home')).toBeInTheDocument())
     expect(initializeLocalWorkspace).toHaveBeenCalledWith({
-      name: 'Private Device Vault',
+      name: 'Writin',
       storagePreference: 'private',
       allowPrivateFallback: true,
       directoryHandle: undefined,
@@ -112,5 +151,33 @@ describe('LoginPage local workspace setup', () => {
     expect(screen.queryByText('Home')).not.toBeInTheDocument()
     expect(initializeLocalWorkspace).not.toHaveBeenCalled()
     expect(useWorkspaceStore.getState().mode).toBeNull()
+  })
+
+  it('renders existing Drive vaults and selects the chosen vault', async () => {
+    vi.mocked(listExistingDriveVaults).mockResolvedValue([
+      { id: 'vault-1', name: 'Work Notes' },
+      { id: 'vault-2', name: 'Personal' },
+    ])
+
+    renderLoginPage()
+
+    await waitFor(() => expect(mockInitialize).toHaveBeenCalled())
+    const options = mockInitialize.mock.calls[0]?.[0]
+    const credential = createGoogleCredential({ email: 'test@example.com', email_verified: true })
+    options?.callback({ credential, select_by: 'user' })
+
+    expect(await screen.findByText('Set Up Google Drive Vault')).toBeInTheDocument()
+    expect(await screen.findByText('Work Notes')).toBeInTheDocument()
+    expect(screen.getByText('Personal')).toBeInTheDocument()
+
+    // Select Personal vault
+    const personalRadio = screen.getByRole('radio', { name: /Personal/i })
+    fireEvent.click(personalRadio)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Vault' }))
+
+    await waitFor(() => expect(screen.getByText('Home')).toBeInTheDocument())
+    expect(selectExistingDriveVault).toHaveBeenCalledWith('vault-2', 'Personal')
+    expect(useWorkspaceStore.getState().mode).toBe('drive')
   })
 })

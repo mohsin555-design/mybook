@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SettingsPage } from './SettingsPage'
 
@@ -50,7 +50,26 @@ vi.mock('../stores/useAuthStore', () => ({
   useAuthStore: () => ({ email: 'user@example.com', logout: mockLogout, reconnect: vi.fn() }),
 }))
 
+const mockCanPick = vi.hoisted(() => ({ value: true }))
+const mockPickLocal = vi.hoisted(() => vi.fn())
+
+vi.mock('../services/localWorkspace', () => ({
+  canPickDeviceDirectory: () => mockCanPick.value,
+  getLocalStorageProtectionStatus: vi.fn().mockResolvedValue({ persisted: true }),
+  getLocalWorkspaceDetails: vi.fn().mockResolvedValue(null),
+  pickLocalWorkspaceDirectory: mockPickLocal,
+  requestPersistentLocalStorage: vi.fn().mockResolvedValue(true),
+  saveDeviceDirectoryHandle: vi.fn().mockResolvedValue(undefined),
+  saveLocalWorkspaceDetails: vi.fn().mockResolvedValue(undefined),
+  writeLocalWorkspaceFile: vi.fn().mockResolvedValue(undefined),
+}))
+
 describe('SettingsPage', () => {
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+  })
+
   it('logs out from Preferences and navigates to login without blocked-route state', async () => {
     render(<MemoryRouter><SettingsPage /></MemoryRouter>)
 
@@ -58,5 +77,20 @@ describe('SettingsPage', () => {
 
     await waitFor(() => expect(mockLogout).toHaveBeenCalled())
     expect(mockNavigate).toHaveBeenCalledWith('/login', { replace: true, state: null })
+  })
+
+  it('shows Mirror Drive files section when browser supports device folder picker', async () => {
+    mockCanPick.value = true
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+
+    expect(screen.getByRole('heading', { name: /Mirror Drive files to folder/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Make All Available Locally/i })).toBeInTheDocument()
+  })
+
+  it('hides Mirror Drive files section when browser does not support folder picker', async () => {
+    mockCanPick.value = false
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>)
+
+    expect(screen.queryByRole('heading', { name: /Mirror Drive files to folder/i })).not.toBeInTheDocument()
   })
 })

@@ -27,7 +27,7 @@ export function SyncProgressToast({
       aria-valuenow={clampedProgress}
       aria-valuemin={0}
       aria-valuemax={100}
-      className="pointer-events-none fixed z-50 transition-all duration-300 ease-out bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-4 right-4 sm:bottom-auto sm:top-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-80"
+      className="pointer-events-none fixed z-50 transition-all duration-300 ease-out bottom-[calc(4.75rem+env(safe-area-inset-bottom))] inset-x-4 mx-auto max-w-sm sm:bottom-6 sm:right-6 sm:left-auto sm:top-auto sm:mx-0 sm:translate-x-0 sm:w-80"
     >
       <div className="pointer-events-auto relative flex flex-col overflow-hidden rounded-2xl border border-border/80 bg-popover/95 p-3.5 shadow-xl backdrop-blur-md dark:border-border">
         <div className="flex items-center gap-3">

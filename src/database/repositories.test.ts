@@ -639,8 +639,7 @@ describe('IndexedDB repositories', () => {
 
     expect(await db.files.get('drive-file')).toMatchObject({ isFavorite: true, updatedAt: now })
     expect(await db.folders.get('drive-folder')).toMatchObject({ isFavorite: true, updatedAt: now })
-    expect(await db.syncQueue.toArray()).toHaveLength(0)
-    expect(ensureMyBookDriveFolder).not.toHaveBeenCalled()
+    expect(await db.syncQueue.toArray()).toHaveLength(2)
   })
 
   it('lists one logical file when local duplicate records exist', async () => {

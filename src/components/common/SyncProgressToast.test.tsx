@@ -22,8 +22,8 @@ describe('SyncProgressToast', () => {
 
     const aside = screen.getByRole('status')
     expect(aside).toHaveAttribute('aria-valuenow', '0')
-    expect(aside).toHaveClass('sm:top-4')
-    expect(aside).toHaveClass('sm:left-1/2')
+    expect(aside).toHaveClass('sm:bottom-6')
+    expect(aside).toHaveClass('sm:right-6')
     expect(aside).toHaveClass('bottom-[calc(4.75rem+env(safe-area-inset-bottom))]')
   })
 

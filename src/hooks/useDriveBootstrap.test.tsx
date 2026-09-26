@@ -112,8 +112,10 @@ describe('Drive bootstrap migration', () => {
     })
 
     const { result } = renderHook(useDriveBootstrap)
-    await waitFor(() => expect(result.current.fetchProgress).toBe(100))
-    expect(result.current.isFetchingFiles).toBe(false)
+    await waitFor(() => {
+      expect(result.current.fetchProgress).toBe(100)
+      expect(result.current.isFetchingFiles).toBe(false)
+    })
     expect(settingsRepository.update).toHaveBeenCalledWith('google-drive.initial-sync-complete:writer@example.com', true)
   })
 

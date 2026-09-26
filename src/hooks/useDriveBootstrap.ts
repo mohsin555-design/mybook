@@ -9,27 +9,57 @@ const DRIVE_ACTIVE_EMAIL_KEY = 'google-drive.active-account-email'
 const DRIVE_BACKFILL_KEY = 'google-drive.folder-backfill-complete'
 const DRIVE_INITIAL_SYNC_KEY = (email: string) => `google-drive.initial-sync-complete:${email}`
 let importDriveBackupsFlight: Promise<void> | null = null
+const progressListeners = new Set<(progress: { loaded: number; total: number; percent: number }) => void>()
+let currentProgress = { loaded: 0, total: 0, percent: 0 }
+
+function reportFlightProgress(p: { loaded: number; total: number; percent: number }) {
+  currentProgress = {
+    loaded: p.loaded,
+    total: p.total,
+    percent: Math.max(currentProgress.percent, p.percent),
+  }
+  for (const listener of progressListeners) {
+    try {
+      listener(currentProgress)
+    } catch {
+      // Ignore listener error
+    }
+  }
+}
 
 async function importDriveBackupsToLocal(
   onProgress?: (progress: { loaded: number; total: number; percent: number }) => void,
 ) {
-  let highestPercent = 0
-  const report = (p: { loaded: number; total: number; percent: number }) => {
-    highestPercent = Math.max(highestPercent, p.percent)
-    onProgress?.({ loaded: p.loaded, total: p.total, percent: highestPercent })
+  if (onProgress) {
+    progressListeners.add(onProgress)
+    if (currentProgress.percent > 0) {
+      onProgress(currentProgress)
+    }
   }
 
-  importDriveBackupsFlight ??= (async () => {
-    await importDriveFoldersToLocal((p) => {
-      report({ loaded: p.loaded, total: p.total, percent: Math.round(p.percent * 0.3) })
+  if (!importDriveBackupsFlight) {
+    currentProgress = { loaded: 0, total: 0, percent: 0 }
+    importDriveBackupsFlight = (async () => {
+      await importDriveFoldersToLocal((p) => {
+        reportFlightProgress({ loaded: p.loaded, total: p.total, percent: Math.round(p.percent * 0.3) })
+      })
+      await importDriveFilesToLocal((p) => {
+        reportFlightProgress({ loaded: p.loaded, total: p.total, percent: 30 + Math.round(p.percent * 0.7) })
+      })
+    })().finally(() => {
+      importDriveBackupsFlight = null
+      progressListeners.clear()
+      currentProgress = { loaded: 0, total: 0, percent: 0 }
     })
-    await importDriveFilesToLocal((p) => {
-      report({ loaded: p.loaded, total: p.total, percent: 30 + Math.round(p.percent * 0.7) })
-    })
-  })().finally(() => {
-    importDriveBackupsFlight = null
-  })
-  return importDriveBackupsFlight
+  }
+
+  try {
+    await importDriveBackupsFlight
+  } finally {
+    if (onProgress) {
+      progressListeners.delete(onProgress)
+    }
+  }
 }
 
 export function useDriveBootstrap() {
@@ -86,8 +116,11 @@ export function useDriveBootstrap() {
           })
           if (shouldShowInitialFetch && !cancelled) {
             setFetchProgress(100)
-            setIsFetchingFiles(false)
             await settingsRepository.update(DRIVE_INITIAL_SYNC_KEY(email), true)
+            await new Promise((resolve) => setTimeout(resolve, 600))
+            if (!cancelled) {
+              setIsFetchingFiles(false)
+            }
           }
           if (!cancelled) setStatusMessage('Synced across devices.')
         } catch (error) {

@@ -28,10 +28,18 @@ describe('route protection', () => {
     expect(screen.getByText('Login')).toBeInTheDocument()
   })
 
-  it('redirects authenticated users away from login', () => {
+  it('redirects authenticated users away from login when workspace mode is set', () => {
     useAuthStore.setState({ isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: 'drive' })
     render(<MemoryRouter initialEntries={['/login']}><Routes><Route element={<RedirectAuthenticated />}><Route path="/login" element={<p>Login</p>} /></Route><Route path="/home" element={<p>Home</p>} /></Routes></MemoryRouter>)
     expect(screen.getByText('Home')).toBeInTheDocument()
+  })
+
+  it('keeps authenticated users on login while workspace mode is not set', () => {
+    useAuthStore.setState({ isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: null })
+    render(<MemoryRouter initialEntries={['/login']}><Routes><Route element={<RedirectAuthenticated />}><Route path="/login" element={<p>Login</p>} /></Route><Route path="/home" element={<p>Home</p>} /></Routes></MemoryRouter>)
+    expect(screen.getByText('Login')).toBeInTheDocument()
   })
 
   it('allows local workspace users without a Google session', () => {

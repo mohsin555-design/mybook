@@ -9,6 +9,63 @@ const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document'
 const GOOGLE_SHEET_MIME = 'application/vnd.google-apps.spreadsheet'
 const MYBOOK_MARKDOWN_MIME = 'text/markdown'
 const WRITIN_FOLDER_NAME = 'Writin'
+export const DRIVE_VAULT_NAME_KEY = 'drive-vault.root-name'
+
+export async function getDriveVaultRootName(): Promise<string> {
+  const record = await db.settings.get(DRIVE_VAULT_NAME_KEY)
+  if (record && record.key === DRIVE_VAULT_NAME_KEY && typeof record.value === 'string' && record.value.trim()) {
+    return record.value.trim()
+  }
+  return WRITIN_FOLDER_NAME
+}
+
+export async function setDriveVaultRootName(name: string): Promise<void> {
+  const trimmed = name.trim() || WRITIN_FOLDER_NAME
+  await db.settings.put({ key: DRIVE_VAULT_NAME_KEY, value: trimmed, updatedAt: new Date().toISOString() })
+}
+
+export interface DriveVaultSummary {
+  id: string
+  name: string
+  modifiedTime?: string
+}
+
+export async function listExistingDriveVaults(): Promise<DriveVaultSummary[]> {
+  try {
+    const names = ['Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']
+    const nameQuery = names.map((name) => `name='${name}'`).join(' or ')
+    const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (appProperties has { key='writin_vault' and value='true' } or appProperties has { key='mybook_vault' and value='true' } or ${nameQuery})`
+    const params = new URLSearchParams({
+      q: query,
+      fields: 'files(id,name,mimeType,trashed,modifiedTime)',
+      spaces: 'drive',
+      pageSize: '50',
+    })
+    const result = await driveFetch(`/files?${params}`)
+    if (!result.success) return []
+    const data = await result.response.json() as { files?: DriveFolder[] }
+    if (!Array.isArray(data.files)) return []
+    const seen = new Set<string>()
+    const vaults: DriveVaultSummary[] = []
+    for (const file of data.files) {
+      if (!file.id || seen.has(file.id) || file.trashed) continue
+      seen.add(file.id)
+      vaults.push({
+        id: file.id,
+        name: file.name,
+      })
+    }
+    return vaults
+  } catch {
+    return []
+  }
+}
+
+export async function selectExistingDriveVault(folderId: string, folderName: string): Promise<void> {
+  await db.settings.put({ key: MYBOOK_FOLDER_KEY, value: folderId, updatedAt: new Date().toISOString() })
+  await db.settings.put({ key: DRIVE_VAULT_NAME_KEY, value: folderName, updatedAt: new Date().toISOString() })
+}
+
 // Keep the existing setting key so installed users retain their Drive root ID.
 const MYBOOK_FOLDER_KEY = 'google-drive.mybook-folder-id'
 
@@ -102,7 +159,7 @@ async function driveFetch(path: string, init: RequestInit = {}) {
 
 async function listChildFolders(parentId: string): Promise<DriveFolder[]> {
   const query = `'${parentId}' in parents and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`
-  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent('files(id,name,mimeType,trashed,webViewLink)')}&spaces=drive`)
+  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent('files(id,name,mimeType,trashed,webViewLink,appProperties)')}&spaces=drive`)
   if (!result.success) throw new Error(result.error)
   const data = await result.response.json() as { files?: DriveFolder[] }
   return data.files ?? []
@@ -110,7 +167,7 @@ async function listChildFolders(parentId: string): Promise<DriveFolder[]> {
 
 async function listChildFiles(parentId: string): Promise<DriveFile[]> {
   const query = `'${parentId}' in parents and mimeType!='${DRIVE_FOLDER_MIME}' and trashed=false`
-  const fields = 'files(id,name,mimeType,trashed,webViewLink,parents,modifiedTime)'
+  const fields = 'files(id,name,mimeType,trashed,webViewLink,parents,modifiedTime,appProperties)'
   const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(fields)}&spaces=drive`)
   if (!result.success) throw new Error(result.error)
   const data = await result.response.json() as { files?: DriveFile[] }
@@ -254,31 +311,39 @@ export async function createVisibleFolder(name: string): Promise<DriveFolder> {
   return createVisibleFolderInParent(name, 'root')
 }
 
-export async function createVisibleFolderInParent(name: string, parentId: string): Promise<DriveFolder> {
-  const result = await driveFetch('/files?fields=id,name,mimeType,trashed,webViewLink', {
+export async function createVisibleFolderInParent(name: string, parentId: string, appProperties?: Record<string, string>): Promise<DriveFolder> {
+  const result = await driveFetch('/files?fields=id,name,mimeType,trashed,webViewLink,appProperties', {
     method: 'POST',
     body: JSON.stringify({
       name,
       mimeType: DRIVE_FOLDER_MIME,
       parents: [parentId],
+      ...(appProperties ? { appProperties } : {}),
     }),
   })
   if (!result.success) throw new Error(result.error)
   return await result.response.json() as DriveFolder
 }
 
-export async function ensureVisibleFolderInParent(name: string, parentId: string) {
+export async function ensureVisibleFolderInParent(name: string, parentId: string, appProperties?: Record<string, string>) {
   const matches = await listVisibleFoldersByName(name, parentId)
   const existing = matches.find((folder) => folder.mimeType === DRIVE_FOLDER_MIME && !folder.trashed)
-  return existing ?? createVisibleFolderInParent(name, parentId)
+  if (existing) {
+    if (appProperties && Object.keys(appProperties).length > 0) {
+      await updateDriveFolder(existing.id, { appProperties })
+    }
+    return existing
+  }
+  return createVisibleFolderInParent(name, parentId, appProperties)
 }
 
-export async function updateDriveFolder(folderId: string, changes: { name?: string; parentId?: string | null }) {
+export async function updateDriveFolder(folderId: string, changes: { name?: string; parentId?: string | null; appProperties?: Record<string, string> }) {
   const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const metadata: Record<string, unknown> = {}
   if (changes.name !== undefined) metadata.name = changes.name
-  const params = new URLSearchParams({ fields: 'id,name,mimeType,webViewLink' })
+  if (changes.appProperties !== undefined) metadata.appProperties = changes.appProperties
+  const params = new URLSearchParams({ fields: 'id,name,mimeType,webViewLink,appProperties' })
   if (changes.parentId) {
     const moveParams = await parentMoveParams(folderId, changes.parentId, accessToken)
     moveParams.forEach((value, key) => params.set(key, value))
@@ -357,7 +422,7 @@ export async function createDriveFileInFolder(name: string, content: string, mim
   return await result.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
 }
 
-export async function updateDriveFile(fileId: string, changes: { name?: string; content?: string; parentId?: string | null; mimeType?: string; trashed?: boolean }) {
+export async function updateDriveFile(fileId: string, changes: { name?: string; content?: string; parentId?: string | null; mimeType?: string; trashed?: boolean; appProperties?: Record<string, string> }) {
   const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
 
@@ -365,6 +430,7 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
   if (changes.name !== undefined) metadata.name = changes.name
   if (changes.mimeType !== undefined) metadata.mimeType = changes.mimeType
   if (changes.trashed !== undefined) metadata.trashed = changes.trashed
+  if (changes.appProperties !== undefined) metadata.appProperties = changes.appProperties
 
   const parentParams = new URLSearchParams()
   if (changes.parentId !== undefined) {
@@ -375,7 +441,7 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
   }
 
   if (changes.content === undefined) {
-    parentParams.set('fields', 'id,name,webViewLink,parents')
+    parentParams.set('fields', 'id,name,webViewLink,parents,appProperties')
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?${parentParams.toString()}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -388,7 +454,7 @@ export async function updateDriveFile(fileId: string, changes: { name?: string; 
     return await response.json() as { id: string; name: string; webViewLink?: string }
   }
 
-  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,parents' })
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,parents,appProperties' })
   parentParams.forEach((value, key) => query.set(key, value))
   const boundary = 'mybook-update-boundary'
   const bodyParts = [
@@ -471,24 +537,25 @@ function safeMarkdownName(name: string) {
   return `${name.replace(/\.mybook\.md$/i, '').replace(/\.md$/i, '').trim() || 'Untitled'}.md`
 }
 
-async function uploadMarkdownFile(title: string, content: string, parentId: string, fileId?: string | null) {
+async function uploadMarkdownFile(title: string, content: string, parentId: string, fileId?: string | null, appProperties?: Record<string, string>) {
   const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
   const boundary = 'mybook-markdown-boundary'
-  const metadata = {
+  const metadata: Record<string, unknown> = {
     name: safeMarkdownName(title),
     ...(fileId ? {} : { parents: [parentId] }),
     mimeType: MYBOOK_MARKDOWN_MIME,
+    ...(appProperties ? { appProperties } : {}),
   }
   const method = fileId ? 'PATCH' : 'POST'
-  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,modifiedTime' })
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,modifiedTime,appProperties' })
   if (fileId) {
     const moveParams = await parentMoveParams(fileId, parentId, accessToken)
     moveParams.forEach((value, key) => query.set(key, value))
   }
   const endpoint = fileId
     ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?${query.toString()}`
-    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime'
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime,appProperties'
   const response = await fetch(endpoint, {
     method,
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -528,7 +595,8 @@ export async function backupDocumentToDrive(input: {
       })()
       const { documentToMyBookMarkdown } = await import('../utils/mybookMarkdown')
       const markdown = documentToMyBookMarkdown(title, parsedContent, { documentId: file.id })
-      const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId))
+      const isFavorite = latest?.isFavorite ?? file.isFavorite
+      const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId, { isFavorite: isFavorite ? 'true' : 'false' }))
       const current = await db.files.get(file.id)
       const changedDuringUpload = !current || current.content !== content || current.name !== title || current.folderId !== (latest?.folderId ?? file.folderId) || current.isDeleted
       await db.files.update(file.id, changedDuringUpload ? {
@@ -558,24 +626,25 @@ function safeXlsxName(name: string) {
   return `${name.replace(/\.xlsx$/i, '').trim() || 'Untitled spreadsheet'}.xlsx`
 }
 
-async function uploadXlsxBlob(name: string, blob: Blob, parentId: string, fileId?: string | null, targetMimeType = XLSX_MIME) {
+async function uploadXlsxBlob(name: string, blob: Blob, parentId: string, fileId?: string | null, targetMimeType = XLSX_MIME, appProperties?: Record<string, string>) {
   const accessToken = await useAuthStore.getState().getAccessToken()
   if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
-  const metadata = {
+  const metadata: Record<string, unknown> = {
     name: targetMimeType === GOOGLE_SHEET_MIME ? name.replace(/\.xlsx$/i, '').trim() || 'Untitled spreadsheet' : safeXlsxName(name),
     ...(fileId ? {} : { parents: [parentId] }),
     mimeType: targetMimeType,
+    ...(appProperties ? { appProperties } : {}),
   }
   const boundary = 'mybook-xlsx-boundary'
   const method = fileId ? 'PATCH' : 'POST'
-  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,modifiedTime' })
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,modifiedTime,appProperties' })
   if (fileId) {
     const moveParams = await parentMoveParams(fileId, parentId, accessToken)
     moveParams.forEach((value, key) => query.set(key, value))
   }
   const endpoint = fileId
     ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?${query.toString()}`
-    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime'
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,modifiedTime,appProperties'
   const response = await fetch(endpoint, {
     method,
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -613,7 +682,8 @@ export async function backupSpreadsheetToDrive(input: {
       const snapshot = JSON.parse((latest?.content ?? input.content) || '{}')
       const exported = await exportWorkbookToXlsx(snapshot)
       if (!exported.success || !exported.data) throw new Error(exported.error ?? 'Could not convert the spreadsheet to XLSX.')
-      const result = await retryWithBackoff(() => uploadXlsxBlob(latest?.name ?? input.title, exported.data as Blob, driveParentId, latest?.driveFileId ?? file.driveFileId, latest?.mimeType === GOOGLE_SHEET_MIME ? GOOGLE_SHEET_MIME : undefined))
+      const isFavorite = latest?.isFavorite ?? file.isFavorite
+      const result = await retryWithBackoff(() => uploadXlsxBlob(latest?.name ?? input.title, exported.data as Blob, driveParentId, latest?.driveFileId ?? file.driveFileId, latest?.mimeType === GOOGLE_SHEET_MIME ? GOOGLE_SHEET_MIME : undefined, { isFavorite: isFavorite ? 'true' : 'false' }))
       const current = await db.files.get(file.id)
       const uploadedContent = latest?.content ?? input.content
       const uploadedTitle = latest?.name ?? input.title
@@ -673,7 +743,7 @@ export async function backfillLocalFoldersToDrive(folders: Array<{ id: string; n
       try {
         const driveFolder = folder.driveFolderId
           ? { id: folder.driveFolderId }
-          : await ensureVisibleFolderInParent(folder.name, parentDriveId)
+          : await ensureVisibleFolderInParent(folder.name, parentDriveId, { isFavorite: (folder as { isFavorite?: boolean }).isFavorite ? 'true' : 'false' })
         resolved.set(id, driveFolder.id)
         await db.folders.update(id, { driveFolderId: driveFolder.id, workspaceType: 'drive', updatedAt: new Date().toISOString() })
         results.push({ success: true, driveFolderId: driveFolder.id, created: !folder.driveFolderId })
@@ -712,12 +782,9 @@ export async function importDriveFoldersToLocal(
   const syncChildren = async (parentDriveId: string, parentLocalId: string | null) => {
     const children = await listChildFolders(parentDriveId)
     totalDiscoveredFolders += children.length
-    if (totalDiscoveredFolders === 0) {
-      maxPercent = 100
-      onProgress?.({ loaded: 0, total: 0, percent: 100 })
-    }
     for (const driveFolder of children) {
       seenDriveIds.add(driveFolder.id)
+      const isFavorite = driveFolder.appProperties?.isFavorite === 'true'
       const localMatch = byDriveId.get(driveFolder.id) ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`)
       let matchedLocalId: string
       if (localMatch) {
@@ -727,15 +794,43 @@ export async function importDriveFoldersToLocal(
           if (localMatch.driveFolderId !== driveFolder.id || localMatch.workspaceType !== 'drive') {
             await db.folders.update(localMatch.id, { driveFolderId: driveFolder.id, workspaceType: 'drive' })
           }
-        } else if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted) {
-          await db.folders.update(localMatch.id, { name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', updatedAt: new Date().toISOString(), isDeleted: false })
+        } else if (localMatch.name !== driveFolder.name || localMatch.parentId !== parentLocalId || localMatch.driveFolderId !== driveFolder.id || localMatch.isDeleted || Boolean(localMatch.isFavorite) !== isFavorite) {
+          await db.folders.update(localMatch.id, {
+            name: driveFolder.name,
+            parentId: parentLocalId,
+            driveFolderId: driveFolder.id,
+            workspaceType: 'drive',
+            updatedAt: new Date().toISOString(),
+            isDeleted: false,
+            isFavorite,
+          })
         }
       } else {
         const now = new Date().toISOString()
         const id = crypto.randomUUID()
         matchedLocalId = id
-        await db.folders.add({ id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', createdAt: now, updatedAt: now, isDeleted: false })
-        byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, { id, name: driveFolder.name, parentId: parentLocalId, driveFolderId: driveFolder.id, workspaceType: 'drive', createdAt: now, updatedAt: now, isDeleted: false })
+        await db.folders.add({
+          id,
+          name: driveFolder.name,
+          parentId: parentLocalId,
+          driveFolderId: driveFolder.id,
+          workspaceType: 'drive',
+          createdAt: now,
+          updatedAt: now,
+          isDeleted: false,
+          isFavorite,
+        })
+        byNameAndParent.set(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`, {
+          id,
+          name: driveFolder.name,
+          parentId: parentLocalId,
+          driveFolderId: driveFolder.id,
+          workspaceType: 'drive',
+          createdAt: now,
+          updatedAt: now,
+          isDeleted: false,
+          isFavorite,
+        })
       }
       processedFolders += 1
       const rawPercent = totalDiscoveredFolders > 0 ? Math.min(100, Math.round((processedFolders / totalDiscoveredFolders) * 100)) : 100
@@ -746,6 +841,9 @@ export async function importDriveFoldersToLocal(
   }
 
   await syncChildren(bootstrap.folderId, null)
+  if (totalDiscoveredFolders === 0) {
+    onProgress?.({ loaded: 0, total: 0, percent: 100 })
+  }
   const missing = localFolders.filter((folder) => !folder.isDeleted && folder.driveFolderId && !seenDriveIds.has(folder.driveFolderId) && !unresolvedSync.has('folder', folder.id))
   if (missing.length) {
     const allFolders = await db.folders.toArray()
@@ -997,10 +1095,6 @@ export async function importDriveFilesToLocal(
   const syncFiles = async (parentDriveId: string, parentLocalId: string | null) => {
     const children = await listChildFiles(parentDriveId)
     totalDiscoveredFiles += children.length
-    if (totalDiscoveredFiles === 0) {
-      maxPercent = 100
-      onProgress?.({ loaded: 0, total: 0, percent: 100 })
-    }
     for (const driveFile of children) {
       seenDriveFileIds.add(driveFile.id)
       const fileType = inferFileType(driveFile.name, driveFile.mimeType)
@@ -1027,6 +1121,7 @@ export async function importDriveFilesToLocal(
         if (!usedLocalFileIds.has(portableDocumentId)) localId = portableDocumentId
       }
       usedLocalFileIds.add(localId)
+      const isFavorite = driveFile.appProperties?.isFavorite === 'true'
       if (existing) {
         const name = localFileName(driveFile.name, fileType)
         const type = existing.type ?? fileType
@@ -1039,7 +1134,8 @@ export async function importDriveFilesToLocal(
           parentLocalId !== existing.folderId ||
           type !== existing.type ||
           nextContent !== existing.content ||
-          existing.isDeleted
+          existing.isDeleted ||
+          Boolean(existing.isFavorite) !== isFavorite
         const nextFileChanges = hasLocalIntent ? {
           driveFileId: driveFile.id,
           workspaceType: 'drive' as const,
@@ -1058,6 +1154,7 @@ export async function importDriveFilesToLocal(
           syncStatus: 'backed-up' as const,
           syncError: null,
           isDeleted: false,
+          isFavorite,
         }
         if (hasLocalIntent || userVisibleChanged || existing.driveFileId !== driveFile.id || existing.workspaceType !== 'drive' || !existing.lastSyncedAt || new Date(driveModifiedTime).getTime() > new Date(existing.lastSyncedAt).getTime() || existing.syncStatus !== 'backed-up' || existing.syncError) {
           await db.files.update(existing.id, nextFileChanges)
@@ -1077,6 +1174,7 @@ export async function importDriveFilesToLocal(
           lastSyncedAt: driveModifiedTime,
           syncStatus: 'backed-up',
           isDeleted: false,
+          isFavorite,
         })
       }
       processedFiles += 1
@@ -1097,6 +1195,9 @@ export async function importDriveFilesToLocal(
   }
 
   await walk(bootstrap.folderId, null)
+  if (totalDiscoveredFiles === 0) {
+    onProgress?.({ loaded: 0, total: 0, percent: 100 })
+  }
   const missingFiles = localFiles.filter((file) => !file.isDeleted && file.driveFileId && !seenDriveFileIds.has(file.driveFileId) && !unresolvedSync.has('file', file.id))
   if (missingFiles.length) {
     const now = new Date().toISOString()
@@ -1150,6 +1251,7 @@ let driveRootFlight: Promise<DriveSetupResult> | null = null
 async function prepareWritinDriveFolder(): Promise<DriveSetupResult> {
   try {
     const storedFolderId = (await db.settings.get(MYBOOK_FOLDER_KEY))?.value
+    const targetFolderName = await getDriveVaultRootName()
     let folder: DriveFolder | undefined
     let created = false
     if (typeof storedFolderId === 'string' && storedFolderId.trim()) {
@@ -1160,8 +1262,8 @@ async function prepareWritinDriveFolder(): Promise<DriveSetupResult> {
         throw new Error('Your existing Drive workspace is unavailable. Restore or reconnect it before syncing. No replacement folder was created.')
       }
     } else {
-      // Search both generations before creating anything, including historical casing.
-      const names = ['Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']
+      // Search target folder and legacy generations before creating anything, including historical casing.
+      const names = Array.from(new Set([targetFolderName, 'Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']))
       const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (${names.map((name) => `name='${name}'`).join(' or ')})`
       const candidates = new Map<string, DriveFolder>()
       const seenPages = new Set<string>()
@@ -1197,7 +1299,7 @@ async function prepareWritinDriveFolder(): Promise<DriveSetupResult> {
       }
       folder = candidates.values().next().value
       if (!folder) {
-        folder = await createVisibleFolder(WRITIN_FOLDER_NAME)
+        folder = await createVisibleFolder(targetFolderName)
         created = true
       }
       if (!folder.id || folder.mimeType !== DRIVE_FOLDER_MIME || folder.trashed) {
@@ -1206,18 +1308,18 @@ async function prepareWritinDriveFolder(): Promise<DriveSetupResult> {
       // Preserve the identity even if the subsequent rename fails or is interrupted.
       await db.settings.put({ key: MYBOOK_FOLDER_KEY, value: folder.id, updatedAt: new Date().toISOString() })
     }
-    if (folder.name !== WRITIN_FOLDER_NAME) {
+    if (folder.name !== targetFolderName) {
       const result = await driveFetch(`/files/${encodeURIComponent(folder.id)}?fields=id,name,mimeType,trashed`, {
         method: 'PATCH',
-        body: JSON.stringify({ name: WRITIN_FOLDER_NAME }),
+        body: JSON.stringify({ name: targetFolderName }),
       })
-      if (!result.success) throw new Error(`Could not rename your existing Drive folder to Writin. ${result.error} Your folder and files have not been replaced.`)
+      if (!result.success) throw new Error(`Could not rename your existing Drive folder to ${targetFolderName}. ${result.error} Your folder and files have not been replaced.`)
       const renamed = await result.response.json() as DriveFolder
-      if (renamed.id !== folder.id || renamed.name !== WRITIN_FOLDER_NAME) {
+      if (renamed.id !== folder.id || renamed.name !== targetFolderName) {
         throw new Error('Drive folder rename could not be confirmed. Please retry; the existing folder ID is retained.')
       }
     }
-    return { success: true, folderId: folder.id, folderName: WRITIN_FOLDER_NAME, created }
+    return { success: true, folderId: folder.id, folderName: targetFolderName, created }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Could not prepare the Writin Drive folder.' }
   }

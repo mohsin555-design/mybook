@@ -118,7 +118,7 @@ describe('auth helpers', () => {
     })
   })
 
-  it('requires reconnect when the stored Drive token is expired', async () => {
+  it('retains authentication when the stored Drive token is expired', async () => {
     localStorage.setItem('mybook-auth', JSON.stringify({
       state: {
         email: 'reader@example.com',
@@ -131,14 +131,14 @@ describe('auth helpers', () => {
     await useAuthStore.persist.rehydrate()
 
     expect(useAuthStore.getState()).toMatchObject({
-      isAuthenticated: false,
+      isAuthenticated: true,
       email: 'reader@example.com',
       accessToken: null,
       accessTokenExpiresAt: null,
     })
   })
 
-  it.skipIf(isBackendAuthEnabled)('marks Drive auth as disconnected when silent token renewal fails', async () => {
+  it.skipIf(isBackendAuthEnabled)('clears token while keeping user authenticated when silent token renewal fails', async () => {
     Object.defineProperty(window, 'google', {
       configurable: true,
       value: {
@@ -170,7 +170,7 @@ describe('auth helpers', () => {
 
     await expect(useAuthStore.getState().getAccessToken()).resolves.toBeNull()
     expect(useAuthStore.getState()).toMatchObject({
-      isAuthenticated: false,
+      isAuthenticated: true,
       email: 'reader@example.com',
       accessToken: null,
       accessTokenExpiresAt: null,

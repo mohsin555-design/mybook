@@ -145,9 +145,14 @@ describe('LoginPage local workspace setup', () => {
     renderLoginPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Select a Local Vault Folder' }))
+    const dialog = screen.getByRole('dialog', { name: 'Select Local Vault Folder' })
+    expect(dialog).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: 'Open Vault' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Choose a folder before creating')
+    await waitFor(() => {
+      expect(screen.getByText('Choose a folder before creating this workspace, or use private device storage.')).toBeInTheDocument()
+    })
     expect(screen.queryByText('Home')).not.toBeInTheDocument()
     expect(initializeLocalWorkspace).not.toHaveBeenCalled()
     expect(useWorkspaceStore.getState().mode).toBeNull()

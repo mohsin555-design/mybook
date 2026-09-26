@@ -23,11 +23,13 @@ vi.mock('../services/googleDrive', () => ({
   backfillLocalFoldersToDrive: mocks.backfill,
 }))
 vi.mock('../database/repositories', () => ({
+  clearAccountDriveCache: vi.fn(async () => undefined),
   folderRepository: { list: vi.fn(async () => []) },
   settingsRepository: { get: vi.fn(async () => ({ data: { value: true } })), update: vi.fn() },
   processPendingDriveFolderSync: mocks.process,
   queueLocalItemsForDriveBackup: mocks.queue,
 }))
+
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -83,4 +85,56 @@ describe('Drive bootstrap migration', () => {
     resolveFolders!()
     await waitFor(() => expect(mocks.queue).toHaveBeenCalled())
   })
+
+  it('keeps fetch progress strictly monotonic and closes isFetchingFiles when backups import finishes', async () => {
+    const { settingsRepository } = await import('../database/repositories')
+    vi.mocked(settingsRepository.get).mockImplementation(async (key: string) => {
+      if (key.startsWith('google-drive.initial-sync-complete')) {
+        return {
+          success: true,
+          data: {
+            key,
+            value: false,
+            updatedAt: '2026-09-01T00:00:00.000Z',
+          },
+        }
+      }
+      return { success: true, data: { key, value: true, updatedAt: '2026-09-01T00:00:00.000Z' } }
+    })
+
+    mocks.folders.mockImplementation(async (onProgress) => {
+      onProgress?.({ loaded: 1, total: 10, percent: 80 })
+      onProgress?.({ loaded: 2, total: 20, percent: 40 }) // lower percent should not move progress backward
+    })
+    mocks.files.mockImplementation(async (onProgress) => {
+      onProgress?.({ loaded: 1, total: 10, percent: 90 })
+      onProgress?.({ loaded: 2, total: 20, percent: 50 })
+    })
+
+    const { result } = renderHook(useDriveBootstrap)
+    await waitFor(() => {
+      expect(result.current.fetchProgress).toBe(100)
+      expect(result.current.isFetchingFiles).toBe(false)
+    })
+    expect(settingsRepository.update).toHaveBeenCalledWith('google-drive.initial-sync-complete:writer@example.com', true)
+  })
+
+  it('clears drive cache on startup when switching from another account', async () => {
+    const { clearAccountDriveCache, settingsRepository } = await import('../database/repositories')
+    vi.mocked(settingsRepository.get).mockImplementation(async (key: string) => {
+      if (key === 'google-drive.active-account-email') {
+        return {
+          success: true,
+          data: { key, value: 'other_user@example.com', updatedAt: '2026-09-01T00:00:00.000Z' },
+        }
+      }
+      return { success: true, data: { key, value: true, updatedAt: '2026-09-01T00:00:00.000Z' } }
+    })
+
+    renderHook(useDriveBootstrap)
+    await waitFor(() => expect(clearAccountDriveCache).toHaveBeenCalled())
+    expect(settingsRepository.update).toHaveBeenCalledWith('google-drive.active-account-email', 'writer@example.com')
+  })
 })
+
+

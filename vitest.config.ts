@@ -10,5 +10,9 @@ export default defineConfig({
     exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
     fileParallelism: false,
     setupFiles: ['./src/test/setup.ts'],
+    env: {
+      VITE_GOOGLE_CLIENT_ID: 'test-google-client-id.apps.googleusercontent.com',
+      VITE_GOOGLE_AUTH_MODE: 'browser',
+    },
   },
 })

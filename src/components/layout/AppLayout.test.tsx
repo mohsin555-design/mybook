@@ -261,7 +261,14 @@ describe('AppLayout sidebar favorites', () => {
     expect(screen.getByText('Fetching your data…')).toBeInTheDocument()
     expect(screen.getByText('42%')).toBeInTheDocument()
   })
+
+  it('renders centered loading overlay when initial library data is loading', () => {
+    mockLibraryData.isLoading = true
+    renderLayout()
+    expect(screen.getByText('Loading your files…')).toBeInTheDocument()
+  })
 })
+
 
 function renderLayout() {
   return render(layoutTree())

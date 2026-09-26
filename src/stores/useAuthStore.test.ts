@@ -2,6 +2,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { authApiUrl, getFriendlyGoogleAuthError, isBackendAuthEnabled, isTokenFresh, useAuthStore } from './useAuthStore'
+import { clearAccountDriveCache } from '../database/repositories'
+
+vi.mock('../database/repositories', () => ({
+  clearAccountDriveCache: vi.fn().mockResolvedValue(undefined),
+}))
 
 const canRunBrowserTokenTest = !isBackendAuthEnabled && Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim())
 
@@ -15,6 +20,7 @@ function createGoogleCredential(payload: Record<string, unknown>) {
 
 describe('auth helpers', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.restoreAllMocks()
     localStorage.clear()
     useAuthStore.setState({
@@ -112,7 +118,7 @@ describe('auth helpers', () => {
     })
   })
 
-  it('requires reconnect when the stored Drive token is expired', async () => {
+  it('retains authentication when the stored Drive token is expired', async () => {
     localStorage.setItem('mybook-auth', JSON.stringify({
       state: {
         email: 'reader@example.com',
@@ -125,14 +131,14 @@ describe('auth helpers', () => {
     await useAuthStore.persist.rehydrate()
 
     expect(useAuthStore.getState()).toMatchObject({
-      isAuthenticated: false,
+      isAuthenticated: true,
       email: 'reader@example.com',
       accessToken: null,
       accessTokenExpiresAt: null,
     })
   })
 
-  it.skipIf(isBackendAuthEnabled)('marks Drive auth as disconnected when silent token renewal fails', async () => {
+  it.skipIf(isBackendAuthEnabled)('clears token while keeping user authenticated when silent token renewal fails', async () => {
     Object.defineProperty(window, 'google', {
       configurable: true,
       value: {
@@ -164,7 +170,7 @@ describe('auth helpers', () => {
 
     await expect(useAuthStore.getState().getAccessToken()).resolves.toBeNull()
     expect(useAuthStore.getState()).toMatchObject({
-      isAuthenticated: false,
+      isAuthenticated: true,
       email: 'reader@example.com',
       accessToken: null,
       accessTokenExpiresAt: null,
@@ -243,4 +249,66 @@ describe('auth helpers', () => {
       error: null,
     })
   })
+
+  it('calls clearAccountDriveCache on logout', async () => {
+    useAuthStore.setState({
+      isAuthenticated: true,
+      email: 'user1@example.com',
+      accessToken: 'token1',
+      accessTokenExpiresAt: Date.now() + 3600_000,
+    })
+
+    await useAuthStore.getState().logout()
+
+    expect(clearAccountDriveCache).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    expect(useAuthStore.getState().email).toBeNull()
+  })
+
+  it.skipIf(isBackendAuthEnabled)('clears drive cache when completing login with a different account email', async () => {
+    useAuthStore.setState({
+      isAuthenticated: true,
+      email: 'olduser@example.com',
+      accessToken: 'old-token',
+      accessTokenExpiresAt: Date.now() + 3600_000,
+    })
+
+    const requestAccessToken = vi.fn()
+    const tokenCallbacks: Array<(response: { access_token?: string; expires_in?: number }) => void> = []
+    Object.defineProperty(window, 'google', {
+      configurable: true,
+      value: {
+        accounts: {
+          oauth2: {
+            initTokenClient: vi.fn((config: { callback: (response: { access_token?: string; expires_in?: number }) => void }) => {
+              tokenCallbacks.push(config.callback)
+              return { requestAccessToken }
+            }),
+            revoke: vi.fn(),
+          },
+          id: {
+            disableAutoSelect: vi.fn(),
+            initialize: vi.fn(),
+            prompt: vi.fn(),
+            renderButton: vi.fn(),
+          },
+        },
+      },
+    })
+
+    const credential = createGoogleCredential({
+      email: 'newuser@example.com',
+      email_verified: true,
+    })
+    const loginPromise = useAuthStore.getState().completeLogin(credential, '')
+    await vi.waitFor(() => expect(requestAccessToken).toHaveBeenCalled())
+    const callback = tokenCallbacks[0]
+    if (!callback) throw new Error('Token callback was not registered')
+    callback({ access_token: 'new-drive-token', expires_in: 3600 })
+
+    await expect(loginPromise).resolves.toBe(true)
+    expect(clearAccountDriveCache).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().email).toBe('newuser@example.com')
+  })
 })
+

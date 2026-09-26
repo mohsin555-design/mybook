@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { decodeJwtPayload, loadGoogleIdentity } from '../utils/googleIdentity'
+import { clearAccountDriveCache } from '../database/repositories'
+import { useWorkspaceStore } from './useWorkspaceStore'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? ''
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
@@ -206,9 +208,13 @@ export const useAuthStore = create<AuthState>()(
         if (!isBackendAuthEnabled) return
         set({ isLoading: true })
         try {
+          const prevEmail = get().email
           const session = await readBackendSession()
+          if (session.email && prevEmail && prevEmail.toLowerCase() !== session.email.toLowerCase()) {
+            await clearAccountDriveCache().catch(() => undefined)
+          }
           set({
-            isAuthenticated: session.authenticated,
+            isAuthenticated: session.authenticated || Boolean(get().email),
             isLoading: false,
             error: null,
             email: session.email ?? get().email,
@@ -216,7 +222,7 @@ export const useAuthStore = create<AuthState>()(
           })
         } catch (error) {
           set({
-            isAuthenticated: false,
+            isAuthenticated: Boolean(get().email),
             isLoading: false,
             error: error instanceof Error ? error.message : 'Could not check your sign-in session.',
           })
@@ -228,7 +234,11 @@ export const useAuthStore = create<AuthState>()(
           return false
         }
         try {
+          const prevEmail = get().email
           const session = await completeLoginWithCredential(credential, prompt)
+          if (prevEmail && prevEmail.toLowerCase() !== session.email.toLowerCase()) {
+            await clearAccountDriveCache().catch(() => undefined)
+          }
           set({
             isAuthenticated: true,
             isLoading: false,
@@ -268,7 +278,7 @@ export const useAuthStore = create<AuthState>()(
             })
             .catch((error) => {
               set({
-                isAuthenticated: false,
+                isAuthenticated: Boolean(get().email),
                 accessToken: null,
                 accessTokenExpiresAt: null,
                 error: getFriendlyGoogleAuthError(error) || 'Google Drive needs to reconnect.',
@@ -303,7 +313,7 @@ export const useAuthStore = create<AuthState>()(
           })
           .catch((error) => {
             set({
-              isAuthenticated: false,
+              isAuthenticated: Boolean(get().email),
               accessToken: null,
               accessTokenExpiresAt: null,
               error: getFriendlyGoogleAuthError(error) || 'Google Drive needs to reconnect.',
@@ -366,7 +376,7 @@ export const useAuthStore = create<AuthState>()(
           return true
         } catch (error) {
           set({
-            isAuthenticated: false,
+            isAuthenticated: Boolean(get().email),
             isLoading: false,
             error: getFriendlyGoogleAuthError(error) || 'We could not reconnect your Google session.',
           })
@@ -378,6 +388,8 @@ export const useAuthStore = create<AuthState>()(
         if (isBackendAuthEnabled) {
           await fetch(authApiUrl('/logout'), { method: 'POST', credentials: 'include' }).catch(() => undefined)
         }
+        await clearAccountDriveCache().catch(() => undefined)
+        useWorkspaceStore.getState().clearWorkspace()
         set({
           isAuthenticated: false,
           isLoading: false,
@@ -403,7 +415,7 @@ export const useAuthStore = create<AuthState>()(
         if (!isTokenFresh(state.accessTokenExpiresAt)) {
           state.accessToken = null
           state.accessTokenExpiresAt = null
-          state.isAuthenticated = false
+          state.isAuthenticated = Boolean(state.email)
         } else {
           state.isAuthenticated = true
           scheduleExpiry(

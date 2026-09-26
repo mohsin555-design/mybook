@@ -26,7 +26,7 @@ interface HomePageProps {
 
 export function HomePage({ initialTab = 'recent' }: HomePageProps) {
   const navigate = useNavigate()
-  const { files, folders } = useLibraryData()
+  const { files, folders, isLoading } = useLibraryData()
   const [activeTab, setActiveTab] = useState<HomeTab>(initialTab)
   const [renameTarget, setRenameTarget] = useState<MyBookFile | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<MyBookFile | null>(null)
@@ -55,26 +55,26 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
         ? renderFolderCard(favorite.item)
         : renderFileCard(favorite.item))}
     </div>
-  ) : (
+  ) : !isLoading ? (
     <div className="px-4 pt-12">
       <EmptyState
         title={emptyState.title}
         description={emptyState.description}
       />
     </div>
-  )
+  ) : null
   const fileList = visibleFiles.length ? (
     <div className="px-1">
       {visibleFiles.map((file) => renderFileCard(file))}
     </div>
-  ) : (
+  ) : !isLoading ? (
     <div className="px-4 pt-12">
       <EmptyState
         title={emptyState.title}
         description={emptyState.description}
       />
     </div>
-  )
+  ) : null
 
   return (
     <div className="px-4">

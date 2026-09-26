@@ -749,6 +749,23 @@ describe('googleDrive helpers', () => {
     expect(mockedFolders.update).not.toHaveBeenCalledWith('folder-1', expect.objectContaining({ isDeleted: false }))
   })
 
+  it('imports folder favorite status from Drive appProperties', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-folder-fav', name: 'FavFolder', mimeType: 'application/vnd.google-apps.folder', appProperties: { isFavorite: 'true' } }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFoldersToLocal()
+
+    expect(mockedFolders.add).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'FavFolder',
+      driveFolderId: 'drive-folder-fav',
+      isFavorite: true,
+    }))
+  })
+
   it('moves a Drive file with addParents and removeParents', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ parents: ['old-parent'] }) })
@@ -1107,6 +1124,22 @@ describe('googleDrive helpers', () => {
     expect(added).toMatchObject({ driveFileId: 'drive-legacy', name: 'Legacy' })
     expect(added?.id).toBeTypeOf('string')
     expect(added?.id).not.toBe('')
+  })
+
+  it('imports file favorite status from Drive appProperties', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+    mockedFiles.toArray.mockResolvedValue([])
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [{ id: 'drive-fav-doc', name: 'FavDoc.mybook.md', mimeType: 'text/markdown', modifiedTime: '2026-08-22T10:00:00.000Z', appProperties: { isFavorite: 'true' } }] }) })
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('---\nmybook_version: 1\ntype: document\ntitle: "FavDoc"\n---\n\nContent') })
+      .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ files: [] }) }))
+
+    await importDriveFilesToLocal()
+
+    const added = mockedFiles.add.mock.calls[0]?.[0]
+    expect(added).toMatchObject({ driveFileId: 'drive-fav-doc', name: 'FavDoc', isFavorite: true })
   })
 
   it('imports database blocks from Drive markdown through the existing import flow', async () => {

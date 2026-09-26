@@ -1,4 +1,4 @@
-import { ArrowDownTrayIcon, ArrowRightStartOnRectangleIcon, ArrowUpTrayIcon, CloudArrowUpIcon, MoonIcon, ShieldCheckIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { ArrowDownTrayIcon, ArrowRightStartOnRectangleIcon, ArrowUpTrayIcon, CloudArrowUpIcon, FolderOpenIcon, MoonIcon, ShieldCheckIcon, SunIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -8,7 +8,16 @@ import { useDriveBootstrap } from '../hooks/useDriveBootstrap'
 import { getDriveFolderStatus, openMyBookFolderInDrive } from '../services/googleDrive'
 import { exportLocalWorkspaceBackup, importLocalWorkspaceBackup } from '../services/localBackup'
 import { downloadVaultZip } from '../services/vaultExport'
-import { getLocalStorageProtectionStatus, requestPersistentLocalStorage } from '../services/localWorkspace'
+import {
+  canPickDeviceDirectory,
+  getLocalStorageProtectionStatus,
+  getLocalWorkspaceDetails,
+  pickLocalWorkspaceDirectory,
+  requestPersistentLocalStorage,
+  saveDeviceDirectoryHandle,
+  saveLocalWorkspaceDetails,
+  writeLocalWorkspaceFile,
+} from '../services/localWorkspace'
 import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import { processPendingDriveFolderSync } from '../database/repositories'
@@ -28,6 +37,9 @@ export function SettingsPage() {
   const [databaseStatus, setDatabaseStatus] = useState<'checking' | 'ready' | 'failed'>('checking')
   const [storageStatus, setStorageStatus] = useState<{ persisted: boolean; usage?: number; quota?: number } | null>(null)
   const [backupAction, setBackupAction] = useState<'export' | 'import' | 'persist' | null>(null)
+  const [mirroredFolder, setMirroredFolder] = useState<string | null>(null)
+  const [isMirroring, setIsMirroring] = useState(false)
+  const supportsDeviceFolder = canPickDeviceDirectory()
   const files = useLiveQuery(() => db.files.filter((file) => {
     const belongsToLocal = file.workspaceType === 'local' || (!file.workspaceType && file.syncStatus === 'local' && !file.driveFileId)
     return !file.isDeleted && (workspaceMode === 'local' ? belongsToLocal : !belongsToLocal)
@@ -65,6 +77,15 @@ export function SettingsPage() {
     })
     return () => { active = false }
   }, [])
+  useEffect(() => {
+    let active = true
+    void getLocalWorkspaceDetails().then((details) => {
+      if (active && details?.storage === 'file-system') {
+        setMirroredFolder(details.name)
+      }
+    })
+    return () => { active = false }
+  }, [])
 
   const handleLogout = async () => {
     await logout()
@@ -73,6 +94,40 @@ export function SettingsPage() {
   }
 
   const isLocalMode = workspaceMode === 'local'
+
+  const handleMakeAllAvailableLocally = async () => {
+    setIsMirroring(true)
+    try {
+      const picked = await pickLocalWorkspaceDirectory()
+      if (!picked) return
+      await saveDeviceDirectoryHandle(picked.handle)
+      await saveLocalWorkspaceDetails({
+        name: picked.name,
+        storage: 'file-system',
+        createdAt: new Date().toISOString(),
+      })
+      setMirroredFolder(picked.name)
+      const activeFiles = await db.files.filter((f) => !f.isDeleted).toArray()
+      for (const f of activeFiles) {
+        await writeLocalWorkspaceFile(f)
+      }
+      toast.add({
+        title: 'Drive files mirrored',
+        description: `All files are now available in "${picked.name}" on this computer.`,
+        type: 'success',
+        priority: 'low',
+      })
+    } catch (error) {
+      toast.add({
+        title: 'Could not mirror files',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        type: 'error',
+        priority: 'low',
+      })
+    } finally {
+      setIsMirroring(false)
+    }
+  }
 
   const protectStorage = async () => {
     setBackupAction('persist')
@@ -177,6 +232,31 @@ export function SettingsPage() {
         </dl>
         {!isLocalMode && backupStats.failed > 0 ? <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"><p className="font-medium">Sync paused</p>{files.filter((file) => file.syncStatus === 'failed').map((file) => <p key={file.id} className="mt-1 text-muted-foreground">{file.name}: {file.syncError ?? 'Sync failed.'}</p>)}</div> : null}
       </section>
+      {!isLocalMode && supportsDeviceFolder ? (
+        <section aria-labelledby="mirror-heading" className="rounded-2xl bg-muted/70 p-4">
+          <h2 id="mirror-heading" className="text-base font-semibold leading-6">Mirror Drive files to folder</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Mirror your Google Drive files to a chosen folder on your computer for offline access and two-way syncing.
+          </p>
+          {mirroredFolder ? (
+            <div className="mt-3 rounded-xl border border-[var(--app-border)] p-3 text-sm">
+              <span className="font-medium text-foreground">Mirrored local folder: </span>
+              <span className="text-muted-foreground">{mirroredFolder}</span>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <AppButton
+              variant="secondary"
+              isLoading={isMirroring}
+              loadingLabel="Mirroring..."
+              onPress={() => void handleMakeAllAvailableLocally()}
+            >
+              <FolderOpenIcon aria-hidden="true" className="size-5" />
+              {mirroredFolder ? 'Change mirrored folder' : 'Make All Available Locally'}
+            </AppButton>
+          </div>
+        </section>
+      ) : null}
       {isLocalMode ? (
         <section aria-labelledby="backup-heading" className="rounded-2xl bg-muted/70 p-4">
           <h2 id="backup-heading" className="text-base font-semibold leading-6">Local backup</h2>

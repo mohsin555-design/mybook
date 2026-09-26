@@ -294,4 +294,16 @@ describe('HomePage folder creation', () => {
     expect(fileRepository.setFavorite).toHaveBeenCalledWith('file-1', true)
     expect(folderRepository.setFavorite).toHaveBeenCalledWith('folder-1', false)
   })
+
+  it('does not render EmptyState while library data is loading', () => {
+    mockLibraryData.isLoading = true
+    mockLibraryData.files = []
+    mockLibraryData.folders = []
+
+    render(<MemoryRouter><HomePage /></MemoryRouter>)
+
+    expect(screen.queryByText('No recent files')).not.toBeInTheDocument()
+    expect(screen.queryByText('No files yet')).not.toBeInTheDocument()
+  })
 })
+

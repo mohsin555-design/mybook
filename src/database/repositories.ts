@@ -1,7 +1,7 @@
 import { db } from './db'
 import type { AppSetting, FileType, FileVersionSource, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem, WorkspaceType } from '../types/files'
 import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFile, restoreDriveFolder, trashDriveFile, trashDriveFolder, updateDriveFolder } from '../services/googleDrive'
-import { deleteLocalWorkspaceFile, deleteLocalWorkspaceFolder, ensureLocalWorkspaceFolder, readLocalWorkspaceFile, syncAttachmentsOnRenameOrMove, writeLocalWorkspaceFile } from '../services/localWorkspace'
+import { deleteLocalWorkspaceFile, deleteLocalWorkspaceFolder, ensureLocalWorkspaceFolder, getDeviceDirectoryHandle, readLocalWorkspaceFile, syncAttachmentsOnRenameOrMove, writeLocalWorkspaceFile } from '../services/localWorkspace'
 import { isLocalWorkspace, shouldSyncWithDrive } from '../stores/useWorkspaceStore'
 import { devLog } from '../utils/safeLog'
 
@@ -107,7 +107,10 @@ function folderBelongsToActiveWorkspace(folder: MyBookFolder) {
 }
 
 async function persistLocalFile(file: MyBookFile | undefined) {
-  if (isLocalWorkspace() && file) await writeLocalWorkspaceFile(file)
+  if (!file) return
+  if (isLocalWorkspace() || await getDeviceDirectoryHandle()) {
+    await writeLocalWorkspaceFile(file)
+  }
 }
 
 async function finalizeLocalFilePermanentDelete(file: MyBookFile) {
@@ -169,7 +172,9 @@ async function ensureLocalFolderOnDrive(folderId: string | null, visiting = new 
   if (folder.driveFolderId) return folder.driveFolderId
   visiting.add(folderId)
   const parentDriveId = await ensureLocalFolderOnDrive(folder.parentId, visiting)
-  const driveFolder = await ensureVisibleFolderInParent(folder.name, parentDriveId)
+  const driveFolder = folder.isFavorite
+    ? await ensureVisibleFolderInParent(folder.name, parentDriveId, { isFavorite: 'true' })
+    : await ensureVisibleFolderInParent(folder.name, parentDriveId)
   await db.folders.update(folder.id, { driveFolderId: driveFolder.id, updatedAt: new Date().toISOString() })
   visiting.delete(folderId)
   return driveFolder.id
@@ -246,9 +251,17 @@ async function processPendingDriveSyncOnce() {
         await finalizeLocalFolderPermanentDelete(folder.id)
       } else if (item.operation === 'create' && !folder.driveFolderId && !folder.isDeleted) {
         await ensureLocalFolderOnDrive(folder.id)
-      } else if (folder.driveFolderId && item.operation === 'update') {
-        const driveParentId = await ensureLocalFolderOnDrive(folder.parentId)
-        await updateDriveFolder(folder.driveFolderId, { name: folder.name, parentId: driveParentId })
+      } else if (item.operation === 'update') {
+        if (!folder.driveFolderId && !folder.isDeleted) {
+          await ensureLocalFolderOnDrive(folder.id)
+        } else if (folder.driveFolderId) {
+          const driveParentId = await ensureLocalFolderOnDrive(folder.parentId)
+          await updateDriveFolder(folder.driveFolderId, {
+            name: folder.name,
+            parentId: driveParentId,
+            appProperties: { isFavorite: folder.isFavorite ? 'true' : 'false' },
+          })
+        }
       } else if (folder.driveFolderId && item.operation === 'delete') await trashDriveFolder(folder.driveFolderId)
       else if (folder.driveFolderId && item.operation === 'restore') await restoreDriveFolder(folder.driveFolderId)
       await db.syncQueue.update(item.id, { status: 'completed', errorMessage: null, updatedAt: new Date().toISOString() })
@@ -417,6 +430,8 @@ export const fileRepository = {
       if (!file) return { success: false, error: 'File could not be found.' }
       if (!fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }
       await db.files.update(id, { isFavorite })
+      await maybeQueueFileSync(id, 'update')
+      processPendingDriveSyncInBackground()
       return { success: true }
     } catch (error) {
       return failure(error, 'Could not update favorite.')
@@ -623,6 +638,8 @@ export const folderRepository = {
       const folder = await db.folders.get(id)
       if (!folder || !folderBelongsToActiveWorkspace(folder)) return { success: false, error: 'Folder could not be found.' }
       await db.folders.update(id, { isFavorite })
+      await maybeQueueFolderSync(id, 'update')
+      processPendingDriveSyncInBackground()
       return { success: true }
     } catch (error) {
       return failure(error, 'Could not update favorite.')
@@ -706,3 +723,47 @@ export const fileVersionRepository = {
     }
   },
 }
+
+const cacheClearListeners = new Set<() => void>()
+
+export function onClearAccountDriveCache(callback: () => void) {
+  cacheClearListeners.add(callback)
+  return () => {
+    cacheClearListeners.delete(callback)
+  }
+}
+
+export async function clearAccountDriveCache() {
+  try {
+    await db.transaction('rw', [db.files, db.folders, db.fileVersions, db.syncQueue, db.settings], async () => {
+      const driveFiles = await db.files.filter((file) => file.workspaceType !== 'local').toArray()
+      const driveFileIds = new Set(driveFiles.map((file) => file.id))
+      if (driveFileIds.size > 0) {
+        await db.files.bulkDelete(Array.from(driveFileIds))
+        const driveVersions = await db.fileVersions.filter((version) => driveFileIds.has(version.fileId)).toArray()
+        if (driveVersions.length > 0) {
+          await db.fileVersions.bulkDelete(driveVersions.map((version) => version.id))
+        }
+      }
+      const driveFolders = await db.folders.filter((folder) => folder.workspaceType !== 'local').toArray()
+      if (driveFolders.length > 0) {
+        await db.folders.bulkDelete(driveFolders.map((folder) => folder.id))
+      }
+      await db.syncQueue.clear()
+      const driveSettings = await db.settings.filter((setting) => setting.key.startsWith('google-drive.')).toArray()
+      if (driveSettings.length > 0) {
+        await db.settings.bulkDelete(driveSettings.map((setting) => setting.key))
+      }
+    })
+  } catch (error) {
+    devLog('error', 'Could not clear account Drive cache.', error)
+  }
+  cacheClearListeners.forEach((listener) => {
+    try {
+      listener()
+    } catch {
+      // ignore
+    }
+  })
+}
+

@@ -28,10 +28,18 @@ describe('route protection', () => {
     expect(screen.getByText('Login')).toBeInTheDocument()
   })
 
-  it('redirects authenticated users away from login', () => {
+  it('redirects authenticated users away from login when workspace mode is set', () => {
     useAuthStore.setState({ isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: 'drive' })
     render(<MemoryRouter initialEntries={['/login']}><Routes><Route element={<RedirectAuthenticated />}><Route path="/login" element={<p>Login</p>} /></Route><Route path="/home" element={<p>Home</p>} /></Routes></MemoryRouter>)
     expect(screen.getByText('Home')).toBeInTheDocument()
+  })
+
+  it('keeps authenticated users on login while workspace mode is not set', () => {
+    useAuthStore.setState({ isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: null })
+    render(<MemoryRouter initialEntries={['/login']}><Routes><Route element={<RedirectAuthenticated />}><Route path="/login" element={<p>Login</p>} /></Route><Route path="/home" element={<p>Home</p>} /></Routes></MemoryRouter>)
+    expect(screen.getByText('Login')).toBeInTheDocument()
   })
 
   it('allows local workspace users without a Google session', () => {
@@ -46,8 +54,23 @@ describe('route protection', () => {
     expect(screen.getByText('Home')).toBeInTheDocument()
   })
 
+  it('renders centered session checking overlay when RequireAuth is loading', () => {
+    useAuthStore.setState({ isLoading: true })
+    render(<MemoryRouter initialEntries={['/home']}><Routes><Route element={<RequireAuth />}><Route path="/home" element={<p>Home</p>} /></Route></Routes></MemoryRouter>)
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByText('Checking your session…')).toBeInTheDocument()
+  })
+
+  it('renders centered session checking overlay when RedirectAuthenticated is loading', () => {
+    useAuthStore.setState({ isLoading: true })
+    render(<MemoryRouter initialEntries={['/login']}><Routes><Route element={<RedirectAuthenticated />}><Route path="/login" element={<p>Login</p>} /></Route></Routes></MemoryRouter>)
+    expect(screen.getByRole('status')).toBeInTheDocument()
+    expect(screen.getByText('Checking your session…')).toBeInTheDocument()
+  })
+
   it('preserves legacy Google auth return paths', () => {
     render(<MemoryRouter initialEntries={['/api/auth/google/start?returnTo=%2Fsettings']}><Routes><Route path="/api/auth/google/start" element={<LegacyGoogleAuthStartRedirect />} /><Route path="/login" element={<LoginState />} /></Routes></MemoryRouter>)
     expect(screen.getByText('Login from /settings')).toBeInTheDocument()
   })
 })
+

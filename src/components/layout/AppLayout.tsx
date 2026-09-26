@@ -12,6 +12,7 @@ import { useDriveBootstrap } from '../../hooks/useDriveBootstrap'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { activeFavoriteItems } from '../../utils/favorites'
 import { AppHeader } from '../common/AppHeader'
+import { LoadingOverlay } from '../common/LoadingOverlay'
 import { SyncProgressToast } from '../common/SyncProgressToast'
 import { getFolderPath } from '../files/FolderBreadcrumb'
 import { FolderNameDialog } from '../files/FolderNameDialog'
@@ -55,7 +56,7 @@ export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
   const { email, displayName: accountDisplayName, isAuthenticated, completeLogin, logout } = useAuthStore()
   const { mode: workspaceMode, selectGoogleWorkspace } = useWorkspaceStore()
-  const { files, folders } = useLibraryData()
+  const { files, folders, isLoading } = useLibraryData()
   const { isFetchingFiles = false, fetchProgress = 0 } = useDriveBootstrap() ?? {}
   const { pathname } = useLocation()
   const navigate = useNavigate()
@@ -423,6 +424,7 @@ export function AppLayout() {
             <Outlet />
           </div>
         </main>
+        {isLoading ? <LoadingOverlay message="Loading your files…" /> : null}
         <SyncProgressToast isVisible={isFetchingFiles} progress={fetchProgress} />
         {!isEditor ? <MobileBottomNavigation /> : null}
       </SidebarInset>

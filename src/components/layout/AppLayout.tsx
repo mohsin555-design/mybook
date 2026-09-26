@@ -22,13 +22,24 @@ import { downloadVaultZip } from '../../services/vaultExport'
 import { db } from '../../database/db'
 import { deletedToast } from '../../utils/deleteToast'
 import type { MyBookFolder } from '../../types/files'
+import { canPickDeviceDirectory, pickLocalWorkspaceDirectory } from '../../services/localWorkspace'
+import {
+  listAllWorkspaces,
+  switchWorkspace,
+  mirrorCurrentCloudWorkspaceToLocal,
+  type AppWorkspaceItem,
+} from '../../services/workspaceManager'
+import { WorkspaceModal } from './WorkspaceModal'
+import { CheckIcon, PlusIcon, CloudIcon, FolderIcon } from '@heroicons/react/24/outline'
 import { toast } from '../ui/toast'
 import { Input } from '../ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -55,7 +66,7 @@ import { MobileBottomNavigation } from './MobileBottomNavigation'
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
   const { email, displayName: accountDisplayName, isAuthenticated, completeLogin, logout } = useAuthStore()
-  const { mode: workspaceMode, selectGoogleWorkspace } = useWorkspaceStore()
+  const { mode: workspaceMode, workspaceRevision, selectGoogleWorkspace } = useWorkspaceStore()
   const { files, folders, isLoading } = useLibraryData()
   const { isFetchingFiles = false, fetchProgress = 0 } = useDriveBootstrap() ?? {}
   const { pathname } = useLocation()
@@ -67,16 +78,31 @@ export function AppLayout() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false)
+  const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false)
+  const [workspaces, setWorkspaces] = useState<AppWorkspaceItem[]>([])
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const isLocalWorkspace = workspaceMode === 'local' || !isAuthenticated
   const localDetailsRecord = useLiveQuery(() => db.settings.get('local-workspace.details'), [])
   const localDetails = localDetailsRecord?.value as { name?: string; storage?: string } | undefined
-  const vaultName = localDetails?.name || 'Local Vault'
-  const displayName = isLocalWorkspace ? vaultName : accountDisplayName || email || 'Google account'
+  const settingsRecords = useLiveQuery(() => db.settings.toArray(), [])
+
+  useEffect(() => {
+    let isCurrent = true
+    void listAllWorkspaces().then((list) => {
+      if (isCurrent) {
+        setWorkspaces(list)
+      }
+    })
+    return () => {
+      isCurrent = false
+    }
+  }, [workspaceRevision, settingsRecords, workspaceMode, isAuthenticated, email])
+
+  const activeWorkspace = workspaces.find((w) => w.isActive)
+  const vaultName = activeWorkspace?.name || localDetails?.name || 'Local Vault'
+  const displayName = activeWorkspace ? activeWorkspace.name : isLocalWorkspace ? vaultName : accountDisplayName || email || 'Google account'
   const profileEmail = email
-  const initials = isLocalWorkspace
-    ? displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'LV'
-    : displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+  const initials = displayName.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase() || (isLocalWorkspace ? 'LV' : 'WR')
 
   useEffect(() => {
     if (!isGoogleModalOpen || isBackendAuthEnabled) return
@@ -230,7 +256,12 @@ export function AppLayout() {
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background" aria-hidden="true">{initials}</span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-sidebar-foreground">{displayName}</p>
-              {profileEmail ? (
+              {activeWorkspace?.hasLocalMirror ? (
+                <p className="flex items-center gap-1 truncate text-xs text-sidebar-foreground/60" title={profileEmail ? `${profileEmail} (Mirrored locally)` : 'Mirrored locally'}>
+                  <FolderIcon className="size-3 shrink-0" />
+                  <span>Mirrored locally</span>
+                </p>
+              ) : profileEmail ? (
                 <p className="truncate text-xs text-sidebar-foreground/60" title={profileEmail}>{profileEmail}</p>
               ) : isLocalWorkspace ? (
                 <button
@@ -244,27 +275,114 @@ export function AppLayout() {
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger render={<button type="button" />} aria-label="Account options" title="Account options" className="flex size-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"><HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-5" /></DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-48">
-                {isLocalWorkspace ? (
+              <DropdownMenuContent align="end" className="min-w-56">
+                {workspaces.length > 0 ? (
                   <>
-                    {!profileEmail ? (
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setIsGoogleModalOpen(true)
-                        }}
-                      >
-                        <HugeiconsIcon icon={CloudUploadIcon} strokeWidth={2} className="size-4" />
-                        Connect Cloud Vault
-                      </DropdownMenuItem>
-                    ) : null}
-                    <DropdownMenuItem onClick={() => void downloadVaultZip({ vaultName })}>
-                      <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />
-                      Export full vault (ZIP)
-                    </DropdownMenuItem>
+                    <DropdownMenuLabel className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Workspaces
+                    </DropdownMenuLabel>
+                    <DropdownMenuGroup>
+                      {workspaces.map((ws) => (
+                        <DropdownMenuItem
+                          key={ws.id}
+                          onClick={() => {
+                            if (!ws.isActive) {
+                              void switchWorkspace(ws).then(() => {
+                                toast.add({
+                                  title: 'Workspace Switched',
+                                  description: `Switched to "${ws.name}".`,
+                                  type: 'success',
+                                  priority: 'low',
+                                })
+                              })
+                            }
+                          }}
+                          className="flex items-center justify-between gap-2 py-2"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            {ws.type === 'cloud' ? (
+                              <CloudIcon className="size-4 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className={`truncate text-sm ${ws.isActive ? 'font-semibold text-foreground' : 'text-foreground/80'}`}>
+                                {ws.name}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <span>{ws.type === 'cloud' ? 'Google Drive' : 'Local Device'}</span>
+                                {ws.hasLocalMirror && (
+                                  <span className="flex items-center gap-0.5 text-primary">
+                                    • Mirrored
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          {ws.isActive && (
+                            <CheckIcon className="size-4 shrink-0 text-primary" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                   </>
                 ) : null}
-                <DropdownMenuItem onClick={() => void logout()}><HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" />{isLocalWorkspace ? 'Return to start' : 'Log out'}</DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => setIsWorkspaceModalOpen(true)}>
+                  <PlusIcon className="size-4 text-muted-foreground" />
+                  <span>Add Workspace...</span>
+                </DropdownMenuItem>
+
+                {!isLocalWorkspace && canPickDeviceDirectory() && !activeWorkspace?.hasLocalMirror ? (
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      try {
+                        const picked = await pickLocalWorkspaceDirectory()
+                        if (picked) {
+                          await mirrorCurrentCloudWorkspaceToLocal(picked.handle)
+                          toast.add({
+                            title: 'Local Mirror Created',
+                            description: `Mirrored "${displayName}" to folder "${picked.name}".`,
+                            type: 'success',
+                            priority: 'low',
+                          })
+                        }
+                      } catch {
+                        // user cancelled
+                      }
+                    }}
+                  >
+                    <FolderIcon className="size-4 text-muted-foreground" />
+                    <span>Mirror to Computer Folder</span>
+                  </DropdownMenuItem>
+                ) : null}
+
+                {isLocalWorkspace && !profileEmail ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setIsGoogleModalOpen(true)
+                    }}
+                  >
+                    <HugeiconsIcon icon={CloudUploadIcon} strokeWidth={2} className="size-4" />
+                    Connect Cloud Vault
+                  </DropdownMenuItem>
+                ) : null}
+
+                <DropdownMenuItem onClick={() => void downloadVaultZip({ vaultName })}>
+                  <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4" />
+                  Export full vault (ZIP)
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/settings')}>
+                  <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} className="size-4" />
+                  Preferences
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void logout()}>
+                  <HugeiconsIcon icon={Logout01Icon} strokeWidth={2} className="size-4" />
+                  {isLocalWorkspace ? 'Return to start' : 'Log out'}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -575,6 +693,10 @@ export function AppLayout() {
           </section>
         </div>
       ) : null}
+      <WorkspaceModal
+        isOpen={isWorkspaceModalOpen}
+        onClose={() => setIsWorkspaceModalOpen(false)}
+      />
     </SidebarProvider>
   )
 }

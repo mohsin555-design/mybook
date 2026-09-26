@@ -262,10 +262,20 @@ describe('AppLayout sidebar favorites', () => {
     expect(screen.getByText('42%')).toBeInTheDocument()
   })
 
-  it('renders centered loading overlay when initial library data is loading', () => {
-    mockLibraryData.isLoading = true
+  it('renders workspace options in dropdown and opens workspace modal', async () => {
+    useWorkspaceStore.setState({ mode: 'local' })
+    useAuthStore.setState({ email: 'author@example.com', isAuthenticated: true })
     renderLayout()
-    expect(screen.getByText('Loading your files…')).toBeInTheDocument()
+
+    const accountButton = screen.getByRole('button', { name: 'Account options' })
+    expect(accountButton).toBeInTheDocument()
+    fireEvent.click(accountButton)
+
+    expect(screen.getByText('Add Workspace...')).toBeInTheDocument()
+    expect(screen.getByText('Export full vault (ZIP)')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Add Workspace...'))
+    expect(await screen.findByRole('dialog', { name: 'Add New Workspace' })).toBeInTheDocument()
   })
 })
 

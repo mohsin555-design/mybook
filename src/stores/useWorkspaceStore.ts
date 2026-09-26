@@ -6,9 +6,11 @@ export type WorkspaceMode = 'local' | 'drive'
 
 interface WorkspaceState {
   mode: WorkspaceMode | null
+  workspaceRevision: number
   createLocalWorkspace: () => void
   selectGoogleWorkspace: () => void
   clearWorkspace: () => void
+  bumpWorkspaceRevision: () => void
 }
 
 const memoryStorage = new Map<string, string>()
@@ -22,9 +24,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set) => ({
       mode: null,
-      createLocalWorkspace: () => set({ mode: 'local' }),
-      selectGoogleWorkspace: () => set({ mode: 'drive' }),
-      clearWorkspace: () => set({ mode: null }),
+      workspaceRevision: 0,
+      createLocalWorkspace: () => set((state) => ({ mode: 'local', workspaceRevision: state.workspaceRevision + 1 })),
+      selectGoogleWorkspace: () => set((state) => ({ mode: 'drive', workspaceRevision: state.workspaceRevision + 1 })),
+      clearWorkspace: () => set((state) => ({ mode: null, workspaceRevision: state.workspaceRevision + 1 })),
+      bumpWorkspaceRevision: () => set((state) => ({ workspaceRevision: state.workspaceRevision + 1 })),
     }),
     {
       name: 'mybook-workspace',

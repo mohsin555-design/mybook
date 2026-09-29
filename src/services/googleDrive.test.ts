@@ -1303,5 +1303,57 @@ describe('googleDrive helpers', () => {
     expect(uploadText).toContain('"name":"Legacy.md"')
     expect(uploadText).not.toContain('"name":"Legacy.mybook.md"')
   })
+
+  it('skips attachment directories and image/media files during importDriveFilesToLocal', async () => {
+    mockedSettings.get.mockResolvedValue({ key: 'google-drive.mybook-folder-id', value: null, updatedAt: '2026-07-24T00:00:00.000Z' })
+    mockedFolders.toArray.mockResolvedValue([])
+    mockedFiles.toArray.mockResolvedValue([])
+
+    // Drive has:
+    // 1. Root folder discovery: Writin
+    // 2. Root files: Doc1.md, image_rogue.png
+    // 3. Doc1.md content fetch
+    // 4. Root child folders: "Doc1_attachments" (should be skipped by walk)
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [
+            { id: 'doc-1', name: 'Doc1.md', mimeType: 'text/markdown', modifiedTime: '2026-08-29T10:00:00.000Z' },
+            { id: 'img-1', name: 'image_rogue.png', mimeType: 'image/png', modifiedTime: '2026-08-29T10:00:00.000Z' },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue('---\ntitle: "Doc1"\n---\n\nhello'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [
+            { id: 'att-folder-1', name: 'Doc1_attachments', mimeType: 'application/vnd.google-apps.folder' },
+          ],
+        }),
+      }))
+
+    await importDriveFilesToLocal()
+
+    expect(mockedFiles.add).toHaveBeenCalledTimes(1)
+    expect(mockedFiles.add).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Doc1',
+      type: 'document',
+    }))
+    expect(mockedFiles.add).not.toHaveBeenCalledWith(expect.objectContaining({
+      name: expect.stringContaining('image_rogue'),
+    }))
+  })
 })
+
 

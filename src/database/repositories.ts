@@ -1,6 +1,6 @@
 import { db } from './db'
 import type { AppSetting, FileType, FileVersionSource, MyBookFile, MyBookFolder, SyncOperation, SyncQueueItem, WorkspaceType } from '../types/files'
-import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFile, restoreDriveFolder, trashDriveFile, trashDriveFolder, updateDriveFolder } from '../services/googleDrive'
+import { backupDocumentToDrive, backupSpreadsheetToDrive, ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFile, restoreDriveFolder, syncDriveAttachmentsOnRenameOrMove, trashDriveFile, trashDriveFileAttachments, trashDriveFolder, updateDriveFolder } from '../services/googleDrive'
 import { deleteLocalWorkspaceFile, deleteLocalWorkspaceFolder, ensureLocalWorkspaceFolder, getDeviceDirectoryHandle, readLocalWorkspaceFile, syncAttachmentsOnRenameOrMove, writeLocalWorkspaceFile } from '../services/localWorkspace'
 import { isLocalWorkspace, shouldSyncWithDrive } from '../stores/useWorkspaceStore'
 import { devLog } from '../utils/safeLog'
@@ -200,12 +200,28 @@ async function syncFileItem(item: SyncQueueItem) {
   const file = await db.files.get(item.entityId)
   if (!file) { await db.syncQueue.delete(item.id); return }
   if (item.operation === 'permanent-delete') {
-    if (file.driveFileId) await permanentlyDeleteDriveFile(file.driveFileId)
+    if (file.driveFileId) {
+      await permanentlyDeleteDriveFile(file.driveFileId)
+      const parentFolder = file.folderId ? await db.folders.get(file.folderId) : null
+      const bootstrap = await ensureMyBookDriveFolder()
+      const driveParentId = parentFolder?.driveFolderId ?? (bootstrap.success ? bootstrap.folderId : null)
+      if (driveParentId) {
+        await trashDriveFileAttachments(file.name, driveParentId)
+      }
+    }
     await finalizeLocalFilePermanentDelete(file)
     return
   }
   if (item.operation === 'delete') {
-    if (file.driveFileId) await trashDriveFile(file.driveFileId)
+    if (file.driveFileId) {
+      await trashDriveFile(file.driveFileId)
+      const parentFolder = file.folderId ? await db.folders.get(file.folderId) : null
+      const bootstrap = await ensureMyBookDriveFolder()
+      const driveParentId = parentFolder?.driveFolderId ?? (bootstrap.success ? bootstrap.folderId : null)
+      if (driveParentId) {
+        await trashDriveFileAttachments(file.name, driveParentId)
+      }
+    }
     return
   }
   if (item.operation === 'restore' && file.driveFileId) {
@@ -383,14 +399,32 @@ export const fileRepository = {
       const nextChanges = isLocalWorkspace()
         ? { ...changes, syncStatus: pendingSyncStatus(), syncError: null }
         : changes
-      if (nextChanges.folderId !== undefined && !(await folderIsInActiveWorkspace(nextChanges.folderId))) return { success: false, error: 'Folder could not be found in this workspace.' }
-      const isRenamedOrMoved = isLocalWorkspace() && (
+      const isRenamedOrMoved = (
         (changes.name !== undefined && changes.name !== existing.name) ||
         (changes.folderId !== undefined && changes.folderId !== existing.folderId)
       )
       if (isRenamedOrMoved) {
-        await syncAttachmentsOnRenameOrMove(existing, { ...existing, ...nextChanges })
-        await deleteLocalWorkspaceFile(existing)
+        if (isLocalWorkspace() || await getDeviceDirectoryHandle()) {
+          await syncAttachmentsOnRenameOrMove(existing, { ...existing, ...nextChanges })
+          await deleteLocalWorkspaceFile(existing)
+        }
+        if (shouldSyncWithDrive() && existing.driveFileId) {
+          const oldParent = existing.folderId ? await db.folders.get(existing.folderId) : null
+          const newParent = nextChanges.folderId !== undefined
+            ? (nextChanges.folderId ? await db.folders.get(nextChanges.folderId) : null)
+            : oldParent
+          const bootstrap = await ensureMyBookDriveFolder()
+          const oldDriveParentId = oldParent?.driveFolderId ?? (bootstrap.success ? bootstrap.folderId : null)
+          const newDriveParentId = newParent?.driveFolderId ?? (bootstrap.success ? bootstrap.folderId : null)
+          if (oldDriveParentId && newDriveParentId) {
+            await syncDriveAttachmentsOnRenameOrMove(
+              existing.name,
+              nextChanges.name ?? existing.name,
+              oldDriveParentId,
+              newDriveParentId
+            )
+          }
+        }
       }
       await db.files.update(id, { ...nextChanges, updatedAt: new Date().toISOString() })
       await persistLocalFile(await db.files.get(id))
@@ -407,6 +441,9 @@ export const fileRepository = {
       if (!file) return { success: false, error: 'File could not be found.' }
       if (!fileBelongsToActiveWorkspace(file)) return { success: false, error: 'File could not be found in this workspace.' }
       await db.files.update(id, { isDeleted: true, updatedAt: new Date().toISOString() })
+      if (isLocalWorkspace() || await getDeviceDirectoryHandle()) {
+        await deleteLocalWorkspaceFile(file)
+      }
       await maybeQueueFileSync(id, 'delete', navigator.onLine ? null : 'Offline. File will move to Drive Trash when you reconnect.')
       processPendingDriveSyncInBackground()
       return { success: true }
@@ -507,7 +544,7 @@ export const folderRepository = {
       const now = new Date().toISOString()
       const folder: MyBookFolder = { id: crypto.randomUUID(), driveFolderId: null, workspaceType: activeWorkspaceType(), name: normalized, parentId, createdAt: now, updatedAt: now, isDeleted: false }
       await db.folders.add(folder)
-      if (isLocalWorkspace()) {
+      if (isLocalWorkspace() || await getDeviceDirectoryHandle()) {
         await ensureLocalWorkspaceFolder(folder.id)
       }
       await maybeQueueFolderSync(folder.id, 'create', navigator.onLine ? null : 'Offline. Folder will sync when you reconnect.')
@@ -554,7 +591,7 @@ export const folderRepository = {
       const next = { ...changes, updatedAt: new Date().toISOString() }
       await db.folders.update(id, next)
       if (changes.name !== undefined || changes.parentId !== undefined) {
-        if (isLocalWorkspace()) {
+        if (isLocalWorkspace() || await getDeviceDirectoryHandle()) {
           await ensureLocalWorkspaceFolder(id)
         }
         await maybeQueueFolderSync(id, folder.driveFolderId ? 'update' : 'create', navigator.onLine ? null : 'Offline. Folder changes will sync when you reconnect.')
@@ -577,7 +614,7 @@ export const folderRepository = {
         await Promise.all([...ids].map((folderId) => db.folders.update(folderId, { isDeleted: true, updatedAt: now })))
         await db.files.filter((file) => fileBelongsToActiveWorkspace(file) && Boolean(file.folderId && ids.has(file.folderId))).modify({ isDeleted: true, updatedAt: now })
       })
-      if (isLocalWorkspace()) {
+      if (isLocalWorkspace() || await getDeviceDirectoryHandle()) {
         await deleteLocalWorkspaceFolder(id)
       }
       await Promise.all(deletedFolderIds.map((folderId) => maybeQueueFolderSync(folderId, 'delete', navigator.onLine ? null : 'Offline. Folder will move to Drive Trash when you reconnect.')))

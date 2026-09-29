@@ -98,7 +98,7 @@ function scheduleExpiry(set: (partial: Partial<AuthState>) => void, expiresAt: n
   }, timeout)
 }
 
-async function requestDriveAccessToken(prompt: '' | 'consent' | 'select_account') {
+async function requestDriveAccessToken(prompt: '' | 'consent' | 'select_account', hint?: string) {
   const configuredError = configuredErrors()
   if (configuredError) throw new Error(configuredError)
 
@@ -110,6 +110,7 @@ async function requestDriveAccessToken(prompt: '' | 'consent' | 'select_account'
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: DRIVE_SCOPE,
+      hint: hint || undefined,
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description ?? 'Google denied access to Drive.'))
@@ -118,7 +119,7 @@ async function requestDriveAccessToken(prompt: '' | 'consent' | 'select_account'
         resolve(response)
       },
     })
-    tokenClient.requestAccessToken({ prompt })
+    tokenClient.requestAccessToken({ prompt, hint: hint || undefined })
   })
 
   const accessToken = tokenResponse.access_token
@@ -170,6 +171,7 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: DRIVE_SCOPE,
+      hint: email,
       callback: (response) => {
         if (response.error) {
           reject(new Error(response.error_description ?? 'Google denied access to Drive.'))
@@ -178,7 +180,7 @@ async function completeLoginWithCredential(credential: string, prompt: '' | 'con
         resolve(response)
       },
     })
-    tokenClient.requestAccessToken({ prompt })
+    tokenClient.requestAccessToken({ prompt, hint: email })
   })
 
   const accessToken = tokenResponse.access_token
@@ -299,7 +301,7 @@ export const useAuthStore = create<AuthState>()(
           })
           return Promise.resolve(null)
         }
-        tokenRefreshPromise ??= requestDriveAccessToken('')
+        tokenRefreshPromise ??= requestDriveAccessToken('', email)
         return tokenRefreshPromise
           .then((session) => {
             set({
@@ -332,8 +334,8 @@ export const useAuthStore = create<AuthState>()(
         }
         set({ isLoading: true, error: null })
         try {
-          const token = await requestDriveAccessToken('consent')
           const email = get().email
+          const token = await requestDriveAccessToken('consent', email || undefined)
           if (!email) throw new Error('Please use the Google sign-in button first.')
           set({
             isAuthenticated: true,
@@ -361,8 +363,8 @@ export const useAuthStore = create<AuthState>()(
         }
         set({ isLoading: true, error: null })
         try {
-          const token = await requestDriveAccessToken('select_account')
           const email = get().email
+          const token = await requestDriveAccessToken('select_account', email || undefined)
           if (!email) throw new Error('Please sign in again.')
           set({
             isAuthenticated: true,

@@ -2,6 +2,7 @@ import { useAuthStore } from '../stores/useAuthStore'
 import { db } from '../database/db'
 import type { JSONContent } from '@tiptap/core'
 import type { SyncEntityType, SyncQueueItem } from '../types/files'
+import { devLog } from '../utils/safeLog'
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
@@ -572,6 +573,217 @@ async function uploadMarkdownFile(title: string, content: string, parentId: stri
   return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
 }
 
+async function uploadBinaryFile(
+  name: string,
+  data: Uint8Array,
+  mimeType: string,
+  parentId: string,
+  fileId?: string | null
+) {
+  const accessToken = await useAuthStore.getState().getAccessToken()
+  if (!accessToken) throw new Error('Your Google session expired. Please sign in again.')
+  const boundary = 'mybook-binary-attachment-boundary'
+  const metadata: Record<string, unknown> = {
+    name,
+    ...(fileId ? {} : { parents: [parentId] }),
+    mimeType,
+  }
+  const method = fileId ? 'PATCH' : 'POST'
+  const query = new URLSearchParams({ uploadType: 'multipart', fields: 'id,name,webViewLink,modifiedTime' })
+  if (fileId) {
+    const moveParams = await parentMoveParams(fileId, parentId, accessToken)
+    moveParams.forEach((value, key) => query.set(key, value))
+  }
+  const endpoint = fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?${query.toString()}`
+    : `https://www.googleapis.com/upload/drive/v3/files?${query.toString()}`
+
+  const response = await fetch(endpoint, {
+    method,
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: new Blob([
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+      `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`,
+      data,
+      `\r\n--${boundary}--`,
+    ], { type: `multipart/related; boundary=${boundary}` }),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
+    throw new Error(body?.error?.message ?? `Could not upload attachment ${name} to Google Drive.`)
+  }
+  return await response.json() as { id: string; name: string; webViewLink?: string; modifiedTime?: string }
+}
+
+function hasMediaNodes(node: JSONContent): boolean {
+  if (
+    (node.type === 'imageBlock' || node.type === 'videoBlock' || node.type === 'audioBlock' || node.type === 'fileAttachment') &&
+    typeof node.attrs?.src === 'string' &&
+    node.attrs.src.trim()
+  ) {
+    return true
+  }
+  if (Array.isArray(node.content)) {
+    return node.content.some(hasMediaNodes)
+  }
+  return false
+}
+
+function hasRelativeAttachmentRefs(node: JSONContent): boolean {
+  if (
+    (node.type === 'imageBlock' || node.type === 'videoBlock' || node.type === 'audioBlock' || node.type === 'fileAttachment') &&
+    typeof node.attrs?.src === 'string'
+  ) {
+    const src = node.attrs.src.trim()
+    if (src.startsWith('./') || src.includes('_attachments/')) {
+      return true
+    }
+  }
+  if (Array.isArray(node.content)) {
+    return node.content.some(hasRelativeAttachmentRefs)
+  }
+  return false
+}
+
+export async function syncDocumentAttachmentsToDrive(
+  title: string,
+  parsedContent: JSONContent,
+  driveParentId: string
+): Promise<JSONContent> {
+  if (!hasMediaNodes(parsedContent)) {
+    return parsedContent
+  }
+  const { parseDataUrl, mimeToExtension, sanitizeFileName, isAttachmentDirectoryName } = await import('./localWorkspace')
+  const cloned = JSON.parse(JSON.stringify(parsedContent)) as JSONContent
+  const docSafeName = sanitizeFileName(title)
+  const extractedMedia: Array<{ fileName: string; mimeType: string; data: Uint8Array }> = []
+  const activeAttachmentNames = new Set<string>()
+  let mediaCounter = 0
+
+  function processNode(node: JSONContent) {
+    if (
+      (node.type === 'imageBlock' || node.type === 'videoBlock' || node.type === 'audioBlock' || node.type === 'fileAttachment') &&
+      typeof node.attrs?.src === 'string'
+    ) {
+      const src = node.attrs.src.trim()
+      if (src.startsWith('data:')) {
+        const parsed = parseDataUrl(src)
+        if (parsed) {
+          mediaCounter += 1
+          const ext = mimeToExtension(parsed.mimeType)
+          let fileName = ''
+          if (node.type === 'fileAttachment' && typeof node.attrs.name === 'string' && node.attrs.name.trim()) {
+            fileName = sanitizeFileName(node.attrs.name.trim())
+            if (!fileName.includes('.')) fileName = `${fileName}.${ext}`
+          } else {
+            fileName = `media_${mediaCounter}.${ext}`
+          }
+          extractedMedia.push({ fileName, mimeType: parsed.mimeType, data: parsed.data })
+          node.attrs.src = `./${docSafeName}_attachments/${fileName}`
+          activeAttachmentNames.add(fileName.toLowerCase())
+        }
+      } else if (src.startsWith('./') || isAttachmentDirectoryName(src.split('/')[0] || '')) {
+        const cleanSrc = src.replace(/^\.\//u, '')
+        const parts = cleanSrc.split('/')
+        if (parts.length >= 2) {
+          const fileName = parts.slice(1).join('/')
+          activeAttachmentNames.add(fileName.toLowerCase())
+        }
+      }
+    }
+
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) {
+        processNode(child)
+      }
+    }
+  }
+
+  processNode(cloned)
+
+  if (extractedMedia.length === 0 && activeAttachmentNames.size === 0) {
+    return cloned
+  }
+
+  try {
+    const attachmentFolderName = `${docSafeName}_attachments`
+    const attachmentFolder = await ensureVisibleFolderInParent(attachmentFolderName, driveParentId)
+    const existingFiles = await listChildFiles(attachmentFolder.id)
+    const existingByName = new Map(existingFiles.map((f) => [f.name.toLowerCase(), f]))
+
+    for (const item of extractedMedia) {
+      const existing = existingByName.get(item.fileName.toLowerCase())
+      await retryWithBackoff(() => uploadBinaryFile(item.fileName, item.data, item.mimeType, attachmentFolder.id, existing?.id))
+    }
+
+    for (const file of existingFiles) {
+      if (!activeAttachmentNames.has(file.name.toLowerCase())) {
+        try {
+          await trashDriveFile(file.id)
+        } catch {
+          // Ignore cleanup error
+        }
+      }
+    }
+  } catch (err) {
+    devLog('warn', 'Failed to sync attachments to Google Drive.', err)
+  }
+
+  return cloned
+}
+
+export async function syncDriveAttachmentsOnRenameOrMove(
+  oldTitle: string,
+  newTitle: string,
+  oldDriveParentId: string,
+  newDriveParentId: string
+) {
+  try {
+    const { sanitizeFileName } = await import('./localWorkspace')
+    const oldSafe = sanitizeFileName(oldTitle)
+    const newSafe = sanitizeFileName(newTitle)
+    if (oldSafe.toLowerCase() === newSafe.toLowerCase() && oldDriveParentId === newDriveParentId) return
+
+    const candidateOldFolders = [
+      `${oldSafe}_attachments`,
+      `${oldSafe}-attachments`,
+      `${oldSafe}.attachments`,
+    ]
+
+    for (const folderName of candidateOldFolders) {
+      const existing = await listVisibleFoldersByName(folderName, oldDriveParentId)
+      for (const folder of existing) {
+        await updateDriveFolder(folder.id, {
+          name: `${newSafe}_attachments`,
+          parentId: newDriveParentId !== oldDriveParentId ? newDriveParentId : null,
+        })
+      }
+    }
+  } catch (error) {
+    devLog('warn', 'Could not sync Drive attachments on rename/move.', error)
+  }
+}
+
+export async function trashDriveFileAttachments(title: string, driveParentId: string) {
+  try {
+    const { sanitizeFileName } = await import('./localWorkspace')
+    const safeName = sanitizeFileName(title)
+    const candidateFolders = [
+      `${safeName}_attachments`,
+      `${safeName}-attachments`,
+      `${safeName}.attachments`,
+    ]
+    for (const folderName of candidateFolders) {
+      const existing = await listVisibleFoldersByName(folderName, driveParentId)
+      for (const folder of existing) {
+        await trashDriveFolder(folder.id)
+      }
+    }
+  } catch (error) {
+    devLog('warn', 'Could not trash Drive attachments folder.', error)
+  }
+}
+
 export async function backupDocumentToDrive(input: {
   fileId: string
   title: string
@@ -593,8 +805,12 @@ export async function backupDocumentToDrive(input: {
       const parsedContent = (() => {
         try { return JSON.parse(content || '{"type":"doc","content":[{"type":"paragraph"}]}') as JSONContent } catch { return { type: 'doc', content: [{ type: 'paragraph' }] } as JSONContent }
       })()
+
+      // Sync companion attachment folder and media files to Google Drive
+      const docWithDriveAttachments = await syncDocumentAttachmentsToDrive(title, parsedContent, driveParentId)
+
       const { documentToMyBookMarkdown } = await import('../utils/mybookMarkdown')
-      const markdown = documentToMyBookMarkdown(title, parsedContent, { documentId: file.id })
+      const markdown = documentToMyBookMarkdown(title, docWithDriveAttachments, { documentId: file.id })
       const isFavorite = latest?.isFavorite ?? file.isFavorite
       const result = await retryWithBackoff(() => uploadMarkdownFile(title, markdown, driveParentId, latest?.driveFileId ?? file.driveFileId, { isFavorite: isFavorite ? 'true' : 'false' }))
       const current = await db.files.get(file.id)
@@ -780,9 +996,13 @@ export async function importDriveFoldersToLocal(
   let maxPercent = 0
 
   const syncChildren = async (parentDriveId: string, parentLocalId: string | null) => {
+    const { isAttachmentDirectoryName } = await import('./localWorkspace')
     const children = await listChildFolders(parentDriveId)
     totalDiscoveredFolders += children.length
     for (const driveFolder of children) {
+      if (isAttachmentDirectoryName(driveFolder.name)) {
+        continue
+      }
       seenDriveIds.add(driveFolder.id)
       const isFavorite = driveFolder.appProperties?.isFavorite === 'true'
       const localMatch = byDriveId.get(driveFolder.id) ?? byNameAndParent.get(`${parentLocalId ?? 'root'}:${driveFolder.name.toLowerCase()}`)
@@ -884,6 +1104,31 @@ export async function importDriveFoldersToLocal(
 function inferFileType(name: string, mimeType: string) {
   if (mimeType === GOOGLE_SHEET_MIME || mimeType.includes('spreadsheet') || /\.xlsx$/i.test(name)) return 'spreadsheet' as const
   return 'document' as const
+}
+
+function isImportableDriveFile(name: string, mimeType: string, isAttachmentName: (name: string) => boolean) {
+  if (isAttachmentName(name)) return false
+  if (
+    mimeType.startsWith('image/') ||
+    mimeType.startsWith('video/') ||
+    mimeType.startsWith('audio/')
+  ) {
+    return false
+  }
+  if (/\.(png|jpe?g|gif|webp|svg|bmp|ico|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|flac|aac|pdf|zip|tar|gz)$/i.test(name)) {
+    return false
+  }
+  return (
+    mimeType === MYBOOK_MARKDOWN_MIME ||
+    mimeType === GOOGLE_DOC_MIME ||
+    mimeType === GOOGLE_SHEET_MIME ||
+    mimeType === 'application/x-mybook-document' ||
+    mimeType === 'application/x-mybook-spreadsheet' ||
+    mimeType.includes('spreadsheet') ||
+    mimeType.includes('wordprocessingml') ||
+    mimeType.includes('document') ||
+    /\.(md|mybook\.md|docx|xlsx|txt)$/i.test(name)
+  )
 }
 
 function localFileName(name: string, type: 'document' | 'spreadsheet') {
@@ -1020,11 +1265,70 @@ function tiptapDocFromHtml(html: string, fileName: string) {
   return JSON.stringify({ type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] })
 }
 
+async function hydrateDriveAttachments(
+  docName: string,
+  parentDriveId: string | null,
+  docJson: JSONContent
+): Promise<JSONContent> {
+  if (!parentDriveId || !hasRelativeAttachmentRefs(docJson)) return docJson
+  try {
+    const { sanitizeFileName, isAttachmentDirectoryName, uint8ArrayToDataUrl } = await import('./localWorkspace')
+    const safeDocName = sanitizeFileName(docName)
+    const attachmentFolders = await listVisibleFoldersByName(`${safeDocName}_attachments`, parentDriveId)
+    if (attachmentFolders.length === 0) return docJson
+    const attachmentFolder = attachmentFolders[0]
+    if (!attachmentFolder) return docJson
+    const driveFiles = await listChildFiles(attachmentFolder.id)
+    if (driveFiles.length === 0) return docJson
+
+    const filesByName = new Map(driveFiles.map((f) => [f.name.toLowerCase(), f]))
+    const cloned = JSON.parse(JSON.stringify(docJson)) as JSONContent
+
+    async function processNode(node: JSONContent) {
+      if (
+        (node.type === 'imageBlock' || node.type === 'videoBlock' || node.type === 'audioBlock' || node.type === 'fileAttachment') &&
+        typeof node.attrs?.src === 'string'
+      ) {
+        const src = node.attrs.src.trim()
+        if (src.startsWith('./') || isAttachmentDirectoryName(src.split('/')[0] || '')) {
+          const cleanSrc = src.replace(/^\.\//u, '')
+          const parts = cleanSrc.split('/')
+          if (parts.length >= 2) {
+            const fileName = parts.slice(1).join('/').toLowerCase()
+            const matchedDriveFile = filesByName.get(fileName)
+            if (matchedDriveFile) {
+              const blob = await downloadDriveFileBlob(matchedDriveFile.id)
+              const buffer = await blob.arrayBuffer()
+              const bytes = new Uint8Array(buffer)
+              const mimeType = matchedDriveFile.mimeType || 'application/octet-stream'
+              node.attrs.src = uint8ArrayToDataUrl(bytes, mimeType)
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(node.content)) {
+        for (const child of node.content) {
+          await processNode(child)
+        }
+      }
+    }
+
+    await processNode(cloned)
+    return cloned
+  } catch (err) {
+    devLog('warn', 'Failed to hydrate Drive attachments.', err)
+    return docJson
+  }
+}
+
 async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string) {
   if (file.mimeType === MYBOOK_MARKDOWN_MIME || /\.md$/i.test(file.name)) {
     const { parseMyBookMarkdown } = await import('../utils/mybookMarkdown')
     const parsed = parseMyBookMarkdown(await getDriveFileContent(file.id))
-    return { content: JSON.stringify(parsed.document), documentId: parsed.metadata.documentId }
+    const parentDriveId = file.parents?.[0] ?? null
+    const hydratedDoc = await hydrateDriveAttachments(file.name, parentDriveId, parsed.document)
+    return { content: JSON.stringify(hydratedDoc), documentId: parsed.metadata.documentId }
   }
   if (file.mimeType === GOOGLE_DOC_MIME || file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)) {
     const blob = file.mimeType === GOOGLE_DOC_MIME
@@ -1074,9 +1378,27 @@ export async function importDriveFilesToLocal(
   const bootstrap = await ensureMyBookDriveFolder()
   if (!bootstrap.success) throw new Error(bootstrap.error)
 
+  const { isAttachmentDirectoryName } = await import('./localWorkspace')
   const localFolders = await db.folders.toArray()
   const localFiles = await db.files.toArray()
   const unresolvedSync = await unresolvedSyncIndex()
+
+  // Clean up any rogue media files that might have been accidentally imported
+  const rogueFiles = localFiles.filter(
+    (file) =>
+      !file.isDeleted &&
+      (isAttachmentDirectoryName(file.name) ||
+       /\.(png|jpe?g|gif|webp|svg|bmp|ico|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|flac|aac)$/i.test(file.name))
+  )
+  if (rogueFiles.length > 0) {
+    const now = new Date().toISOString()
+    await db.transaction('rw', db.files, async () => {
+      for (const file of rogueFiles) {
+        await db.files.update(file.id, { isDeleted: true, updatedAt: now })
+      }
+    })
+  }
+
   const usedLocalFileIds = new Set(localFiles.map((file) => file.id))
   const byDriveId = new Map(localFiles.filter((file) => file.driveFileId).map((file) => [file.driveFileId as string, file]))
   const byNameAndParent = new Map<string, typeof localFiles[number]>()
@@ -1094,8 +1416,9 @@ export async function importDriveFilesToLocal(
 
   const syncFiles = async (parentDriveId: string, parentLocalId: string | null) => {
     const children = await listChildFiles(parentDriveId)
-    totalDiscoveredFiles += children.length
-    for (const driveFile of children) {
+    const importableChildren = children.filter((file) => isImportableDriveFile(file.name, file.mimeType, isAttachmentDirectoryName))
+    totalDiscoveredFiles += importableChildren.length
+    for (const driveFile of importableChildren) {
       seenDriveFileIds.add(driveFile.id)
       const fileType = inferFileType(driveFile.name, driveFile.mimeType)
       const existing = byDriveId.get(driveFile.id)
@@ -1188,6 +1511,9 @@ export async function importDriveFilesToLocal(
     await syncFiles(parentDriveId, parentLocalId)
     const children = await listChildFolders(parentDriveId)
     for (const driveFolder of children) {
+      if (isAttachmentDirectoryName(driveFolder.name)) {
+        continue
+      }
       const localMatch = folderByDriveId.get(driveFolder.id) ?? localFolders.find((folder) => folder.parentId === parentLocalId && folder.name.toLowerCase() === driveFolder.name.toLowerCase())
       const nextLocalId = localMatch?.id ?? null
       await walk(driveFolder.id, nextLocalId)
@@ -1262,9 +1588,12 @@ async function prepareWritinDriveFolder(): Promise<DriveSetupResult> {
         throw new Error('Your existing Drive workspace is unavailable. Restore or reconnect it before syncing. No replacement folder was created.')
       }
     } else {
-      // Search target folder and legacy generations before creating anything, including historical casing.
-      const names = Array.from(new Set([targetFolderName, 'Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']))
-      const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (${names.map((name) => `name='${name}'`).join(' or ')})`
+      const isDefaultTarget = targetFolderName.toLowerCase() === 'writin' || targetFolderName.toLowerCase() === 'mybook'
+      const names = isDefaultTarget
+        ? Array.from(new Set([targetFolderName, 'Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']))
+        : [targetFolderName]
+      const nameQueries = names.map((name) => `name='${name.replace(/'/g, "\\'")}'`).join(' or ')
+      const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (${nameQueries})`
       const candidates = new Map<string, DriveFolder>()
       const seenPages = new Set<string>()
       let pageToken: string | undefined

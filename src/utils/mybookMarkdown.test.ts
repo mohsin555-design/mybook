@@ -1366,6 +1366,76 @@ describe('MyBook Markdown round trips', () => {
     expect(parsed.content?.[0]).toEqual(videoNode)
   })
 
+  it('round trips image blocks with customized width, alignment, caption, and href', () => {
+    const imageNode: JSONContent = {
+      type: 'imageBlock',
+      attrs: {
+        src: 'https://example.com/photo.png',
+        alt: 'Custom Photo',
+        caption: 'A caption for the photo',
+        showCaption: true,
+        width: '45%',
+        align: 'center',
+        href: 'https://example.com/target',
+      },
+    }
+    const markdown = documentToMyBookMarkdown('Image Doc', doc(imageNode))
+    expect(markdown).toContain(':::image')
+    const parsed = myBookMarkdownToDocument(markdown)
+    expect(parsed.content?.[0]).toEqual(imageNode)
+  })
+
+  it('round trips audio blocks with attributes, title, caption, and artwork', () => {
+    const audioNode: JSONContent = {
+      type: 'audioBlock',
+      attrs: {
+        src: 'https://example.com/song.mp3',
+        title: 'Theme Song',
+        caption: 'Audio description',
+        showCaption: true,
+        width: '80%',
+        align: 'center',
+        artwork: 'https://example.com/cover.png',
+        provider: 'html5',
+      },
+    }
+    const markdown = documentToMyBookMarkdown('Audio Doc', doc(audioNode))
+    expect(markdown).toContain(':::audio')
+    const parsed = myBookMarkdownToDocument(markdown)
+    expect(parsed.content?.[0]).toEqual(audioNode)
+  })
+
+  it('round trips standard image markdown syntax without losing alt, src, caption', () => {
+    const standardImageNode: JSONContent = {
+      type: 'imageBlock',
+      attrs: {
+        src: 'https://example.com/standard.jpg',
+        alt: 'Standard Photo',
+        caption: 'Simple caption',
+        showCaption: true,
+      },
+    }
+    const markdown = documentToMyBookMarkdown('Standard Image', doc(standardImageNode))
+    expect(markdown).toContain('![Standard Photo](https://example.com/standard.jpg "Simple caption")')
+    const parsed = myBookMarkdownToDocument(markdown)
+    expect(parsed.content?.[0]?.type).toBe('imageBlock')
+    expect(parsed.content?.[0]?.attrs?.src).toBe('https://example.com/standard.jpg')
+    expect(parsed.content?.[0]?.attrs?.alt).toBe('Standard Photo')
+    expect(parsed.content?.[0]?.attrs?.caption).toBe('Simple caption')
+  })
+
+  it('round trips metadata with createdAt and updatedAt timestamps', () => {
+    const markdown = documentToMyBookMarkdown('Timestamped Doc', doc(paragraph(text('Hello'))), {
+      documentId: 'doc_123',
+      createdAt: '2026-01-15T10:00:00.000Z',
+      updatedAt: '2026-03-20T15:30:00.000Z',
+    })
+    const parsed = parseMyBookMarkdown(markdown)
+    expect(parsed.metadata.documentId).toBe('doc_123')
+    expect(parsed.metadata.createdAt).toBe('2026-01-15T10:00:00.000Z')
+    expect(parsed.metadata.updatedAt).toBe('2026-03-20T15:30:00.000Z')
+  })
+
   it('round trips a larger document without changing structure', () => {
     expectRoundTrip(doc(...Array.from({ length: 150 }, (_, index) => paragraph(text(`Paragraph ${index + 1}`)))))
   })

@@ -2,8 +2,9 @@ import type { JSONContent } from '@tiptap/core'
 
 import { db } from '../database/db'
 import type { MyBookFile, MyBookFolder } from '../types/files'
-import { documentToMyBookMarkdown, myBookMarkdownToDocument } from '../utils/mybookMarkdown'
+import { documentToMyBookMarkdown, myBookMarkdownToDocument, parseMyBookMarkdown } from '../utils/mybookMarkdown'
 import { devLog } from '../utils/safeLog'
+import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
 const LEGACY_ROOT_DIR = 'Writin'
 const LEGACY_FILES_DIR = 'files'
@@ -93,6 +94,10 @@ export async function saveDeviceDirectoryHandle(handle: FileSystemDirectoryHandl
 
 export async function forgetDeviceDirectoryHandle() {
   await db.settings.delete(LOCAL_DIRECTORY_HANDLE_KEY)
+  const details = await getLocalWorkspaceDetails()
+  if (details?.storage === 'file-system') {
+    await db.settings.delete(LOCAL_WORKSPACE_DETAILS_KEY)
+  }
 }
 
 export async function getDeviceDirectoryHandle(): Promise<FileSystemDirectoryHandle | undefined> {
@@ -143,6 +148,75 @@ function privateStorageKind(): LocalWorkspaceStorageKind {
   return isOpfsAvailable() ? 'opfs' : 'indexeddb'
 }
 
+export function isMissingDirectoryError(error: unknown): boolean {
+  if (!error) return false
+  const errName = error instanceof Error || (typeof error === 'object' && error !== null && 'name' in error)
+    ? String((error as { name?: unknown }).name)
+    : ''
+  const errMsg = error instanceof Error ? error.message : String(error)
+  if (errName === 'NotAllowedError' || errMsg.toLowerCase().includes('permission')) {
+    return false
+  }
+  return (
+    errName === 'NotFoundError' ||
+    errMsg.toLowerCase().includes('not found') ||
+    errMsg.toLowerCase().includes('could not be found') ||
+    errMsg.toLowerCase().includes('no longer exists') ||
+    errMsg.toLowerCase().includes('does not exist')
+  )
+}
+
+export async function checkDeviceDirectoryHandleValid(
+  customHandle?: FileSystemDirectoryHandle | null
+): Promise<{ valid: boolean; handle: FileSystemDirectoryHandle | null; needsPermission?: boolean; error?: string }> {
+  const handle = customHandle !== undefined ? customHandle : (await getDeviceDirectoryHandle())
+  if (!handle) return { valid: true, handle: null }
+  try {
+    const anyHandle = handle as unknown as {
+      values?: () => AsyncIterableIterator<FileSystemHandle> | IterableIterator<FileSystemHandle>
+      entries?: () => AsyncIterableIterator<[string, FileSystemHandle]> | IterableIterator<[string, FileSystemHandle]>
+      [Symbol.asyncIterator]?: () => AsyncIterator<FileSystemHandle>
+      queryPermission?: (descriptor?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState>
+    }
+
+    if (typeof anyHandle.queryPermission === 'function') {
+      const perm = await anyHandle.queryPermission({ mode: 'readwrite' })
+      if (perm !== 'granted') {
+        return { valid: true, handle, needsPermission: true }
+      }
+    }
+
+    if (typeof anyHandle.values === 'function') {
+      const iter = anyHandle.values()
+      if (iter && typeof iter.next === 'function') {
+        await iter.next()
+      }
+    } else if (typeof anyHandle.entries === 'function') {
+      const iter = anyHandle.entries()
+      if (iter && typeof iter.next === 'function') {
+        await iter.next()
+      }
+    } else if (typeof anyHandle[Symbol.asyncIterator] === 'function') {
+      const iter = anyHandle[Symbol.asyncIterator]!()
+      if (iter && typeof iter.next === 'function') {
+        await iter.next()
+      }
+    }
+    return { valid: true, handle }
+  } catch (error) {
+    const errName = error instanceof Error || (error && typeof error === 'object' && 'name' in error)
+      ? String((error as { name?: unknown }).name)
+      : ''
+    if (errName === 'NotAllowedError') {
+      return { valid: true, handle, needsPermission: true }
+    }
+    if (isMissingDirectoryError(error)) {
+      return { valid: false, handle, error: errName || 'NotFoundError' }
+    }
+    return { valid: true, handle }
+  }
+}
+
 export async function getWorkspaceRootDirectory(): Promise<FileSystemDirectoryHandle | null> {
   const deviceDirectory = await getDeviceDirectoryHandle()
   if (deviceDirectory && await hasReadWritePermission(deviceDirectory, { request: false })) {
@@ -156,6 +230,42 @@ export async function getWorkspaceRootDirectory(): Promise<FileSystemDirectoryHa
     return root
   } catch {
     return null
+  }
+}
+
+export async function getWorkspaceEffectiveDirectory(
+  customRoot?: FileSystemDirectoryHandle | null,
+  create = false
+): Promise<FileSystemDirectoryHandle | null> {
+  const root = customRoot ?? (await getWorkspaceRootDirectory())
+  if (!root) return null
+
+  // Check legacy Writin/files structure first for backward compatibility
+  try {
+    const legacyDir = await root.getDirectoryHandle(LEGACY_ROOT_DIR)
+    const filesDir = await legacyDir.getDirectoryHandle(LEGACY_FILES_DIR)
+    return filesDir
+  } catch {
+    // Not legacy structure
+  }
+
+  // Get active vault/workspace name
+  const details = await getLocalWorkspaceDetails()
+  const vaultName = sanitizeFileName(details?.name || 'Writin')
+
+  // If the root directory handle itself is named the vaultName (case-insensitive), use root directly
+  if (root.name && root.name.trim().toLowerCase() === vaultName.toLowerCase()) {
+    return root
+  }
+
+  // Otherwise, nest inside <vaultName>
+  try {
+    return await root.getDirectoryHandle(vaultName, { create })
+  } catch {
+    if (!create) {
+      return root
+    }
+    return root
   }
 }
 
@@ -314,6 +424,7 @@ export async function extractAndSaveAttachments(
     const cloned = JSON.parse(JSON.stringify(docJson)) as JSONContent
     let mediaCounter = 0
     let attachmentsDirHandle: FileSystemDirectoryHandle | null = null
+    const activeAttachmentFileNames = new Set<string>()
 
     async function getAttachmentsDir() {
       if (!attachmentsDirHandle) {
@@ -349,9 +460,17 @@ export async function extractAndSaveAttachments(
               await writable.close()
 
               node.attrs.src = `./${docSafeName}_attachments/${fileName}`
+              activeAttachmentFileNames.add(fileName)
             } catch (err) {
               devLog('warn', 'Failed to write attachment to disk.', err)
             }
+          }
+        } else if (src.startsWith('./') || isAttachmentDirectoryName(src.split('/')[0] || '')) {
+          const cleanSrc = src.replace(/^\.\//u, '')
+          const parts = cleanSrc.split('/')
+          if (parts.length >= 2) {
+            const fileName = parts.slice(1).join('/')
+            activeAttachmentFileNames.add(fileName)
           }
         }
       }
@@ -364,6 +483,52 @@ export async function extractAndSaveAttachments(
     }
 
     await processNode(cloned)
+
+    // Cleanup: Prune unreferenced attachment files or remove empty attachment folder(s)
+    const candidateFolders = [
+      `${docSafeName}_attachments`,
+      `${docSafeName}-attachments`,
+      `${docSafeName}.attachments`,
+    ]
+
+    for (const folderName of candidateFolders) {
+      try {
+        const dir = await docDir.getDirectoryHandle(folderName)
+        const dirPermission = dir as PermissionedDirectoryHandle
+        let remainingFileCount = 0
+        if (typeof dirPermission.entries === 'function') {
+          const toRemove: string[] = []
+          for await (const [entryName, entry] of dirPermission.entries()) {
+            if (entry.kind === 'file') {
+              if (!activeAttachmentFileNames.has(entryName)) {
+                toRemove.push(entryName)
+              } else {
+                remainingFileCount += 1
+              }
+            }
+          }
+          for (const fileName of toRemove) {
+            try {
+              await dir.removeEntry(fileName)
+            } catch {
+              // Ignore file removal error
+            }
+          }
+        }
+
+        // If no active attachments exist for this document, remove the folder
+        if (activeAttachmentFileNames.size === 0 || remainingFileCount === 0) {
+          try {
+            await docDir.removeEntry(folderName, { recursive: true })
+          } catch {
+            // Ignore directory removal error
+          }
+        }
+      } catch {
+        // Folder does not exist, nothing to clean
+      }
+    }
+
     return cloned
   } catch (err) {
     devLog('warn', 'Failed to extract attachments from document.', err)
@@ -448,7 +613,7 @@ export async function syncAttachmentsOnRenameOrMove(
   newFile: Pick<MyBookFile, 'id' | 'name' | 'folderId'>
 ) {
   try {
-    const root = await getWorkspaceRootDirectory()
+    const root = await getWorkspaceEffectiveDirectory(null, true)
     if (!root) return
     const oldDir = await resolveDirectoryHandleForFolder(root, oldFile.folderId ?? null, false)
     if (!oldDir) return
@@ -494,7 +659,7 @@ export async function syncAttachmentsOnRenameOrMove(
 }
 
 export function documentMarkdown(
-  file: Pick<MyBookFile, 'id' | 'name' | 'content'>,
+  file: Pick<MyBookFile, 'id' | 'name' | 'content'> & { createdAt?: string; updatedAt?: string },
   dirHandle?: FileSystemDirectoryHandle | null
 ): Promise<string> | string {
   let json: JSONContent
@@ -507,11 +672,19 @@ export function documentMarkdown(
   if (dirHandle) {
     const safeName = sanitizeFileName(file.name)
     return extractAndSaveAttachments(dirHandle, safeName, json).then((processed) =>
-      documentToMyBookMarkdown(file.name, processed, { documentId: file.id })
+      documentToMyBookMarkdown(file.name, processed, {
+        documentId: file.id,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+      })
     )
   }
 
-  return documentToMyBookMarkdown(file.name, json, { documentId: file.id })
+  return documentToMyBookMarkdown(file.name, json, {
+    documentId: file.id,
+    createdAt: file.createdAt,
+    updatedAt: file.updatedAt,
+  })
 }
 
 export async function appContentFromStoredFile(
@@ -535,21 +708,22 @@ export async function appContentFromStoredFile(
 
 export async function scanAndHydrateLocalWorkspace(
   customRoot?: FileSystemDirectoryHandle | null,
-): Promise<{ discoveredCount: number; restoredCount: number }> {
+  options?: { targetWorkspaceType?: 'local' | 'drive'; triggerDriveSync?: boolean }
+): Promise<{ discoveredCount: number; restoredCount: number; deletedCount?: number }> {
   const root = customRoot ?? (await getWorkspaceRootDirectory())
-  if (!root) return { discoveredCount: 0, restoredCount: 0 }
+  if (!root) return { discoveredCount: 0, restoredCount: 0, deletedCount: 0 }
+
+  const targetWorkspaceType = options?.targetWorkspaceType ?? (useWorkspaceStore.getState().mode === 'drive' ? 'drive' : 'local')
+  const shouldQueueDriveSync = options?.triggerDriveSync ?? (targetWorkspaceType === 'drive')
 
   let discoveredCount = 0
   let restoredCount = 0
+  let deletedCount = 0
 
-  let effectiveRoot = root
-  try {
-    const writinDir = await root.getDirectoryHandle(LEGACY_ROOT_DIR)
-    const filesDir = await writinDir.getDirectoryHandle(LEGACY_FILES_DIR)
-    effectiveRoot = filesDir
-  } catch {
-    effectiveRoot = root
-  }
+  const encounteredFileIds = new Set<string>()
+  const encounteredFolderIds = new Set<string>()
+
+  const effectiveRoot = (await getWorkspaceEffectiveDirectory(root, false)) ?? root
 
   async function scanDirectory(dirHandle: FileSystemDirectoryHandle, parentFolderId: string | null) {
     const dirPermission = dirHandle as PermissionedDirectoryHandle
@@ -578,7 +752,7 @@ export async function scanAndHydrateLocalWorkspace(
     // Process subdirectories
     for (const { name, handle } of subdirectories) {
       let existingFolder = await db.folders
-        .filter((f) => f.workspaceType === 'local' && !f.isDeleted && f.parentId === parentFolderId && f.name.toLowerCase() === name.toLowerCase())
+        .filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted && f.parentId === parentFolderId && f.name.toLowerCase() === name.toLowerCase())
         .first()
 
       if (!existingFolder) {
@@ -586,7 +760,7 @@ export async function scanAndHydrateLocalWorkspace(
         const newFolder: MyBookFolder = {
           id: crypto.randomUUID(),
           driveFolderId: null,
-          workspaceType: 'local',
+          workspaceType: targetWorkspaceType,
           name,
           parentId: parentFolderId,
           createdAt: now,
@@ -596,8 +770,23 @@ export async function scanAndHydrateLocalWorkspace(
         await db.folders.add(newFolder)
         existingFolder = newFolder
         restoredCount += 1
+
+        if (shouldQueueDriveSync) {
+          await db.syncQueue.add({
+            id: crypto.randomUUID(),
+            entityType: 'folder',
+            entityId: newFolder.id,
+            operation: 'create',
+            errorMessage: null,
+            status: 'pending',
+            retryCount: 0,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
       }
 
+      encounteredFolderIds.add(existingFolder.id)
       await scanDirectory(handle, existingFolder.id)
     }
 
@@ -620,54 +809,116 @@ export async function scanAndHydrateLocalWorkspace(
         const now = new Date(fileObj.lastModified || Date.now()).toISOString()
 
         if (isMarkdown) {
-          const parsed = myBookMarkdownToDocument(text)
+          const parsed = parseMyBookMarkdown(text)
           const documentId = parsed.metadata?.documentId
+          const metaCreated = parsed.metadata?.createdAt
+          const metaUpdated = parsed.metadata?.updatedAt
           const hydratedDoc = await hydrateAttachments(dirHandle, docName, parsed.document)
 
           let existingFile: MyBookFile | undefined
           if (documentId) {
-            existingFile = await db.files.get(documentId)
+            const candidate = await db.files.get(documentId)
+            if (candidate && !candidate.isDeleted && candidate.workspaceType === targetWorkspaceType) {
+              if (candidate.name.toLowerCase() === docName.toLowerCase() && candidate.folderId === parentFolderId) {
+                existingFile = candidate
+              } else if (!encounteredFileIds.has(candidate.id)) {
+                existingFile = candidate
+              }
+            }
           }
           if (!existingFile) {
             existingFile = await db.files
-              .filter((f) => f.workspaceType === 'local' && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
+              .filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase() && !encounteredFileIds.has(f.id))
               .first()
           }
 
           if (!existingFile) {
+            const fileCreatedAt = metaCreated || now
+            const fileUpdatedAt = metaUpdated || now
             const newFile: MyBookFile = {
-              id: documentId || crypto.randomUUID(),
+              id: crypto.randomUUID(),
               driveFileId: null,
-              workspaceType: 'local',
+              workspaceType: targetWorkspaceType,
               name: docName,
               type: 'document',
               folderId: parentFolderId,
               content: JSON.stringify(hydratedDoc),
               mimeType: 'application/x-mybook-document',
-              createdAt: now,
-              updatedAt: now,
+              createdAt: fileCreatedAt,
+              updatedAt: fileUpdatedAt,
               lastSyncedAt: null,
-              syncStatus: 'local',
+              syncStatus: targetWorkspaceType === 'drive' ? 'pending' : 'local',
               isDeleted: false,
             }
             await db.files.add(newFile)
+            encounteredFileIds.add(newFile.id)
             restoredCount += 1
-          } else if (!existingFile.content) {
-            await db.files.update(existingFile.id, {
-              content: JSON.stringify(hydratedDoc),
-              updatedAt: now,
-            })
+
+            if (shouldQueueDriveSync) {
+              await db.syncQueue.add({
+                id: crypto.randomUUID(),
+                entityType: 'file',
+                entityId: newFile.id,
+                operation: 'create',
+                errorMessage: null,
+                status: 'pending',
+                retryCount: 0,
+                createdAt: fileCreatedAt,
+                updatedAt: fileUpdatedAt,
+              })
+            }
+          } else {
+            encounteredFileIds.add(existingFile.id)
+            const hydratedString = JSON.stringify(hydratedDoc)
+            const isContentIdentical = existingFile.content === hydratedString
+            const isLocationIdentical = existingFile.name.toLowerCase() === docName.toLowerCase() && existingFile.folderId === parentFolderId
+            const isIdentical = isContentIdentical && isLocationIdentical
+
+            if (!isIdentical && !existingFile.content) {
+              const fileUpdates: Partial<MyBookFile> = {
+                name: docName,
+                folderId: parentFolderId,
+                content: hydratedString,
+              }
+              await db.files.update(existingFile.id, fileUpdates)
+              existingFile = { ...existingFile, ...fileUpdates }
+            } else if (!isIdentical) {
+              const nextUpdatedAt = metaUpdated && metaUpdated !== existingFile.updatedAt ? metaUpdated : now
+              const fileUpdates: Partial<MyBookFile> = {
+                name: docName,
+                folderId: parentFolderId,
+                content: hydratedString,
+                updatedAt: nextUpdatedAt,
+                syncStatus: targetWorkspaceType === 'drive' ? 'pending' : existingFile.syncStatus,
+              }
+              await db.files.update(existingFile.id, fileUpdates)
+              existingFile = { ...existingFile, ...fileUpdates }
+
+              if (shouldQueueDriveSync) {
+                await db.syncQueue.add({
+                  id: crypto.randomUUID(),
+                  entityType: 'file',
+                  entityId: existingFile.id,
+                  operation: existingFile.driveFileId ? 'update' : 'create',
+                  errorMessage: null,
+                  status: 'pending',
+                  retryCount: 0,
+                  createdAt: nextUpdatedAt,
+                  updatedAt: nextUpdatedAt,
+                })
+              }
+            }
           }
         } else if (isSpreadsheet) {
           const existingFile = await db.files
-            .filter((f) => f.workspaceType === 'local' && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
+            .filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted && f.folderId === parentFolderId && f.name.toLowerCase() === docName.toLowerCase())
             .first()
 
           if (!existingFile) {
             const newFile: MyBookFile = {
               id: crypto.randomUUID(),
               driveFileId: null,
-              workspaceType: 'local',
+              workspaceType: targetWorkspaceType,
               name: docName,
               type: 'spreadsheet',
               folderId: parentFolderId,
@@ -676,17 +927,57 @@ export async function scanAndHydrateLocalWorkspace(
               createdAt: now,
               updatedAt: now,
               lastSyncedAt: null,
-              syncStatus: 'local',
+              syncStatus: targetWorkspaceType === 'drive' ? 'pending' : 'local',
               isDeleted: false,
             }
             await db.files.add(newFile)
+            encounteredFileIds.add(newFile.id)
             restoredCount += 1
+
+            if (shouldQueueDriveSync) {
+              await db.syncQueue.add({
+                id: crypto.randomUUID(),
+                entityType: 'file',
+                entityId: newFile.id,
+                operation: 'create',
+                errorMessage: null,
+                status: 'pending',
+                retryCount: 0,
+                createdAt: now,
+                updatedAt: now,
+              })
+            }
+          } else {
+            encounteredFileIds.add(existingFile.id)
+            if (text !== existingFile.content) {
+              await db.files.update(existingFile.id, {
+                content: text,
+                updatedAt: now,
+                syncStatus: targetWorkspaceType === 'drive' ? 'pending' : existingFile.syncStatus,
+              })
+              if (shouldQueueDriveSync) {
+                await db.syncQueue.add({
+                  id: crypto.randomUUID(),
+                  entityType: 'file',
+                  entityId: existingFile.id,
+                  operation: existingFile.driveFileId ? 'update' : 'create',
+                  errorMessage: null,
+                  status: 'pending',
+                  retryCount: 0,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+              }
+            }
           }
         } else if (isLegacyJson) {
           const rawId = name.replace(/\.content\.json$/i, '')
           const existingFile = await db.files.get(rawId)
-          if (existingFile && !existingFile.content) {
-            await db.files.update(existingFile.id, { content: text, updatedAt: now })
+          if (existingFile) {
+            encounteredFileIds.add(existingFile.id)
+            if (!existingFile.content) {
+              await db.files.update(existingFile.id, { content: text, updatedAt: now })
+            }
           }
         }
       } catch (err) {
@@ -695,13 +986,100 @@ export async function scanAndHydrateLocalWorkspace(
     }
   }
 
-  await scanDirectory(effectiveRoot, null)
-  return { discoveredCount, restoredCount }
+  try {
+    await scanDirectory(effectiveRoot, null)
+  } catch (error) {
+    if (isMissingDirectoryError(error)) {
+      await forgetDeviceDirectoryHandle()
+      useWorkspaceStore.getState().setMirrorFolderMissing(true)
+      return { discoveredCount: 0, restoredCount: 0, deletedCount: 0 }
+    }
+  }
+
+  // Detect and process items deleted locally from disk
+  const activeFolders = await db.folders.filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted).toArray()
+  const activeFiles = await db.files.filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted).toArray()
+
+  // MASS DELETION GUARD / ROOT REMOVAL GUARD:
+  // 1. If we had active files in DB but encountered ZERO files on disk, the root folder was deleted or emptied!
+  //    Under NO CIRCUMSTANCES should this purge Google Drive.
+  //    Instead, disconnect mirror and trigger the missing mirror prompt.
+  if (activeFiles.length > 0 && encounteredFileIds.size === 0) {
+    devLog('warn', 'Mass deletion guard: 0 files found on disk for active workspace. Halting deletion sync.')
+    await forgetDeviceDirectoryHandle()
+    useWorkspaceStore.getState().setMirrorFolderMissing(true)
+    return { discoveredCount: 0, restoredCount: 0, deletedCount: 0 }
+  }
+
+  // 2. If more than 2 files AND more than 50% of files disappeared simultaneously:
+  const missingFilesCount = activeFiles.filter((f) => !encounteredFileIds.has(f.id)).length
+  if (activeFiles.length > 2 && missingFilesCount > 2 && missingFilesCount > activeFiles.length * 0.5) {
+    devLog('warn', `Mass deletion guard: ${missingFilesCount}/${activeFiles.length} files missing on disk. Halting deletion sync.`)
+    await forgetDeviceDirectoryHandle()
+    useWorkspaceStore.getState().setMirrorFolderMissing(true)
+    return { discoveredCount: 0, restoredCount: 0, deletedCount: 0 }
+  }
+
+  const deleteTimestamp = new Date().toISOString()
+
+  for (const file of activeFiles) {
+    if (!encounteredFileIds.has(file.id)) {
+      await db.files.update(file.id, {
+        isDeleted: true,
+        updatedAt: deleteTimestamp,
+        syncStatus: shouldQueueDriveSync ? 'pending' : file.syncStatus,
+      })
+      deletedCount += 1
+      if (shouldQueueDriveSync) {
+        await db.syncQueue.add({
+          id: crypto.randomUUID(),
+          entityType: 'file',
+          entityId: file.id,
+          operation: 'delete',
+          errorMessage: null,
+          status: 'pending',
+          retryCount: 0,
+          createdAt: deleteTimestamp,
+          updatedAt: deleteTimestamp,
+        })
+      }
+    }
+  }
+
+  for (const folder of activeFolders) {
+    if (!encounteredFolderIds.has(folder.id)) {
+      await db.folders.update(folder.id, {
+        isDeleted: true,
+        updatedAt: deleteTimestamp,
+      })
+      deletedCount += 1
+      if (shouldQueueDriveSync) {
+        await db.syncQueue.add({
+          id: crypto.randomUUID(),
+          entityType: 'folder',
+          entityId: folder.id,
+          operation: 'delete',
+          errorMessage: null,
+          status: 'pending',
+          retryCount: 0,
+          createdAt: deleteTimestamp,
+          updatedAt: deleteTimestamp,
+        })
+      }
+    }
+  }
+
+  if (shouldQueueDriveSync && (restoredCount > 0 || deletedCount > 0)) {
+    void import('../database/repositories').then((m) => m.processPendingDriveSync()).catch(() => undefined)
+  }
+  return { discoveredCount, restoredCount, deletedCount }
 }
 
-export async function writeLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId' | 'content'>) {
+export async function writeLocalWorkspaceFile(
+  file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId' | 'content'> & { createdAt?: string; updatedAt?: string }
+) {
   try {
-    const root = await getWorkspaceRootDirectory()
+    const root = await getWorkspaceEffectiveDirectory(null, true)
     if (!root) return
 
     const dir = await resolveDirectoryHandleForFolder(root, file.folderId ?? null, true)
@@ -716,13 +1094,16 @@ export async function writeLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'typ
     await writable.write(contentToWrite)
     await writable.close()
   } catch (error) {
+    if (isMissingDirectoryError(error)) {
+      useWorkspaceStore.getState().setMirrorFolderMissing(true)
+    }
     devLog('warn', 'Could not write local workspace file.', error)
   }
 }
 
 export async function readLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId'>): Promise<string | null> {
   try {
-    const root = await getWorkspaceRootDirectory()
+    const root = await getWorkspaceEffectiveDirectory(null, false)
     if (!root) return null
 
     const dir = await resolveDirectoryHandleForFolder(root, file.folderId ?? null, false)
@@ -753,7 +1134,7 @@ export async function readLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type
 
 export async function deleteLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'type' | 'name' | 'folderId'>) {
   try {
-    const root = await getWorkspaceRootDirectory()
+    const root = await getWorkspaceEffectiveDirectory(null, false)
     if (!root) return
 
     const dir = await resolveDirectoryHandleForFolder(root, file.folderId ?? null, false)
@@ -778,10 +1159,13 @@ export async function deleteLocalWorkspaceFile(file: Pick<MyBookFile, 'id' | 'ty
 
 export async function ensureLocalWorkspaceFolder(folderId: string): Promise<FileSystemDirectoryHandle | null> {
   try {
-    const root = await getWorkspaceRootDirectory()
+    const root = await getWorkspaceEffectiveDirectory(null, true)
     if (!root) return null
     return await resolveDirectoryHandleForFolder(root, folderId, true)
   } catch (error) {
+    if (isMissingDirectoryError(error)) {
+      useWorkspaceStore.getState().setMirrorFolderMissing(true)
+    }
     devLog('warn', 'Could not ensure local workspace folder.', error)
     return null
   }
@@ -789,7 +1173,7 @@ export async function ensureLocalWorkspaceFolder(folderId: string): Promise<File
 
 export async function deleteLocalWorkspaceFolder(folderId: string) {
   try {
-    const root = await getWorkspaceRootDirectory()
+    const root = await getWorkspaceEffectiveDirectory(null, false)
     if (!root) return
     const folder = await db.folders.get(folderId)
     if (!folder) return

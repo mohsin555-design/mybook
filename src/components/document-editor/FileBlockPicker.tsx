@@ -167,14 +167,15 @@ export function FileBlockPicker({
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  if (!isInline && !position) return null
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640
+  const isCentered = !isInline && (isMobile || !position || (position.left === 0 && position.top === 0))
 
   const popoverWidth = 384 // 24rem
   const popoverHeight = 340
   const left = position ? Math.max(8, Math.min(position.left, window.innerWidth - popoverWidth - 16)) : undefined
   const top = position ? Math.max(8, Math.min(position.top, window.innerHeight - popoverHeight - 16)) : undefined
 
-  return (
+  const pickerDialog = (
     <div
       ref={containerRef}
       role="dialog"
@@ -184,11 +185,13 @@ export function FileBlockPicker({
           ? className
           : isInline
             ? 'absolute top-11 right-0 z-40 w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
-            : 'fixed z-30 w-[min(24rem,calc(100vw-1rem))] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
+            : isCentered
+              ? 'w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
+              : 'fixed z-30 w-[min(24rem,calc(100vw-1rem))] rounded-[12px] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.18)] outline-none'
       }
       data-file-picker="true"
       data-command-menu-scroller="true"
-      style={isInline ? undefined : { left, top }}
+      style={isInline || isCentered ? undefined : { left, top }}
     >
       <div className="mb-2 flex items-center justify-between px-1">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -368,4 +371,14 @@ export function FileBlockPicker({
       </Tabs>
     </div>
   )
+
+  if (isCentered) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+        {pickerDialog}
+      </div>
+    )
+  }
+
+  return pickerDialog
 }

@@ -6,8 +6,10 @@ import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { clearAccountDriveCache, folderRepository, processPendingDriveFolderSync, queueLocalItemsForDriveBackup, settingsRepository } from '../database/repositories'
 
 const DRIVE_ACTIVE_EMAIL_KEY = 'google-drive.active-account-email'
+const DRIVE_ACTIVE_VAULT_KEY = 'google-drive.last-bootstrapped-vault-id'
 const DRIVE_BACKFILL_KEY = 'google-drive.folder-backfill-complete'
-const DRIVE_INITIAL_SYNC_KEY = (email: string) => `google-drive.initial-sync-complete:${email}`
+const DRIVE_INITIAL_SYNC_KEY = (email: string, vaultId?: string | null) =>
+  vaultId ? `google-drive.initial-sync-complete:${email}:${vaultId}` : `google-drive.initial-sync-complete:${email}`
 let importDriveBackupsFlight: Promise<void> | null = null
 const progressListeners = new Set<(progress: { loaded: number; total: number; percent: number }) => void>()
 let currentProgress = { loaded: 0, total: 0, percent: 0 }
@@ -66,7 +68,6 @@ export function useDriveBootstrap() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const email = useAuthStore((state) => state.email)
   const workspaceMode = useWorkspaceStore((state) => state.mode)
-  const workspaceRevision = useWorkspaceStore((state) => state.workspaceRevision)
   const [isPreparing, setIsPreparing] = useState(false)
   const [isFetchingFiles, setIsFetchingFiles] = useState(false)
   const [fetchProgress, setFetchProgress] = useState(0)
@@ -79,15 +80,26 @@ export function useDriveBootstrap() {
     const run = async () => {
       setIsPreparing(true)
       const activeEmailSetting = (await settingsRepository.get(DRIVE_ACTIVE_EMAIL_KEY)).data?.value
-      const isDifferentAccount = typeof activeEmailSetting === 'string' && activeEmailSetting.toLowerCase() !== email.toLowerCase()
-      const initialSyncFlag = (await settingsRepository.get(DRIVE_INITIAL_SYNC_KEY(email))).data?.value === true
+      const lastVaultIdSetting = (await settingsRepository.get(DRIVE_ACTIVE_VAULT_KEY)).data?.value
+      const targetFolderIdSetting = (await settingsRepository.get('google-drive.mybook-folder-id')).data?.value as string | undefined
 
-      if (isDifferentAccount || !initialSyncFlag) {
+      const isDifferentAccount = typeof activeEmailSetting === 'string' && activeEmailSetting.toLowerCase() !== email.toLowerCase()
+      const isDifferentVault = Boolean(targetFolderIdSetting && lastVaultIdSetting && targetFolderIdSetting !== lastVaultIdSetting)
+
+      const baseInitialSyncFlag = (await settingsRepository.get(DRIVE_INITIAL_SYNC_KEY(email))).data?.value === true
+      const vaultInitialSyncFlag = targetFolderIdSetting
+        ? (await settingsRepository.get(DRIVE_INITIAL_SYNC_KEY(email, targetFolderIdSetting))).data?.value === true
+        : false
+      const initialSyncFlag = vaultInitialSyncFlag || baseInitialSyncFlag
+
+      if (isDifferentAccount || isDifferentVault) {
         await clearAccountDriveCache()
+        await settingsRepository.update(DRIVE_ACTIVE_EMAIL_KEY, email.toLowerCase())
+      } else if (!activeEmailSetting) {
         await settingsRepository.update(DRIVE_ACTIVE_EMAIL_KEY, email.toLowerCase())
       }
 
-      const shouldShowInitialFetch = !initialSyncFlag || isDifferentAccount
+      const shouldShowInitialFetch = !initialSyncFlag || isDifferentAccount || isDifferentVault
 
       if (shouldShowInitialFetch && !cancelled) {
         setIsFetchingFiles(true)
@@ -97,7 +109,10 @@ export function useDriveBootstrap() {
       try {
         const result = await ensureMyBookDriveFolder()
         if (!cancelled) {
-          if (result.success) setFolderId(result.folderId)
+          if (result.success) {
+            setFolderId(result.folderId)
+            await settingsRepository.update(DRIVE_ACTIVE_VAULT_KEY, result.folderId)
+          }
           setStatusMessage(result.success
             ? result.created
               ? 'Writin Drive folder created.'
@@ -115,9 +130,14 @@ export function useDriveBootstrap() {
               setFetchProgress((prev) => Math.max(prev, 15 + Math.round(p.percent * 0.85)))
             }
           })
-          if (shouldShowInitialFetch && !cancelled) {
-            setFetchProgress(100)
+          if (shouldShowInitialFetch) {
+            if (!cancelled) {
+              setFetchProgress(100)
+            }
             await settingsRepository.update(DRIVE_INITIAL_SYNC_KEY(email), true)
+            if (result.folderId) {
+              await settingsRepository.update(DRIVE_INITIAL_SYNC_KEY(email, result.folderId), true)
+            }
             await new Promise((resolve) => setTimeout(resolve, 600))
             if (!cancelled) {
               setIsFetchingFiles(false)
@@ -156,9 +176,11 @@ export function useDriveBootstrap() {
     window.addEventListener('online', onlineHandler)
     return () => {
       cancelled = true
+      setIsFetchingFiles(false)
+      setIsPreparing(false)
       window.removeEventListener('online', onlineHandler)
     }
-  }, [email, isAuthenticated, workspaceMode, workspaceRevision])
+  }, [email, isAuthenticated, workspaceMode])
 
   return { isPreparing, isFetchingFiles, fetchProgress, statusMessage, folderId }
 }

@@ -36,7 +36,7 @@ describe('workspaceManager', () => {
     })
   })
 
-  it('lists deduplicated cloud and local workspaces when authenticated with Google', async () => {
+  it('lists deduplicated cloud workspaces without phantom local vault when user only uses cloud', async () => {
     useAuthStore.setState({ email: 'user@example.com', isAuthenticated: true })
     useWorkspaceStore.setState({ mode: 'drive', workspaceRevision: 0 })
 
@@ -48,19 +48,63 @@ describe('workspaceManager', () => {
     await db.settings.put({ key: 'google-drive.mybook-folder-id', value: 'vault-1', updatedAt: new Date().toISOString() })
 
     const list = await listAllWorkspaces()
-    expect(list).toHaveLength(3) // 1 local + 2 cloud
-    const local = list.find((w) => w.type === 'local')
+    expect(list).toHaveLength(2) // Only the 2 cloud workspaces, no phantom local vault
     const work = list.find((w) => w.id === 'vault-1')
     const personal = list.find((w) => w.id === 'vault-2')
 
-    expect(local).toBeDefined()
-    expect(local?.isActive).toBe(false)
     expect(work).toBeDefined()
     expect(work?.name).toBe('Work')
     expect(work?.isActive).toBe(true)
     expect(personal).toBeDefined()
     expect(personal?.name).toBe('Personal')
     expect(personal?.isActive).toBe(false)
+  })
+
+  it('shows unified mirrored cloud workspace when cloud vault is mirrored to computer folder', async () => {
+    useAuthStore.setState({ email: 'user@example.com', isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: 'drive', workspaceRevision: 0 })
+
+    const fakeHandle = { kind: 'directory', name: 'My Local Mirror' } as unknown as FileSystemDirectoryHandle
+    await localWorkspace.saveDeviceDirectoryHandle(fakeHandle)
+
+    vi.spyOn(googleDrive, 'listExistingDriveVaults').mockResolvedValue([
+      { id: 'vault-1', name: 'Work' },
+    ])
+    vi.spyOn(googleDrive, 'getDriveVaultRootName').mockResolvedValue('Work')
+    await db.settings.put({ key: 'google-drive.mybook-folder-id', value: 'vault-1', updatedAt: new Date().toISOString() })
+
+    const list = await listAllWorkspaces()
+    expect(list).toHaveLength(1) // Only 1 unified entry, NOT duplicated into cloud + local
+    expect(list[0]).toMatchObject({
+      id: 'vault-1',
+      name: 'Work',
+      type: 'cloud',
+      hasLocalMirror: true,
+      localFolderName: 'My Local Mirror',
+      isActive: true,
+    })
+  })
+
+  it('does not list phantom local workspace when authenticated in cloud mode', async () => {
+    useAuthStore.setState({ email: 'user@example.com', isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: 'drive', workspaceRevision: 0 })
+
+    await localWorkspace.saveLocalWorkspaceDetails({
+      name: 'My Computer Notes',
+      storage: 'file-system',
+      createdAt: new Date().toISOString(),
+    })
+
+    vi.spyOn(googleDrive, 'listExistingDriveVaults').mockResolvedValue([
+      { id: 'vault-1', name: 'Work' },
+    ])
+    vi.spyOn(googleDrive, 'getDriveVaultRootName').mockResolvedValue('Work')
+    await db.settings.put({ key: 'google-drive.mybook-folder-id', value: 'vault-1', updatedAt: new Date().toISOString() })
+
+    const list = await listAllWorkspaces()
+    expect(list).toHaveLength(1) // Only cloud workspace, no phantom local
+    expect(list[0]?.type).toBe('cloud')
+    expect(list[0]?.name).toBe('Work')
   })
 
   it('switches between cloud and local workspaces', async () => {
@@ -128,13 +172,14 @@ describe('workspaceManager', () => {
       name: 'My Local Mirror',
     } as unknown as FileSystemDirectoryHandle
 
+    vi.spyOn(googleDrive, 'getDriveVaultRootName').mockResolvedValue('My Cloud Vault')
     const saveHandleSpy = vi.spyOn(localWorkspace, 'saveDeviceDirectoryHandle').mockResolvedValue()
     const saveDetailsSpy = vi.spyOn(localWorkspace, 'saveLocalWorkspaceDetails').mockResolvedValue()
 
     await mirrorCurrentCloudWorkspaceToLocal(fakeHandle)
 
     expect(saveHandleSpy).toHaveBeenCalledWith(fakeHandle)
-    expect(saveDetailsSpy).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Local Mirror', storage: 'file-system' }))
+    expect(saveDetailsSpy).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Cloud Vault', storage: 'file-system' }))
     expect(useWorkspaceStore.getState().workspaceRevision).toBeGreaterThan(0)
   })
 

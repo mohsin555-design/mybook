@@ -229,7 +229,11 @@ describe('AppLayout sidebar favorites', () => {
     useAuthStore.setState({ email: null, isAuthenticated: false })
     renderLayout()
 
-    const connectButton = screen.getByRole('button', { name: 'Connect Cloud Vault (Google)' })
+    const accountButton = screen.getByRole('button', { name: 'Account options' })
+    expect(accountButton).toBeInTheDocument()
+    fireEvent.click(accountButton)
+
+    const connectButton = screen.getByText('Connect Cloud Vault')
     expect(connectButton).toBeInTheDocument()
 
     fireEvent.click(connectButton)

@@ -6,6 +6,8 @@ const FRONTMATTER_BOUNDARY = '---'
 
 export interface MyBookMarkdownMetadata {
   documentId?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface MyBookMarkdownParseResult {
@@ -86,15 +88,8 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
     const body = (node.content ?? []).map((child) => blockMarkdown(child, depth)).filter(Boolean).join('\n\n')
     return [`:::toggle title=${quoteMarkdownAttribute(title)} open=${open}`, body, ':::'].filter(Boolean).join('\n')
   }
-  if (node.type === 'imageBlock' && typeof node.attrs?.src === 'string') {
-    const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt.replace(/\[/g, '\\[').replace(/\]/g, '\\]') : ''
-    const caption = typeof node.attrs?.caption === 'string' && node.attrs.caption.trim() ? ` "${node.attrs.caption.replace(/"/g, '\\"')}"` : ''
-    const imgMd = `![${alt}](${node.attrs.src}${caption})`
-    if (typeof node.attrs?.href === 'string' && node.attrs.href.trim()) {
-      return `[${imgMd}](${node.attrs.href.trim()})`
-    }
-    return imgMd
-  }
+  if (node.type === 'imageBlock') return imageMarkdown(node)
+  if (node.type === 'audioBlock') return audioMarkdown(node)
   if (node.type === 'fileAttachment' && typeof node.attrs?.src === 'string') {
     return [
       `:::file name=${readJsonAttribute(node.attrs.name)} mime=${readJsonAttribute(node.attrs.mimeType)} size=${Number(node.attrs.size ?? 0)}`,
@@ -188,8 +183,8 @@ export function isMarkdownText(text: string): boolean {
   // Horizontal rule: --- or *** or ___
   if (/^(?:---|\*\*\*|___)\s*$/m.test(trimmed)) return true
 
-  // Custom blocks: :::callout, :::toggle, :::file, :::table, :::video, :::audio
-  if (/^:::(?:callout|toggle|file|table|video|audio|toc|bookmark|embed|database)/m.test(trimmed)) return true
+  // Custom blocks: :::callout, :::toggle, :::file, :::table, :::video, :::audio, :::image
+  if (/^:::(?:callout|toggle|file|table|video|audio|image|toc|bookmark|embed|database)/m.test(trimmed)) return true
 
   // Inline formatting spanning multiple words with links or formatting combinations
   if (/(\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~)\s*(?:and|or|,\s*|\[[^\]]+\]\([^)]+\)|\*)/.test(trimmed)) return true
@@ -197,15 +192,23 @@ export function isMarkdownText(text: string): boolean {
   return false
 }
 
-export function documentToMyBookMarkdown(title: string, json: JSONContent, options: { documentId?: string | null } = {}) {
+export function documentToMyBookMarkdown(
+  title: string,
+  json: JSONContent,
+  options: { documentId?: string | null; createdAt?: string | null; updatedAt?: string | null } = {}
+) {
   const safeTitle = title.trim() || 'Untitled'
   const body = (json.content ?? []).map((node) => blockMarkdown(node)).filter(Boolean).join('\n\n')
   const documentId = isValidPortableDocumentId(options.documentId) ? options.documentId.trim() : null
+  const createdAt = options.createdAt ? options.createdAt.trim() : null
+  const updatedAt = options.updatedAt ? options.updatedAt.trim() : null
   return [
     FRONTMATTER_BOUNDARY,
     'mybook_version: 1',
     'type: document',
     ...(documentId ? [`document_id: ${JSON.stringify(documentId)}`] : []),
+    ...(createdAt ? [`created_at: ${JSON.stringify(createdAt)}`] : []),
+    ...(updatedAt ? [`updated_at: ${JSON.stringify(updatedAt)}`] : []),
     `title: ${JSON.stringify(safeTitle)}`,
     FRONTMATTER_BOUNDARY,
     '',
@@ -214,7 +217,7 @@ export function documentToMyBookMarkdown(title: string, json: JSONContent, optio
 }
 
 type InlineMark = NonNullable<JSONContent['marks']>[number]
-type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'unknown'
+type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'audio' | 'image' | 'unknown'
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 function findUnescaped(value: string, needle: string, start: number) {
@@ -413,6 +416,48 @@ function embedMarkdown(node: JSONContent) {
   return [':::embed', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
 }
 
+function imageMarkdown(node: JSONContent) {
+  if (typeof node.attrs?.src !== 'string' || !node.attrs.src.trim()) return ''
+  const hasCustomAttrs =
+    (typeof node.attrs.width === 'string' && node.attrs.width !== '100%') ||
+    (typeof node.attrs.align === 'string' && node.attrs.align !== 'left') ||
+    node.attrs.showCaption === false
+  if (hasCustomAttrs) {
+    const attrs = {
+      src: node.attrs.src,
+      ...(typeof node.attrs.alt === 'string' && node.attrs.alt ? { alt: node.attrs.alt } : {}),
+      ...(typeof node.attrs.caption === 'string' && node.attrs.caption ? { caption: node.attrs.caption } : {}),
+      ...(node.attrs.showCaption !== undefined ? { showCaption: node.attrs.showCaption } : {}),
+      ...(typeof node.attrs.width === 'string' ? { width: node.attrs.width } : {}),
+      ...(typeof node.attrs.align === 'string' ? { align: node.attrs.align } : {}),
+      ...(typeof node.attrs.href === 'string' && node.attrs.href ? { href: node.attrs.href } : {}),
+    }
+    return [':::image', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
+  }
+  const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt.replace(/\[/g, '\\[').replace(/\]/g, '\\]') : ''
+  const caption = typeof node.attrs?.caption === 'string' && node.attrs.caption.trim() ? ` "${node.attrs.caption.replace(/"/g, '\\"')}"` : ''
+  const imgMd = `![${alt}](${node.attrs.src}${caption})`
+  if (typeof node.attrs?.href === 'string' && node.attrs.href.trim()) {
+    return `[${imgMd}](${node.attrs.href.trim()})`
+  }
+  return imgMd
+}
+
+function audioMarkdown(node: JSONContent) {
+  if (typeof node.attrs?.src !== 'string' || !node.attrs.src.trim()) return ''
+  const attrs = {
+    src: node.attrs.src,
+    ...(typeof node.attrs.title === 'string' && node.attrs.title ? { title: node.attrs.title } : {}),
+    ...(typeof node.attrs.caption === 'string' && node.attrs.caption ? { caption: node.attrs.caption } : {}),
+    ...(node.attrs.showCaption !== undefined ? { showCaption: node.attrs.showCaption } : {}),
+    ...(typeof node.attrs.width === 'string' ? { width: node.attrs.width } : {}),
+    ...(typeof node.attrs.align === 'string' ? { align: node.attrs.align } : {}),
+    ...(typeof node.attrs.artwork === 'string' && node.attrs.artwork ? { artwork: node.attrs.artwork } : {}),
+    ...(typeof node.attrs.provider === 'string' ? { provider: node.attrs.provider } : {}),
+  }
+  return [':::audio', JSON.stringify(sortJson(attrs), null, 2), ':::'].join('\n')
+}
+
 function videoMarkdown(node: JSONContent) {
   if (typeof node.attrs?.src !== 'string' || !node.attrs.src.trim()) return ''
   const attrs = {
@@ -444,7 +489,7 @@ function customBlockKind(line: string): CustomBlockKind | null {
   if (trimmed === ':::') return null
   const name = /^:::([A-Za-z][\w-]*)(?:\s|$)/u.exec(trimmed)?.[1]
   if (!name) return null
-  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video') return name
+  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video' || name === 'audio' || name === 'image') return name
   return 'unknown'
 }
 
@@ -562,6 +607,49 @@ function parseStructuredEmbed(lines: string[]): JSONContent | null {
         url: parsed.url,
         embedUrl: parsed.embedUrl,
         title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title : 'Embedded content',
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseStructuredImage(lines: string[]): JSONContent | null {
+  try {
+    const parsed: unknown = JSON.parse(lines.join('\n'))
+    if (!isRecord(parsed) || typeof parsed.src !== 'string' || !parsed.src.trim()) return null
+    return {
+      type: 'imageBlock',
+      attrs: {
+        src: parsed.src,
+        alt: typeof parsed.alt === 'string' ? parsed.alt : '',
+        caption: typeof parsed.caption === 'string' ? parsed.caption : '',
+        showCaption: typeof parsed.showCaption === 'boolean' ? parsed.showCaption : true,
+        width: typeof parsed.width === 'string' ? parsed.width : '100%',
+        align: typeof parsed.align === 'string' ? parsed.align : 'left',
+        href: typeof parsed.href === 'string' ? parsed.href : null,
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseStructuredAudio(lines: string[]): JSONContent | null {
+  try {
+    const parsed: unknown = JSON.parse(lines.join('\n'))
+    if (!isRecord(parsed) || typeof parsed.src !== 'string' || !parsed.src.trim()) return null
+    return {
+      type: 'audioBlock',
+      attrs: {
+        src: parsed.src,
+        title: typeof parsed.title === 'string' ? parsed.title : '',
+        caption: typeof parsed.caption === 'string' ? parsed.caption : '',
+        showCaption: typeof parsed.showCaption === 'boolean' ? parsed.showCaption : true,
+        width: typeof parsed.width === 'string' ? parsed.width : '100%',
+        align: typeof parsed.align === 'string' ? parsed.align : 'left',
+        artwork: typeof parsed.artwork === 'string' ? parsed.artwork : '',
+        provider: typeof parsed.provider === 'string' ? parsed.provider : 'html5',
       },
     }
   } catch {
@@ -764,17 +852,47 @@ function parseFrontmatter(markdown: string) {
   const frontmatter = trimmed.slice(FRONTMATTER_BOUNDARY.length + 1, end)
   const metadata: MyBookMarkdownMetadata = {}
   for (const line of frontmatter.split('\n')) {
-    const match = /^document_id:\s*(.+?)\s*$/u.exec(line)
-    if (!match) continue
-    const raw = match[1] ?? ''
-    let value = raw
-    try {
-      const parsed = JSON.parse(raw)
-      if (typeof parsed === 'string') value = parsed
-    } catch {
-      value = raw.replace(/^['"]|['"]$/gu, '')
+    const docMatch = /^document_id:\s*(.+?)\s*$/u.exec(line)
+    if (docMatch) {
+      const raw = docMatch[1] ?? ''
+      let value = raw
+      try {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed === 'string') value = parsed
+      } catch {
+        value = raw.replace(/^['"]|['"]$/gu, '')
+      }
+      if (isValidPortableDocumentId(value)) metadata.documentId = value.trim()
+      continue
     }
-    if (isValidPortableDocumentId(value)) metadata.documentId = value.trim()
+
+    const createdMatch = /^created_at:\s*(.+?)\s*$/u.exec(line)
+    if (createdMatch) {
+      const raw = createdMatch[1] ?? ''
+      let value = raw
+      try {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed === 'string') value = parsed
+      } catch {
+        value = raw.replace(/^['"]|['"]$/gu, '')
+      }
+      if (value.trim()) metadata.createdAt = value.trim()
+      continue
+    }
+
+    const updatedMatch = /^updated_at:\s*(.+?)\s*$/u.exec(line)
+    if (updatedMatch) {
+      const raw = updatedMatch[1] ?? ''
+      let value = raw
+      try {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed === 'string') value = parsed
+      } catch {
+        value = raw.replace(/^['"]|['"]$/gu, '')
+      }
+      if (value.trim()) metadata.updatedAt = value.trim()
+      continue
+    }
   }
   return { body: trimmed.slice(end + FRONTMATTER_BOUNDARY.length + 2).trimStart(), metadata }
 }
@@ -866,6 +984,22 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       lineIndex = collected.index - 1
       const embed = collected.closed ? parseStructuredEmbed(collected.lines.slice(1, -1)) : null
       content.push(embed ?? rawParagraph(collected.lines))
+      continue
+    }
+    if (blockKind === 'image') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      const image = collected.closed ? parseStructuredImage(collected.lines.slice(1, -1)) : null
+      content.push(image ?? rawParagraph(collected.lines))
+      continue
+    }
+    if (blockKind === 'audio') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      const audio = collected.closed ? parseStructuredAudio(collected.lines.slice(1, -1)) : null
+      content.push(audio ?? rawParagraph(collected.lines))
       continue
     }
     if (blockKind === 'video') {

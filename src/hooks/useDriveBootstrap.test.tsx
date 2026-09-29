@@ -135,6 +135,25 @@ describe('Drive bootstrap migration', () => {
     await waitFor(() => expect(clearAccountDriveCache).toHaveBeenCalled())
     expect(settingsRepository.update).toHaveBeenCalledWith('google-drive.active-account-email', 'writer@example.com')
   })
+
+  it('does not show fetch card or clear cache on page refresh when already synced', async () => {
+    const { clearAccountDriveCache, settingsRepository } = await import('../database/repositories')
+    vi.mocked(settingsRepository.get).mockImplementation(async (key: string) => {
+      if (key === 'google-drive.active-account-email') {
+        return { success: true, data: { key, value: 'writer@example.com', updatedAt: '2026-09-01T00:00:00.000Z' } }
+      }
+      if (key === 'google-drive.initial-sync-complete:writer@example.com') {
+        return { success: true, data: { key, value: true, updatedAt: '2026-09-01T00:00:00.000Z' } }
+      }
+      return { success: true, data: { key, value: true, updatedAt: '2026-09-01T00:00:00.000Z' } }
+    })
+
+    const { result } = renderHook(useDriveBootstrap)
+    await waitFor(() => expect(mocks.queue).toHaveBeenCalled())
+    expect(result.current.isFetchingFiles).toBe(false)
+    expect(clearAccountDriveCache).not.toHaveBeenCalled()
+  })
 })
+
 
 

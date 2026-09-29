@@ -47,8 +47,8 @@ describe('auth helpers', () => {
   })
 
   it.skipIf(isBackendAuthEnabled)('completes Google credential login with a Drive access token', async () => {
-    const requestAccessToken = vi.fn((overrides?: { prompt?: string }) => {
-      expect(overrides).toEqual({ prompt: '' })
+    const requestAccessToken = vi.fn((overrides?: { prompt?: string; hint?: string }) => {
+      expect(overrides).toEqual({ prompt: '', hint: 'reader@example.com' })
     })
     const tokenCallbacks: Array<(response: { access_token?: string; expires_in?: number }) => void> = []
     Object.defineProperty(window, 'google', {
@@ -178,8 +178,8 @@ describe('auth helpers', () => {
   })
 
   it.skipIf(!canRunBrowserTokenTest)('silently renews an expired Drive token when Google allows it', async () => {
-    const requestAccessToken = vi.fn((overrides?: { prompt?: string }) => {
-      expect(overrides).toEqual({ prompt: '' })
+    const requestAccessToken = vi.fn((overrides?: { prompt?: string; hint?: string }) => {
+      expect(overrides).toEqual({ prompt: '', hint: 'reader@example.com' })
     })
     const tokenCallbacks: Array<(response: { access_token?: string; expires_in?: number }) => void> = []
     Object.defineProperty(window, 'google', {

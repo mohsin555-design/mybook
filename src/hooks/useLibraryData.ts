@@ -20,8 +20,9 @@ onClearAccountDriveCache(clearLibraryCache)
 
 export function useLibraryData(includeDeleted = false) {
   const workspaceMode = useWorkspaceStore((state) => state.mode)
+  const workspaceRevision = useWorkspaceStore((state) => state.workspaceRevision)
   const email = useAuthStore((state) => state.email)
-  const cacheKey = `${workspaceMode ?? 'default'}:${workspaceMode === 'local' ? 'local' : (email ?? 'anon')}:${includeDeleted ? 'all' : 'active'}`
+  const cacheKey = `${workspaceMode ?? 'default'}:${workspaceMode === 'local' ? 'local' : (email ?? 'anon')}:${workspaceRevision}:${includeDeleted ? 'all' : 'active'}`
 
   const cachedFiles = memoryCache.files.get(cacheKey)
   const cachedFolders = memoryCache.folders.get(cacheKey)
@@ -32,7 +33,7 @@ export function useLibraryData(includeDeleted = false) {
       memoryCache.files.set(cacheKey, result)
       return result
     },
-    [includeDeleted, workspaceMode, email, cacheKey],
+    [includeDeleted, workspaceMode, email, workspaceRevision, cacheKey],
     cachedFiles,
   )
 
@@ -42,7 +43,7 @@ export function useLibraryData(includeDeleted = false) {
       memoryCache.folders.set(cacheKey, result)
       return result
     },
-    [includeDeleted, workspaceMode, email, cacheKey],
+    [includeDeleted, workspaceMode, email, workspaceRevision, cacheKey],
     cachedFolders,
   )
 

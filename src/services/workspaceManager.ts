@@ -8,6 +8,9 @@ import {
   type DriveVaultSummary,
 } from './googleDrive'
 import {
+  checkDeviceDirectoryHandleValid,
+  ensureLocalWorkspaceFolder,
+  forgetDeviceDirectoryHandle,
   getDeviceDirectoryHandle,
   getLocalWorkspaceDetails,
   initializeLocalWorkspace,
@@ -30,29 +33,32 @@ export interface AppWorkspaceItem {
 }
 
 export async function listAllWorkspaces(): Promise<AppWorkspaceItem[]> {
-  const workspaceMode = useWorkspaceStore.getState().mode
+  const workspaceState = useWorkspaceStore.getState()
+  const workspaceMode = workspaceState.mode
+  const isMirrorMissing = workspaceState.isMirrorFolderMissing
   const isAuthenticated = useAuthStore.getState().isAuthenticated
   const localDetails = await getLocalWorkspaceDetails()
-  const localHandle = await getDeviceDirectoryHandle()
   const activeDriveName = await getDriveVaultRootName()
   const activeDriveFolderId = (await db.settings.get('google-drive.mybook-folder-id'))?.value as string | undefined
 
+  let localHandle: FileSystemDirectoryHandle | null = null
+  if (!isMirrorMissing) {
+    const rawHandle = await getDeviceDirectoryHandle()
+    if (rawHandle) {
+      const validity = await checkDeviceDirectoryHandleValid(rawHandle)
+      if (validity.valid) {
+        localHandle = validity.handle ?? rawHandle
+      } else if (validity.error === 'NotFoundError') {
+        await forgetDeviceDirectoryHandle()
+        useWorkspaceStore.getState().setMirrorFolderMissing(true)
+        localHandle = null
+      }
+    }
+  }
+
   const workspaces: AppWorkspaceItem[] = []
 
-  // 1. Local Workspace item
-  const localName = localDetails?.name || (localHandle ? localHandle.name : 'Local Vault')
-  const isLocalActive = workspaceMode === 'local'
-
-  workspaces.push({
-    id: 'local-workspace',
-    name: localName,
-    type: 'local',
-    hasLocalMirror: Boolean(localHandle),
-    localFolderName: localHandle?.name,
-    isActive: isLocalActive,
-  })
-
-  // 2. Cloud Workspaces (if authenticated with Google)
+  // 1. Cloud Workspaces (if authenticated with Google)
   if (isAuthenticated) {
     let driveVaults: DriveVaultSummary[] = []
     try {
@@ -81,11 +87,30 @@ export async function listAllWorkspaces(): Promise<AppWorkspaceItem[]> {
         name: vault.name,
         type: 'cloud',
         driveFolderId: vault.id,
-        hasLocalMirror: isThisActive && Boolean(localHandle),
-        localFolderName: isThisActive && localHandle ? localHandle.name : undefined,
+        hasLocalMirror: isThisActive && Boolean(localHandle) && !isMirrorMissing,
+        localFolderName: isThisActive && localHandle && !isMirrorMissing ? localHandle.name : undefined,
         isActive: isThisActive,
       })
     }
+  }
+
+  // 2. Local Workspace item
+  // Only include local workspace if:
+  // - Not authenticated (offline/local only), OR
+  // - Currently in local mode
+  const isLocalActive = workspaceMode === 'local'
+  const shouldIncludeLocalWorkspace = !isAuthenticated || isLocalActive
+
+  if (shouldIncludeLocalWorkspace) {
+    const localName = localDetails?.name || (localHandle ? localHandle.name : 'Local Vault')
+    workspaces.push({
+      id: 'local-workspace',
+      name: localName,
+      type: 'local',
+      hasLocalMirror: Boolean(localHandle) && !isMirrorMissing,
+      localFolderName: !isMirrorMissing && localHandle ? localHandle.name : undefined,
+      isActive: isLocalActive,
+    })
   }
 
   return workspaces
@@ -120,7 +145,7 @@ export async function createCloudWorkspaceAction(
   if (directoryHandle) {
     await saveDeviceDirectoryHandle(directoryHandle)
     await saveLocalWorkspaceDetails({
-      name: directoryHandle.name,
+      name: trimmed,
       storage: 'file-system',
       createdAt: new Date().toISOString(),
     })
@@ -148,18 +173,46 @@ export async function createLocalWorkspaceAction({
 
 export async function mirrorCurrentCloudWorkspaceToLocal(
   directoryHandle: FileSystemDirectoryHandle,
+  onProgress?: (progress: number) => void,
 ): Promise<void> {
-  await saveDeviceDirectoryHandle(directoryHandle)
-  await saveLocalWorkspaceDetails({
-    name: directoryHandle.name,
-    storage: 'file-system',
-    createdAt: new Date().toISOString(),
-  })
-  const activeFiles = await db.files.filter((f) => !f.isDeleted).toArray()
-  for (const f of activeFiles) {
-    await writeLocalWorkspaceFile(f).catch(() => undefined)
+  const store = useWorkspaceStore.getState()
+  store.setMirrorProgress({ isMirroring: true, progress: 0 })
+  onProgress?.(0)
+
+  try {
+    const activeDriveName = (await getDriveVaultRootName()) || 'Writin'
+    await saveDeviceDirectoryHandle(directoryHandle)
+    await saveLocalWorkspaceDetails({
+      name: activeDriveName,
+      storage: 'file-system',
+      createdAt: new Date().toISOString(),
+    })
+    const activeFolders = await db.folders.filter((f) => !f.isDeleted).toArray()
+    const activeFiles = await db.files.filter((f) => !f.isDeleted).toArray()
+    const totalItems = activeFolders.length + activeFiles.length
+    let completed = 0
+
+    const stepProgress = () => {
+      completed += 1
+      const pct = totalItems > 0 ? Math.round((completed / totalItems) * 100) : 100
+      store.setMirrorProgress({ isMirroring: true, progress: pct })
+      onProgress?.(pct)
+    }
+
+    for (const folder of activeFolders) {
+      await ensureLocalWorkspaceFolder(folder.id).catch(() => undefined)
+      stepProgress()
+    }
+    for (const f of activeFiles) {
+      await writeLocalWorkspaceFile(f).catch(() => undefined)
+      stepProgress()
+    }
+    store.setMirrorProgress({ isMirroring: false, progress: 100 })
+    useWorkspaceStore.getState().bumpWorkspaceRevision()
+  } catch (err) {
+    store.setMirrorProgress({ isMirroring: false, progress: 0 })
+    throw err
   }
-  useWorkspaceStore.getState().bumpWorkspaceRevision()
 }
 
 export async function connectCloudToLocalWorkspaceAction(

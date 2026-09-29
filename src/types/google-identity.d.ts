@@ -21,6 +21,7 @@ declare global {
           initTokenClient: (config: {
             client_id: string
             scope: string
+            hint?: string
             callback: (response: {
               access_token?: string
               expires_in?: number
@@ -28,7 +29,7 @@ declare global {
               error_description?: string
             }) => void
           }) => {
-            requestAccessToken: (overrides?: { prompt?: '' | 'consent' | 'select_account' }) => void
+            requestAccessToken: (overrides?: { prompt?: '' | 'consent' | 'select_account'; hint?: string }) => void
           }
           revoke: (token: string, callback?: () => void) => void
         }

@@ -775,5 +775,44 @@ describe('IndexedDB repositories', () => {
 
     unsubscribe()
   })
+
+  it('deletes old file on disk when renaming a document in Google Drive mode with mirror attached', async () => {
+    const localWs = await import('../services/localWorkspace')
+    const deleteLocalFileSpy = vi.spyOn(localWs, 'deleteLocalWorkspaceFile').mockResolvedValue()
+    const writeLocalFileSpy = vi.spyOn(localWs, 'writeLocalWorkspaceFile').mockResolvedValue()
+    vi.spyOn(localWs, 'getDeviceDirectoryHandle').mockResolvedValue({ kind: 'directory', name: 'Mirror' } as unknown as FileSystemDirectoryHandle)
+
+    useWorkspaceStore.setState({ mode: 'drive' })
+
+    const created = await fileRepository.create('document')
+    expect(created.success).toBe(true)
+    const fileId = created.data!.id
+
+    await fileRepository.update(fileId, { name: 'My Renamed Doc' })
+
+    expect(deleteLocalFileSpy).toHaveBeenCalledWith(expect.objectContaining({ name: 'Untitled' }))
+    expect(writeLocalFileSpy).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Renamed Doc' }))
+  })
+
+  it('deletes file on disk and queues Drive trash when deleting a document in Google Drive mode with mirror attached', async () => {
+    const localWs = await import('../services/localWorkspace')
+    const deleteLocalFileSpy = vi.spyOn(localWs, 'deleteLocalWorkspaceFile').mockResolvedValue()
+    vi.spyOn(localWs, 'getDeviceDirectoryHandle').mockResolvedValue({ kind: 'directory', name: 'Mirror' } as unknown as FileSystemDirectoryHandle)
+
+    useWorkspaceStore.setState({ mode: 'drive' })
+
+    const created = await fileRepository.create('document')
+    expect(created.success).toBe(true)
+    const fileId = created.data!.id
+
+    await fileRepository.delete(fileId)
+
+    expect(deleteLocalFileSpy).toHaveBeenCalledWith(expect.objectContaining({ id: fileId, name: 'Untitled' }))
+    expect(await db.syncQueue.where('entityId').equals(fileId).first()).toMatchObject({
+      operation: 'delete',
+      entityType: 'file',
+    })
+  })
 })
+
 

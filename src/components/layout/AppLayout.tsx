@@ -22,7 +22,11 @@ import { downloadVaultZip } from '../../services/vaultExport'
 import { db } from '../../database/db'
 import { deletedToast } from '../../utils/deleteToast'
 import type { MyBookFolder } from '../../types/files'
-import { canPickDeviceDirectory, pickLocalWorkspaceDirectory } from '../../services/localWorkspace'
+import {
+  canPickDeviceDirectory,
+  forgetDeviceDirectoryHandle,
+  pickLocalWorkspaceDirectory,
+} from '../../services/localWorkspace'
 import {
   listAllWorkspaces,
   switchWorkspace,
@@ -30,6 +34,8 @@ import {
   type AppWorkspaceItem,
 } from '../../services/workspaceManager'
 import { WorkspaceModal } from './WorkspaceModal'
+import { MissingMirrorModal } from './MissingMirrorModal'
+import { useLocalMirrorSync } from '../../hooks/useLocalMirrorSync'
 import { CheckIcon, PlusIcon, CloudIcon, FolderIcon } from '@heroicons/react/24/outline'
 import { toast } from '../ui/toast'
 import { Input } from '../ui/input'
@@ -66,9 +72,10 @@ import { MobileBottomNavigation } from './MobileBottomNavigation'
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
   const { email, displayName: accountDisplayName, isAuthenticated, completeLogin, logout } = useAuthStore()
-  const { mode: workspaceMode, workspaceRevision, selectGoogleWorkspace } = useWorkspaceStore()
+  const { mode: workspaceMode, workspaceRevision, isMirrorFolderMissing, isMirroring, mirrorProgress, selectGoogleWorkspace } = useWorkspaceStore()
   const { files, folders, isLoading } = useLibraryData()
   const { isFetchingFiles = false, fetchProgress = 0 } = useDriveBootstrap() ?? {}
+  useLocalMirrorSync()
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
@@ -96,7 +103,7 @@ export function AppLayout() {
     return () => {
       isCurrent = false
     }
-  }, [workspaceRevision, settingsRecords, workspaceMode, isAuthenticated, email])
+  }, [workspaceRevision, settingsRecords, workspaceMode, isAuthenticated, email, isMirrorFolderMissing])
 
   const activeWorkspace = workspaces.find((w) => w.isActive)
   const vaultName = activeWorkspace?.name || localDetails?.name || 'Local Vault'
@@ -252,36 +259,43 @@ export function AppLayout() {
     <SidebarProvider className="h-full min-h-0 overflow-hidden bg-background text-foreground">
       <Sidebar side="left" collapsible="offcanvas">
         <SidebarHeader>
-          <div className="flex items-center gap-3 px-3 py-2">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background" aria-hidden="true">{initials}</span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-sidebar-foreground">{displayName}</p>
-              {activeWorkspace?.hasLocalMirror ? (
-                <p className="flex items-center gap-1 truncate text-xs text-sidebar-foreground/60" title={profileEmail ? `${profileEmail} (Mirrored locally)` : 'Mirrored locally'}>
-                  <FolderIcon className="size-3 shrink-0" />
-                  <span>Mirrored locally</span>
-                </p>
-              ) : profileEmail ? (
-                <p className="truncate text-xs text-sidebar-foreground/60" title={profileEmail}>{profileEmail}</p>
-              ) : isLocalWorkspace ? (
-                <button
-                  type="button"
-                  onClick={() => setIsGoogleModalOpen(true)}
-                  className="mt-0.5 block truncate text-left text-xs font-medium text-primary hover:underline"
-                >
-                  Connect Cloud Vault (Google)
-                </button>
-              ) : null}
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<button type="button" />} aria-label="Account options" title="Account options" className="flex size-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"><HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-5" /></DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-56">
+          <div className="flex items-center px-3 py-2">
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open) {
+                  void listAllWorkspaces().then(setWorkspaces)
+                }
+              }}
+            >
+              <DropdownMenuTrigger
+                render={<button type="button" />}
+                aria-label="Account options"
+                title="Account options"
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-1 text-left transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background shadow-xs" aria-hidden="true">{initials}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-sidebar-foreground">{displayName}</p>
+                  {activeWorkspace?.hasLocalMirror ? (
+                    <p className="flex items-center gap-1 truncate text-xs text-sidebar-foreground/60" title={profileEmail ? `${profileEmail} (Mirrored locally)` : 'Mirrored locally'}>
+                      <FolderIcon className="size-3 shrink-0" />
+                      <span>Mirrored locally</span>
+                    </p>
+                  ) : profileEmail ? (
+                    <p className="truncate text-xs text-sidebar-foreground/60" title={profileEmail}>{profileEmail}</p>
+                  ) : isLocalWorkspace ? (
+                    <p className="truncate text-xs font-medium text-primary">Local Vault</p>
+                  ) : null}
+                </div>
+                <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-5 shrink-0 text-sidebar-foreground/70" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-56">
                 {workspaces.length > 0 ? (
                   <>
-                    <DropdownMenuLabel className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Workspaces
-                    </DropdownMenuLabel>
                     <DropdownMenuGroup>
+                      <DropdownMenuLabel className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Workspaces
+                      </DropdownMenuLabel>
                       {workspaces.map((ws) => (
                         <DropdownMenuItem
                           key={ws.id}
@@ -313,7 +327,7 @@ export function AppLayout() {
                                 <span>{ws.type === 'cloud' ? 'Google Drive' : 'Local Device'}</span>
                                 {ws.hasLocalMirror && (
                                   <span className="flex items-center gap-0.5 text-primary">
-                                    • Mirrored
+                                    • Mirrored{ws.localFolderName ? ` (${ws.localFolderName})` : ''}
                                   </span>
                                 )}
                               </div>
@@ -355,6 +369,24 @@ export function AppLayout() {
                   >
                     <FolderIcon className="size-4 text-muted-foreground" />
                     <span>Mirror to Computer Folder</span>
+                  </DropdownMenuItem>
+                ) : null}
+
+                {!isLocalWorkspace && activeWorkspace?.hasLocalMirror ? (
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      await forgetDeviceDirectoryHandle()
+                      useWorkspaceStore.getState().bumpWorkspaceRevision()
+                      toast.add({
+                        title: 'Mirror Disconnected',
+                        description: 'Local mirror disconnected. Files remain in Google Drive.',
+                        type: 'info',
+                        priority: 'low',
+                      })
+                    }}
+                  >
+                    <FolderIcon className="size-4 text-muted-foreground" />
+                    <span>Disconnect Local Mirror</span>
                   </DropdownMenuItem>
                 ) : null}
 
@@ -543,7 +575,11 @@ export function AppLayout() {
           </div>
         </main>
         {isLoading ? <LoadingOverlay message="Loading your files…" /> : null}
-        <SyncProgressToast isVisible={isFetchingFiles} progress={fetchProgress} />
+        <SyncProgressToast
+          isVisible={isFetchingFiles || isMirroring}
+          title={isMirroring ? 'Mirroring files to computer…' : undefined}
+          progress={isMirroring ? mirrorProgress : fetchProgress}
+        />
         {!isEditor ? <MobileBottomNavigation /> : null}
       </SidebarInset>
 
@@ -697,6 +733,7 @@ export function AppLayout() {
         isOpen={isWorkspaceModalOpen}
         onClose={() => setIsWorkspaceModalOpen(false)}
       />
+      <MissingMirrorModal />
     </SidebarProvider>
   )
 }

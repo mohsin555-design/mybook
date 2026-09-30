@@ -20,6 +20,10 @@ vi.mock('../../hooks/useDriveBootstrap', () => ({
   useDriveBootstrap: vi.fn(() => ({ isPreparing: false, statusMessage: null, isFetchingFiles: false, fetchProgress: 0, folderId: null })),
 }))
 
+vi.mock('../../hooks/useLocalMirrorSync', () => ({
+  useLocalMirrorSync: vi.fn(),
+}))
+
 vi.mock('../../hooks/useLibraryData', () => ({
   useLibraryData: () => mockLibraryData,
 }))

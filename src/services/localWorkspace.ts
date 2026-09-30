@@ -996,6 +996,12 @@ export async function scanAndHydrateLocalWorkspace(
     }
   }
 
+  // Only process deletions from disk if an active physical device directory handle is linked
+  const deviceHandle = customRoot ?? (await getDeviceDirectoryHandle())
+  if (!deviceHandle) {
+    return { discoveredCount, restoredCount, deletedCount: 0 }
+  }
+
   // Detect and process items deleted locally from disk
   const activeFolders = await db.folders.filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted).toArray()
   const activeFiles = await db.files.filter((f) => f.workspaceType === targetWorkspaceType && !f.isDeleted).toArray()

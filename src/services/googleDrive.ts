@@ -36,19 +36,10 @@ export async function listExistingDriveVaults(): Promise<DriveVaultSummary[]> {
     const names = ['Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']
     const nameQuery = names.map((name) => `name='${name}'`).join(' or ')
     const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (appProperties has { key='writin_vault' and value='true' } or appProperties has { key='mybook_vault' and value='true' } or ${nameQuery})`
-    const params = new URLSearchParams({
-      q: query,
-      fields: 'files(id,name,mimeType,trashed,modifiedTime)',
-      spaces: 'drive',
-      pageSize: '50',
-    })
-    const result = await driveFetch(`/files?${params}`)
-    if (!result.success) return []
-    const data = await result.response.json() as { files?: DriveFolder[] }
-    if (!Array.isArray(data.files)) return []
+    const files = await driveFetchAllFiles<DriveFolder>(query, 'id,name,mimeType,trashed,modifiedTime')
     const seen = new Set<string>()
     const vaults: DriveVaultSummary[] = []
-    for (const file of data.files) {
+    for (const file of files) {
       if (!file.id || seen.has(file.id) || file.trashed) continue
       seen.add(file.id)
       vaults.push({
@@ -158,21 +149,38 @@ async function driveFetch(path: string, init: RequestInit = {}) {
   }
 }
 
+async function driveFetchAllFiles<T>(query: string, fields: string): Promise<T[]> {
+  const allFiles: T[] = []
+  let pageToken: string | undefined
+  const seenPages = new Set<string>()
+
+  do {
+    const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''
+    const path = `/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(`nextPageToken,files(${fields})`)}&spaces=drive&pageSize=1000${pageParam}`
+    const result = await driveFetch(path)
+    if (!result.success) throw new Error(result.error)
+    const data = await result.response.json() as { files?: T[]; nextPageToken?: string }
+    if (Array.isArray(data.files)) {
+      allFiles.push(...data.files)
+    }
+    pageToken = data.nextPageToken
+    if (pageToken) {
+      if (seenPages.has(pageToken)) break
+      seenPages.add(pageToken)
+    }
+  } while (pageToken)
+
+  return allFiles
+}
+
 async function listChildFolders(parentId: string): Promise<DriveFolder[]> {
   const query = `'${parentId}' in parents and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`
-  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent('files(id,name,mimeType,trashed,webViewLink,appProperties)')}&spaces=drive`)
-  if (!result.success) throw new Error(result.error)
-  const data = await result.response.json() as { files?: DriveFolder[] }
-  return data.files ?? []
+  return await driveFetchAllFiles<DriveFolder>(query, 'id,name,mimeType,trashed,webViewLink,appProperties')
 }
 
 async function listChildFiles(parentId: string): Promise<DriveFile[]> {
   const query = `'${parentId}' in parents and mimeType!='${DRIVE_FOLDER_MIME}' and trashed=false`
-  const fields = 'files(id,name,mimeType,trashed,webViewLink,parents,modifiedTime,appProperties)'
-  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(fields)}&spaces=drive`)
-  if (!result.success) throw new Error(result.error)
-  const data = await result.response.json() as { files?: DriveFile[] }
-  return data.files ?? []
+  return await driveFetchAllFiles<DriveFile>(query, 'id,name,mimeType,trashed,webViewLink,parents,modifiedTime,appProperties')
 }
 
 function normalizeDriveTrashMetadata(item: DriveFile | DriveFolder): DriveTrashMetadata {
@@ -223,22 +231,18 @@ export function classifyDriveTrashMetadata(items: Array<DriveFile | DriveFolder 
   return classifyDriveTrashItems(items.map((item) => normalizeDriveTrashMetadata(item as DriveFile | DriveFolder)))
 }
 
-const DRIVE_TRASH_FIELDS = 'files(id,name,mimeType,parents,trashed,explicitlyTrashed,appProperties,modifiedTime)'
+const DRIVE_TRASH_FIELDS = 'id,name,mimeType,parents,trashed,explicitlyTrashed,appProperties,modifiedTime'
 
 export async function listTrashedMyBookDriveFiles(parentId: string): Promise<DriveTrashMetadata[]> {
   const query = `'${parentId}' in parents and mimeType!='${DRIVE_FOLDER_MIME}' and trashed=true`
-  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(DRIVE_TRASH_FIELDS)}&spaces=drive`)
-  if (!result.success) throw new Error(result.error)
-  const data = await result.response.json() as { files?: DriveFile[] }
-  return (data.files ?? []).map(normalizeDriveTrashMetadata)
+  const files = await driveFetchAllFiles<DriveFile>(query, DRIVE_TRASH_FIELDS)
+  return files.map(normalizeDriveTrashMetadata)
 }
 
 export async function listTrashedMyBookDriveFolders(parentId: string): Promise<DriveTrashMetadata[]> {
   const query = `'${parentId}' in parents and mimeType='${DRIVE_FOLDER_MIME}' and trashed=true`
-  const result = await driveFetch(`/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(DRIVE_TRASH_FIELDS)}&spaces=drive`)
-  if (!result.success) throw new Error(result.error)
-  const data = await result.response.json() as { files?: DriveFolder[] }
-  return (data.files ?? []).map(normalizeDriveTrashMetadata)
+  const folders = await driveFetchAllFiles<DriveFolder>(query, DRIVE_TRASH_FIELDS)
+  return folders.map(normalizeDriveTrashMetadata)
 }
 
 async function parentMoveParams(fileId: string, targetParentId: string, accessToken: string) {
@@ -308,8 +312,8 @@ export async function listVisibleFoldersByName(name: string, parentId?: string):
   return data.files ?? []
 }
 
-export async function createVisibleFolder(name: string): Promise<DriveFolder> {
-  return createVisibleFolderInParent(name, 'root')
+export async function createVisibleFolder(name: string, appProperties?: Record<string, string>): Promise<DriveFolder> {
+  return createVisibleFolderInParent(name, 'root', appProperties)
 }
 
 export async function createVisibleFolderInParent(name: string, parentId: string, appProperties?: Record<string, string>): Promise<DriveFolder> {

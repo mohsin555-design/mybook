@@ -73,20 +73,24 @@ export function PwaStatus() {
   }
 
   const checkForUpdates = useCallback(() => {
-    if (!registration) return
-    void registration.update().catch(() => undefined)
+    if (registration) {
+      void registration.update().catch(() => undefined)
+    } else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      void navigator.serviceWorker.ready.then((reg) => {
+        setRegistration(reg)
+        return reg.update()
+      }).catch(() => undefined)
+    }
   }, [registration])
 
   useEffect(() => {
-    if (!registration) return
-
     checkForUpdates()
     const visibilityHandler = () => {
       if (document.visibilityState === 'visible') checkForUpdates()
     }
     const pageShowHandler = () => checkForUpdates()
     const focusHandler = () => checkForUpdates()
-    const interval = window.setInterval(checkForUpdates, isIos ? 30 * 60 * 1000 : 60 * 60 * 1000)
+    const interval = window.setInterval(checkForUpdates, isIos ? 15 * 60 * 1000 : 30 * 60 * 1000)
 
     document.addEventListener('visibilitychange', visibilityHandler)
     window.addEventListener('pageshow', pageShowHandler)
@@ -97,7 +101,7 @@ export function PwaStatus() {
       window.removeEventListener('focus', focusHandler)
       window.clearInterval(interval)
     }
-  }, [checkForUpdates, isIos, registration])
+  }, [checkForUpdates, isIos])
 
   return <>
     {!online ? <div role="status" className="shrink-0 border-b border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-center text-sm text-yellow-800"><SignalIcon className="mr-1 inline size-4" />Offline mode: saved local files remain available. Drive sync will resume when you reconnect.</div> : null}

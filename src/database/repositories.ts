@@ -94,7 +94,30 @@ function activeWorkspaceType(): WorkspaceType {
   return isLocalWorkspace() ? 'local' : 'drive'
 }
 
+function isMediaOrAttachmentFile(file: MyBookFile) {
+  const name = file.name.toLowerCase()
+  const mime = (file.mimeType || '').toLowerCase()
+  if (
+    mime.startsWith('image/') ||
+    mime.startsWith('video/') ||
+    mime.startsWith('audio/') ||
+    /\.(png|jpe?g|gif|webp|svg|bmp|ico|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|flac|aac)$/i.test(name)
+  ) {
+    return true
+  }
+  if (name.includes('_attachments') || name.includes('-attachments') || name.includes('.attachments')) {
+    return true
+  }
+  return false
+}
+
+function isAttachmentFolder(folder: MyBookFolder) {
+  const name = folder.name.toLowerCase()
+  return name.endsWith('_attachments') || name.endsWith('-attachments') || name.endsWith('.attachments')
+}
+
 function fileBelongsToActiveWorkspace(file: MyBookFile) {
+  if (isMediaOrAttachmentFile(file)) return false
   if (isLocalWorkspace()) {
     return file.workspaceType === 'local' || (!file.workspaceType && file.syncStatus === 'local' && !file.driveFileId)
   }
@@ -102,6 +125,7 @@ function fileBelongsToActiveWorkspace(file: MyBookFile) {
 }
 
 function folderBelongsToActiveWorkspace(folder: MyBookFolder) {
+  if (isAttachmentFolder(folder)) return false
   if (isLocalWorkspace()) return folder.workspaceType === 'local'
   return folder.workspaceType !== 'local'
 }

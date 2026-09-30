@@ -1354,6 +1354,61 @@ describe('googleDrive helpers', () => {
       name: expect.stringContaining('image_rogue'),
     }))
   })
+
+  it('imports all files and folders across multiple pages using nextPageToken', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }],
+        }),
+      })
+      // Page 1 of files
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [
+            { id: 'doc-p1', name: 'DocPage1.md', mimeType: 'text/markdown', modifiedTime: '2026-08-29T10:00:00.000Z' },
+          ],
+          nextPageToken: 'token-page-2',
+        }),
+      })
+      // Page 2 of files
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [
+            { id: 'doc-p2', name: 'DocPage2.md', mimeType: 'text/markdown', modifiedTime: '2026-08-29T10:00:00.000Z' },
+          ],
+        }),
+      })
+      // Content of DocPage1
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue('# Doc Page 1'),
+      })
+      // Content of DocPage2
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue('# Doc Page 2'),
+      })
+      // Subfolders check
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ files: [] }),
+      }))
+
+    await importDriveFilesToLocal()
+
+    expect(mockedFiles.add).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'DocPage1',
+      driveFileId: 'doc-p1',
+    }))
+    expect(mockedFiles.add).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'DocPage2',
+      driveFileId: 'doc-p2',
+    }))
+  })
 })
 
 

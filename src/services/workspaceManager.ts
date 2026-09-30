@@ -181,14 +181,22 @@ export async function mirrorCurrentCloudWorkspaceToLocal(
 
   try {
     const activeDriveName = (await getDriveVaultRootName()) || 'Writin'
-    await saveDeviceDirectoryHandle(directoryHandle)
+    let targetHandle = directoryHandle
+    if (directoryHandle.name.trim().toLowerCase() !== activeDriveName.trim().toLowerCase()) {
+      try {
+        targetHandle = await directoryHandle.getDirectoryHandle(activeDriveName, { create: true })
+      } catch {
+        targetHandle = directoryHandle
+      }
+    }
+    await saveDeviceDirectoryHandle(targetHandle)
     await saveLocalWorkspaceDetails({
       name: activeDriveName,
       storage: 'file-system',
       createdAt: new Date().toISOString(),
     })
-    const activeFolders = await db.folders.filter((f) => !f.isDeleted).toArray()
-    const activeFiles = await db.files.filter((f) => !f.isDeleted).toArray()
+    const activeFolders = await db.folders.filter((f) => !f.isDeleted && f.workspaceType !== 'local').toArray()
+    const activeFiles = await db.files.filter((f) => !f.isDeleted && f.workspaceType !== 'local').toArray()
     const totalItems = activeFolders.length + activeFiles.length
     let completed = 0
 

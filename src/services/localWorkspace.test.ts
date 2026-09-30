@@ -504,4 +504,32 @@ describe('localWorkspace service', () => {
     await extractAndSaveAttachments(mockDocDir, 'TestDoc', emptyDoc)
     expect(removedEntries).toContain('TestDoc_attachments')
   })
+
+  it('preserves IndexedDB notes and does not mark them deleted when no physical device handle is active', async () => {
+    const { scanAndHydrateLocalWorkspace } = await import('./localWorkspace')
+    const localNote = {
+      id: 'android-local-note',
+      driveFileId: null,
+      workspaceType: 'local' as const,
+      name: 'Android Offline Note',
+      type: 'document' as const,
+      folderId: null,
+      content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'offline' }] }] }),
+      mimeType: 'application/x-mybook-document',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastSyncedAt: null,
+      syncStatus: 'local' as const,
+      isDeleted: false,
+    }
+    await db.files.add(localNote)
+
+    // Run scan without a physical directory handle (e.g. mobile/Android or private mode)
+    const result = await scanAndHydrateLocalWorkspace(null, { targetWorkspaceType: 'local' })
+
+    expect(result.deletedCount).toBe(0)
+    const saved = await db.files.get('android-local-note')
+    expect(saved).toBeDefined()
+    expect(saved?.isDeleted).toBe(false)
+  })
 })

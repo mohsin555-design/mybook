@@ -813,6 +813,94 @@ describe('IndexedDB repositories', () => {
       entityType: 'file',
     })
   })
+
+  it('filters out media files and attachment folders from repository list', async () => {
+    useWorkspaceStore.setState({ mode: 'drive' })
+
+    const now = new Date().toISOString()
+    // Regular document
+    await db.files.add({
+      id: 'regular-doc-1',
+      driveFileId: 'df-1',
+      workspaceType: 'drive',
+      name: 'Meeting Notes',
+      type: 'document',
+      folderId: null,
+      content: '',
+      mimeType: 'application/x-mybook-document',
+      createdAt: now,
+      updatedAt: now,
+      lastSyncedAt: null,
+      syncStatus: 'backed-up',
+      isDeleted: false,
+    })
+
+    // Rogue media files
+    await db.files.add({
+      id: 'rogue-image-1',
+      driveFileId: 'df-img',
+      workspaceType: 'drive',
+      name: 'screenshot.png',
+      type: 'document',
+      folderId: null,
+      content: '',
+      mimeType: 'image/png',
+      createdAt: now,
+      updatedAt: now,
+      lastSyncedAt: null,
+      syncStatus: 'backed-up',
+      isDeleted: false,
+    })
+
+    await db.files.add({
+      id: 'rogue-audio-1',
+      driveFileId: 'df-aud',
+      workspaceType: 'drive',
+      name: 'recording.mp3',
+      type: 'document',
+      folderId: null,
+      content: '',
+      mimeType: 'audio/mpeg',
+      createdAt: now,
+      updatedAt: now,
+      lastSyncedAt: null,
+      syncStatus: 'backed-up',
+      isDeleted: false,
+    })
+
+    // Regular folder
+    await db.folders.add({
+      id: 'regular-folder-1',
+      driveFolderId: 'df-fld-1',
+      workspaceType: 'drive',
+      name: 'Work',
+      parentId: null,
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+
+    // Attachment companion folder
+    await db.folders.add({
+      id: 'att-folder-1',
+      driveFolderId: 'df-att-1',
+      workspaceType: 'drive',
+      name: 'Meeting Notes_attachments',
+      parentId: null,
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+    })
+
+    const files = await fileRepository.list()
+    expect(files.map((f) => f.name)).toContain('Meeting Notes')
+    expect(files.map((f) => f.name)).not.toContain('screenshot.png')
+    expect(files.map((f) => f.name)).not.toContain('recording.mp3')
+
+    const folders = await folderRepository.list()
+    expect(folders.map((f) => f.name)).toContain('Work')
+    expect(folders.map((f) => f.name)).not.toContain('Meeting Notes_attachments')
+  })
 })
 
 

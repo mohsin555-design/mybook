@@ -10,6 +10,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { authApiUrl, getAuthConfigError, isBackendAuthEnabled, useAuthStore } from '../stores/useAuthStore'
 import {
   type DriveVaultSummary,
+  findDriveRootFolderByName,
   listExistingDriveVaults,
   selectExistingDriveVault,
   setDriveVaultRootName,
@@ -39,6 +40,11 @@ export function LoginPage() {
   const [isCreatingCloudWorkspace, setIsCreatingCloudWorkspace] = useState(false)
   const [existingVaults, setExistingVaults] = useState<DriveVaultSummary[]>([])
   const [isLoadingExistingVaults, setIsLoadingExistingVaults] = useState(false)
+  const [isCheckingVaultName, setIsCheckingVaultName] = useState(false)
+  const [checkedVaultName, setCheckedVaultName] = useState('')
+  const [vaultNameConflict, setVaultNameConflict] = useState<string | null>(null)
+  const [vaultNameCheckError, setVaultNameCheckError] = useState<string | null>(null)
+  const [cloudSetupError, setCloudSetupError] = useState<string | null>(null)
   const [vaultChoiceMode, setVaultChoiceMode] = useState<'select' | 'create'>('select')
   const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null)
   const [selectedVaultName, setSelectedVaultName] = useState<string>('Writin')
@@ -57,6 +63,52 @@ export function LoginPage() {
   const destination = getSafeReturnPath((location.state as LoginLocationState | null)?.from)
   const queryError = new URLSearchParams(location.search).get('error')
   const configError = getAuthConfigError()
+  const normalizedCloudVaultName = cloudVaultName.trim().toLocaleLowerCase()
+  const shouldCheckCloudVaultName = isCloudSetupOpen && !isLoadingExistingVaults && (existingVaults.length === 0 || vaultChoiceMode === 'create')
+  const isCloudVaultNameValid = Boolean(normalizedCloudVaultName) &&
+    checkedVaultName === normalizedCloudVaultName &&
+    !vaultNameConflict &&
+    !vaultNameCheckError &&
+    !isCheckingVaultName
+
+  useEffect(() => {
+    if (!shouldCheckCloudVaultName) {
+      setIsCheckingVaultName(false)
+      return
+    }
+
+    if (!normalizedCloudVaultName) {
+      setCheckedVaultName('')
+      setVaultNameConflict(null)
+      setVaultNameCheckError(null)
+      setIsCheckingVaultName(false)
+      return
+    }
+
+    let cancelled = false
+    setCheckedVaultName('')
+    setVaultNameConflict(null)
+    setVaultNameCheckError(null)
+    setIsCheckingVaultName(true)
+    const timeout = window.setTimeout(() => {
+      void findDriveRootFolderByName(cloudVaultName.trim()).then((folder) => {
+        if (cancelled) return
+        setVaultNameConflict(folder?.name ?? null)
+        setCheckedVaultName(normalizedCloudVaultName)
+      }).catch(() => {
+        if (cancelled) return
+        setVaultNameCheckError('Could not check Google Drive for an existing root folder. Try again.')
+        setCheckedVaultName(normalizedCloudVaultName)
+      }).finally(() => {
+        if (!cancelled) setIsCheckingVaultName(false)
+      })
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [cloudVaultName, normalizedCloudVaultName, shouldCheckCloudVaultName])
 
   useEffect(() => {
     clearError()
@@ -182,19 +234,39 @@ export function LoginPage() {
 
   const startCloudWorkspace = async () => {
     setIsCreatingCloudWorkspace(true)
+    setCloudSetupError(null)
     try {
       if (vaultChoiceMode === 'select' && selectedVaultId) {
         await selectExistingDriveVault(selectedVaultId, selectedVaultName)
       } else {
         const name = cloudVaultName.trim() || 'Writin'
+        const existingFolder = await findDriveRootFolderByName(name)
+        if (existingFolder) {
+          setVaultNameConflict(existingFolder.name)
+          setCheckedVaultName(name.toLocaleLowerCase())
+          return
+        }
         await setDriveVaultRootName(name)
       }
       selectGoogleWorkspace()
       navigate(destination, { replace: true })
+    } catch (setupError) {
+      setCloudSetupError(setupError instanceof Error ? setupError.message : 'Could not check or set up this Google Drive vault.')
     } finally {
       setIsCreatingCloudWorkspace(false)
     }
   }
+
+  const vaultNameStatus = vaultNameConflict
+    ? <p id="cloud-vault-name-status" role="alert" className="mt-2 text-sm text-destructive">A Drive root folder named “{vaultNameConflict}” already exists. Choose another name or select the existing vault.</p>
+    : vaultNameCheckError
+      ? <p id="cloud-vault-name-status" role="alert" className="mt-2 text-sm text-destructive">{vaultNameCheckError}</p>
+      : isCheckingVaultName
+        ? <p id="cloud-vault-name-status" role="status" className="mt-2 text-xs text-muted-foreground">Checking Drive root for this name…</p>
+        : null
+  const isSelectingExistingVault = vaultChoiceMode === 'select' && existingVaults.length > 0
+  const isCloudSetupActionDisabled = isCreatingCloudWorkspace || isLoadingExistingVaults ||
+    (isSelectingExistingVault ? !selectedVaultId : !isCloudVaultNameValid)
 
   return (
     <main className="flex h-full min-h-0 items-center justify-center overflow-y-auto overscroll-contain bg-background px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-[calc(2.5rem+env(safe-area-inset-top))] text-foreground sm:px-6">
@@ -284,6 +356,8 @@ export function LoginPage() {
                 </p>
               </div>
             </div>
+
+            {cloudSetupError ? <p role="alert" className="mt-4 text-sm text-destructive">{cloudSetupError}</p> : null}
 
             <label htmlFor="workspace-name" className="mt-5 block text-sm font-medium text-foreground">
               Vault name
@@ -495,10 +569,16 @@ export function LoginPage() {
                       <input
                         id="new-cloud-vault-name"
                         value={cloudVaultName}
-                        onChange={(event) => setCloudVaultName(event.target.value)}
+                        onChange={(event) => {
+                          setCloudVaultName(event.target.value)
+                          setCloudSetupError(null)
+                        }}
+                        aria-invalid={Boolean(vaultNameConflict || vaultNameCheckError)}
+                        aria-describedby={vaultNameStatus ? 'cloud-vault-name-status' : undefined}
                         className="mt-1.5 h-10 w-full rounded-[var(--radius-control)] border border-[var(--app-border)] bg-background px-3 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
                         placeholder="Writin"
                       />
+                      {vaultNameStatus}
                     </div>
                   ) : null}
                 </div>
@@ -511,10 +591,16 @@ export function LoginPage() {
                 <input
                   id="cloud-vault-name"
                   value={cloudVaultName}
-                  onChange={(event) => setCloudVaultName(event.target.value)}
+                  onChange={(event) => {
+                    setCloudVaultName(event.target.value)
+                    setCloudSetupError(null)
+                  }}
+                  aria-invalid={Boolean(vaultNameConflict || vaultNameCheckError)}
+                  aria-describedby={vaultNameStatus ? 'cloud-vault-name-status' : undefined}
                   className="mt-2 h-11 w-full rounded-[var(--radius-control)] border border-[var(--app-border)] bg-background px-3 text-base outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
                   placeholder="Writin"
                 />
+                {vaultNameStatus}
               </div>
             )}
 
@@ -530,7 +616,7 @@ export function LoginPage() {
               <button
                 type="button"
                 onClick={() => void startCloudWorkspace()}
-                disabled={isCreatingCloudWorkspace || isLoadingExistingVaults}
+                disabled={isCloudSetupActionDisabled}
                 className="min-h-11 rounded-[var(--radius-control)] bg-foreground px-4 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-60"
               >
                 {isCreatingCloudWorkspace ? 'Opening...' : vaultChoiceMode === 'select' && existingVaults.length > 0 ? 'Open Vault' : 'Create Vault'}

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LoginPage } from './LoginPage'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { initializeLocalWorkspace, pickLocalWorkspaceDirectory } from '../services/localWorkspace'
-import { listExistingDriveVaults, selectExistingDriveVault } from '../services/googleDrive'
+import { findDriveRootFolderByName, listExistingDriveVaults, selectExistingDriveVault } from '../services/googleDrive'
 
 const mockLocalWorkspaceSupport = vi.hoisted(() => ({ canPickDeviceDirectory: false }))
 const pickedDirectory = vi.hoisted(() => ({ handle: { name: 'Writing Vault' } as FileSystemDirectoryHandle, name: 'Writing Vault' }))
@@ -21,6 +21,7 @@ vi.mock('../utils/googleIdentity', async () => {
 })
 
 vi.mock('../services/googleDrive', () => ({
+  findDriveRootFolderByName: vi.fn().mockResolvedValue(null),
   listExistingDriveVaults: vi.fn().mockResolvedValue([]),
   selectExistingDriveVault: vi.fn().mockResolvedValue(undefined),
   setDriveVaultRootName: vi.fn().mockResolvedValue(undefined),
@@ -184,5 +185,24 @@ describe('LoginPage local workspace setup', () => {
     await waitFor(() => expect(screen.getByText('Home')).toBeInTheDocument())
     expect(selectExistingDriveVault).toHaveBeenCalledWith('vault-2', 'Personal')
     expect(useWorkspaceStore.getState().mode).toBe('drive')
+  })
+
+  it('shows a root-folder name conflict and disables vault creation', async () => {
+    vi.mocked(listExistingDriveVaults).mockResolvedValue([])
+    vi.mocked(findDriveRootFolderByName).mockImplementation(async (name: string) => (
+      name.toLowerCase() === 'projects' ? { id: 'root-projects', name: 'Projects' } : null
+    ))
+    renderLoginPage()
+
+    await waitFor(() => expect(mockInitialize).toHaveBeenCalled())
+    const options = mockInitialize.mock.calls[0]?.[0]
+    const credential = createGoogleCredential({ email: 'test@example.com', email_verified: true })
+    options?.callback({ credential, select_by: 'user' })
+
+    const nameInput = await screen.findByLabelText('Vault name')
+    fireEvent.change(nameInput, { target: { value: 'projects' } })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('A Drive root folder named “Projects” already exists.')
+    expect(screen.getByRole('button', { name: 'Create Vault' })).toBeDisabled()
   })
 })

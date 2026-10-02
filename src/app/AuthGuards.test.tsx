@@ -35,6 +35,13 @@ describe('route protection', () => {
     expect(screen.getByText('Home')).toBeInTheDocument()
   })
 
+  it('keeps authenticated users on the Google vault setup return even when Drive mode was saved', () => {
+    useAuthStore.setState({ isAuthenticated: true })
+    useWorkspaceStore.setState({ mode: 'drive' })
+    render(<MemoryRouter initialEntries={['/login?setup=google&returnTo=%2Fhome']}><Routes><Route element={<RedirectAuthenticated />}><Route path="/login" element={<p>Vault setup</p>} /></Route><Route path="/home" element={<p>Home</p>} /></Routes></MemoryRouter>)
+    expect(screen.getByText('Vault setup')).toBeInTheDocument()
+  })
+
   it('keeps authenticated users on login while workspace mode is not set', () => {
     useAuthStore.setState({ isAuthenticated: true })
     useWorkspaceStore.setState({ mode: null })
@@ -73,4 +80,3 @@ describe('route protection', () => {
     expect(screen.getByText('Login from /settings')).toBeInTheDocument()
   })
 })
-

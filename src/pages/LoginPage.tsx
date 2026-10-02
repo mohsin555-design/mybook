@@ -4,7 +4,7 @@ import {
   FolderOpenIcon,
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { authApiUrl, getAuthConfigError, isBackendAuthEnabled, useAuthStore } from '../stores/useAuthStore'
@@ -60,8 +60,12 @@ export function LoginPage() {
   const [isCreatingLocalWorkspace, setIsCreatingLocalWorkspace] = useState(false)
   const { clearError, error, isLoading, completeLogin } = useAuthStore()
   const { createLocalWorkspace, selectGoogleWorkspace } = useWorkspaceStore()
-  const destination = getSafeReturnPath((location.state as LoginLocationState | null)?.from)
-  const queryError = new URLSearchParams(location.search).get('error')
+  const searchParams = new URLSearchParams(location.search)
+  const setupAfterBackendLogin = searchParams.get('setup') === 'google'
+  const destination = getSafeReturnPath(setupAfterBackendLogin
+    ? searchParams.get('returnTo')
+    : (location.state as LoginLocationState | null)?.from)
+  const queryError = searchParams.get('error')
   const configError = getAuthConfigError()
   const normalizedCloudVaultName = cloudVaultName.trim().toLocaleLowerCase()
   const shouldCheckCloudVaultName = isCloudSetupOpen && !isLoadingExistingVaults && (existingVaults.length === 0 || vaultChoiceMode === 'create')
@@ -114,7 +118,7 @@ export function LoginPage() {
     clearError()
   }, [clearError])
 
-  const handleGoogleLoginSuccess = async () => {
+  const handleGoogleLoginSuccess = useCallback(async () => {
     setIsCloudSetupOpen(true)
     setIsLoadingExistingVaults(true)
     try {
@@ -132,7 +136,13 @@ export function LoginPage() {
     } finally {
       setIsLoadingExistingVaults(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (setupAfterBackendLogin && !isCloudSetupOpen && !isLoadingExistingVaults) {
+      void handleGoogleLoginSuccess()
+    }
+  }, [handleGoogleLoginSuccess, isCloudSetupOpen, isLoadingExistingVaults, setupAfterBackendLogin])
 
   useEffect(() => {
     let active = true
@@ -175,11 +185,11 @@ export function LoginPage() {
     return () => {
       active = false
     }
-  }, [completeLogin, configError, destination, navigate, selectGoogleWorkspace])
+  }, [completeLogin, configError, handleGoogleLoginSuccess])
 
   const startBackendLogin = () => {
-    selectGoogleWorkspace()
-    window.location.assign(`${authApiUrl('/google/start')}?returnTo=${encodeURIComponent(destination)}`)
+    const setupReturnTo = `/login?setup=google&returnTo=${encodeURIComponent(destination)}`
+    window.location.assign(`${authApiUrl('/google/start')}?returnTo=${encodeURIComponent(setupReturnTo)}`)
   }
 
   useEffect(() => {

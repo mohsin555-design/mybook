@@ -28,6 +28,22 @@ vi.mock('../../hooks/useLibraryData', () => ({
   useLibraryData: () => mockLibraryData,
 }))
 
+vi.mock('../../services/workspaceManager', async () => {
+  const actual = await vi.importActual<typeof import('../../services/workspaceManager')>('../../services/workspaceManager')
+  return {
+    ...actual,
+    listAllWorkspaces: vi.fn().mockResolvedValue([]),
+  }
+})
+
+vi.mock('../../services/googleDrive', () => ({
+  findDriveRootFolderByName: vi.fn().mockResolvedValue(null),
+  listExistingDriveVaults: vi.fn().mockResolvedValue([]),
+  selectExistingDriveVault: vi.fn().mockResolvedValue(undefined),
+  setDriveVaultRootName: vi.fn().mockResolvedValue(undefined),
+  getDriveVaultRootName: vi.fn().mockResolvedValue('Writin'),
+}))
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()

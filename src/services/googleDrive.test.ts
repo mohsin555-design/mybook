@@ -7,8 +7,10 @@ import {
   classifyDriveTrashMetadata,
   createVisibleFolder,
   ensureMyBookDriveFolder,
+  findDriveRootFolderByName,
   importDriveFoldersToLocal,
   importDriveFilesToLocal,
+  listExistingDriveVaults,
   listTrashedMyBookDriveFiles,
   listTrashedMyBookDriveFolders,
   listVisibleFoldersByName,
@@ -123,6 +125,36 @@ describe('googleDrive helpers', () => {
 
     expect(folders).toHaveLength(1)
     expect(folders[0]?.id).toBe('1')
+  })
+
+  it('suggests only marked vaults and legacy names from the Drive root', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        files: [
+          { id: 'app-vault', name: 'Projects', mimeType: 'application/vnd.google-apps.folder', appProperties: { writin_vault: 'true' } },
+          { id: 'legacy-vault', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' },
+        ],
+      }),
+    })
+    stubDriveFetch(fetchMock)
+
+    await expect(listExistingDriveVaults()).resolves.toEqual([
+      { id: 'app-vault', name: 'Projects' },
+      { id: 'legacy-vault', name: 'Writin' },
+    ])
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get('q')).toContain("'root' in parents")
+  })
+
+  it('matches root folder names without case or surrounding-space differences', async () => {
+    stubDriveFetch(vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        files: [{ id: 'folder-1', name: 'Team Notes', mimeType: 'application/vnd.google-apps.folder' }],
+      }),
+    }))
+
+    await expect(findDriveRootFolderByName(' team notes ')).resolves.toEqual({ id: 'folder-1', name: 'Team Notes' })
   })
 
   it('creates the Writin folder when one is not stored or found', async () => {
@@ -1410,5 +1442,3 @@ describe('googleDrive helpers', () => {
     }))
   })
 })
-
-

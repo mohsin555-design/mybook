@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { CloudIcon, FolderIcon, ArrowPathIcon, CheckIcon } from '@heroicons/react/24/outline'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
@@ -12,7 +12,7 @@ import {
   createCloudWorkspaceAction,
   createLocalWorkspaceAction,
 } from '../../services/workspaceManager'
-import { listExistingDriveVaults, type DriveVaultSummary } from '../../services/googleDrive'
+import { findDriveRootFolderByName, listExistingDriveVaults, type DriveVaultSummary } from '../../services/googleDrive'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { toast } from '../ui/toast'
 
@@ -32,6 +32,10 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, initialTab
   // Cloud form state
   const [cloudMode, setCloudMode] = useState<'create' | 'select'>('create')
   const [cloudName, setCloudName] = useState('')
+  const [checkedCloudName, setCheckedCloudName] = useState('')
+  const [cloudNameConflict, setCloudNameConflict] = useState<string | null>(null)
+  const [isCheckingCloudName, setIsCheckingCloudName] = useState(false)
+  const [cloudNameCheckError, setCloudNameCheckError] = useState<string | null>(null)
   const [existingVaults, setExistingVaults] = useState<DriveVaultSummary[]>([])
   const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null)
   const [selectedVaultName, setSelectedVaultName] = useState('')
@@ -48,6 +52,40 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, initialTab
   
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const normalizedCloudName = (cloudName.trim() || 'Writin').toLocaleLowerCase()
+  const shouldCheckCloudName = isOpen && activeTab === 'cloud' && isAuthenticated && cloudMode === 'create'
+  const canCreateCloudName = checkedCloudName === normalizedCloudName && !cloudNameConflict && !cloudNameCheckError && !isCheckingCloudName
+
+  useEffect(() => {
+    if (!shouldCheckCloudName) {
+      setIsCheckingCloudName(false)
+      return
+    }
+
+    let cancelled = false
+    setCheckedCloudName('')
+    setCloudNameConflict(null)
+    setCloudNameCheckError(null)
+    setIsCheckingCloudName(true)
+    const timeout = window.setTimeout(() => {
+      void findDriveRootFolderByName(cloudName.trim() || 'Writin').then((folder) => {
+        if (cancelled) return
+        setCloudNameConflict(folder?.name ?? null)
+        setCheckedCloudName(normalizedCloudName)
+      }).catch(() => {
+        if (cancelled) return
+        setCloudNameCheckError('Could not check Google Drive for an existing root folder. Try again.')
+        setCheckedCloudName(normalizedCloudName)
+      }).finally(() => {
+        if (!cancelled) setIsCheckingCloudName(false)
+      })
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [cloudName, isAuthenticated, isOpen, activeTab, cloudMode, normalizedCloudName, shouldCheckCloudName])
 
   const handleOpenExistingVaults = async () => {
     if (!isAuthenticated) return
@@ -110,6 +148,12 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, initialTab
         })
       } else {
         const name = cloudName.trim() || 'Writin'
+        const existingFolder = await findDriveRootFolderByName(name)
+        if (existingFolder) {
+          setCloudNameConflict(existingFolder.name)
+          setCheckedCloudName(name.toLocaleLowerCase())
+          return
+        }
         await createCloudWorkspaceAction(name, shouldMirrorCloud ? cloudMirrorDirectory?.handle : undefined)
         toast.add({
           title: 'Workspace Created',
@@ -245,9 +289,21 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, initialTab
                   type="text"
                   placeholder="e.g. Work, Personal, Projects"
                   value={cloudName}
-                  onChange={(e) => setCloudName(e.target.value)}
+                  onChange={(e) => {
+                    setCloudName(e.target.value)
+                    setErrorMessage(null)
+                  }}
+                  aria-invalid={Boolean(cloudNameConflict || cloudNameCheckError)}
+                  aria-describedby={cloudNameConflict || cloudNameCheckError || isCheckingCloudName ? 'cloud-workspace-name-status' : undefined}
                   className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
+                {cloudNameConflict ? (
+                  <p id="cloud-workspace-name-status" role="alert" className="mt-2 text-xs text-destructive">A Drive root folder named “{cloudNameConflict}” already exists. Choose another name or connect to the existing vault.</p>
+                ) : cloudNameCheckError ? (
+                  <p id="cloud-workspace-name-status" role="alert" className="mt-2 text-xs text-destructive">{cloudNameCheckError}</p>
+                ) : isCheckingCloudName ? (
+                  <p id="cloud-workspace-name-status" role="status" className="mt-2 text-xs text-muted-foreground">Checking Drive root for this name…</p>
+                ) : null}
               </div>
             ) : (
               <div>
@@ -331,7 +387,7 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, initialTab
               </button>
               <button
                 type="button"
-                disabled={isSubmitting || (cloudMode === 'select' && !selectedVaultId)}
+                disabled={isSubmitting || (cloudMode === 'select' ? !selectedVaultId : !canCreateCloudName)}
                 onClick={() => void handleCreateCloud()}
                 className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
               >

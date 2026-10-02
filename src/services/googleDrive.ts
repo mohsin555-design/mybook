@@ -31,16 +31,61 @@ export interface DriveVaultSummary {
   modifiedTime?: string
 }
 
+function normalizedDriveFolderName(name: string) {
+  return name.trim().toLocaleLowerCase()
+}
+
+async function listDriveRootFolders(): Promise<DriveFolder[]> {
+  const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'root' in parents`
+  const folders = new Map<string, DriveFolder>()
+  const seenPages = new Set<string>()
+  let pageToken: string | undefined
+  do {
+    const params = new URLSearchParams({
+      q: query,
+      fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,trashed,modifiedTime,appProperties,parents)',
+      spaces: 'drive',
+      pageSize: '1000',
+    })
+    if (pageToken) params.set('pageToken', pageToken)
+    const result = await driveFetch(`/files?${params}`)
+    if (!result.success) throw new Error(result.error)
+    const data = await result.response.json() as { files?: DriveFolder[]; nextPageToken?: string; incompleteSearch?: boolean }
+    if (data.incompleteSearch || !Array.isArray(data.files)) {
+      throw new Error('Drive root folder search was incomplete. Please retry; no folder was created.')
+    }
+    for (const folder of data.files) {
+      if (!folder?.id || !folder.name || folder.mimeType !== DRIVE_FOLDER_MIME || folder.trashed) {
+        throw new Error('Drive returned incomplete root folder details. Please retry; no folder was created.')
+      }
+      folders.set(folder.id, folder)
+    }
+    pageToken = data.nextPageToken
+    if (pageToken) {
+      if (seenPages.has(pageToken)) throw new Error('Drive root folder search could not finish. Please retry.')
+      seenPages.add(pageToken)
+    }
+  } while (pageToken)
+  return [...folders.values()]
+}
+
+export async function findDriveRootFolderByName(name: string): Promise<DriveVaultSummary | null> {
+  const normalizedName = normalizedDriveFolderName(name)
+  if (!normalizedName) return null
+  const folders = await listDriveRootFolders()
+  const match = folders.find((folder) => normalizedDriveFolderName(folder.name) === normalizedName)
+  return match?.id ? { id: match.id, name: match.name } : null
+}
+
 export async function listExistingDriveVaults(): Promise<DriveVaultSummary[]> {
   try {
-    const names = ['Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']
-    const nameQuery = names.map((name) => `name='${name}'`).join(' or ')
-    const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (appProperties has { key='writin_vault' and value='true' } or appProperties has { key='mybook_vault' and value='true' } or ${nameQuery})`
-    const files = await driveFetchAllFiles<DriveFolder>(query, 'id,name,mimeType,trashed,modifiedTime')
+    const legacyNames = new Set(['writin', 'mybook'])
+    const files = await listDriveRootFolders()
     const seen = new Set<string>()
     const vaults: DriveVaultSummary[] = []
     for (const file of files) {
-      if (!file.id || seen.has(file.id) || file.trashed) continue
+      const isAppVault = file.appProperties?.writin_vault === 'true' || file.appProperties?.mybook_vault === 'true'
+      if (!file.id || seen.has(file.id) || file.trashed || (!isAppVault && !legacyNames.has(normalizedDriveFolderName(file.name)))) continue
       seen.add(file.id)
       vaults.push({
         id: file.id,
@@ -1111,28 +1156,22 @@ function inferFileType(name: string, mimeType: string) {
 }
 
 function isImportableDriveFile(name: string, mimeType: string, isAttachmentName: (name: string) => boolean) {
+  const normalizedMimeType = mimeType.toLowerCase()
   if (isAttachmentName(name)) return false
   if (
-    mimeType.startsWith('image/') ||
-    mimeType.startsWith('video/') ||
-    mimeType.startsWith('audio/')
+    normalizedMimeType.startsWith('image/') ||
+    normalizedMimeType.startsWith('video/') ||
+    normalizedMimeType.startsWith('audio/') ||
+    normalizedMimeType === 'application/pdf' ||
+    normalizedMimeType === 'application/zip' ||
+    normalizedMimeType === 'application/x-zip-compressed'
   ) {
     return false
   }
   if (/\.(png|jpe?g|gif|webp|svg|bmp|ico|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|flac|aac|pdf|zip|tar|gz)$/i.test(name)) {
     return false
   }
-  return (
-    mimeType === MYBOOK_MARKDOWN_MIME ||
-    mimeType === GOOGLE_DOC_MIME ||
-    mimeType === GOOGLE_SHEET_MIME ||
-    mimeType === 'application/x-mybook-document' ||
-    mimeType === 'application/x-mybook-spreadsheet' ||
-    mimeType.includes('spreadsheet') ||
-    mimeType.includes('wordprocessingml') ||
-    mimeType.includes('document') ||
-    /\.(md|mybook\.md|docx|xlsx|txt)$/i.test(name)
-  )
+  return true
 }
 
 function localFileName(name: string, type: 'document' | 'spreadsheet') {
@@ -1506,7 +1545,7 @@ export async function importDriveFilesToLocal(
       }
       processedFiles += 1
       const rawPercent = totalDiscoveredFiles > 0 ? Math.min(100, Math.round((processedFiles / totalDiscoveredFiles) * 100)) : 100
-      maxPercent = Math.max(maxPercent, rawPercent)
+      maxPercent = Math.max(maxPercent, Math.min(99, rawPercent))
       onProgress?.({ loaded: processedFiles, total: totalDiscoveredFiles, percent: maxPercent })
     }
   }
@@ -1525,9 +1564,6 @@ export async function importDriveFilesToLocal(
   }
 
   await walk(bootstrap.folderId, null)
-  if (totalDiscoveredFiles === 0) {
-    onProgress?.({ loaded: 0, total: 0, percent: 100 })
-  }
   const missingFiles = localFiles.filter((file) => !file.isDeleted && file.driveFileId && !seenDriveFileIds.has(file.driveFileId) && !unresolvedSync.has('file', file.id))
   if (missingFiles.length) {
     const now = new Date().toISOString()
@@ -1539,6 +1575,7 @@ export async function importDriveFilesToLocal(
         .modify({ status: 'completed', errorMessage: 'Deleted in Google Drive.', updatedAt: now })
     })
   }
+  onProgress?.({ loaded: processedFiles, total: totalDiscoveredFiles, percent: 100 })
 }
 
 export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated: boolean; modifiedTime?: string; error?: string }> {
@@ -1592,47 +1629,18 @@ async function prepareWritinDriveFolder(): Promise<DriveSetupResult> {
         throw new Error('Your existing Drive workspace is unavailable. Restore or reconnect it before syncing. No replacement folder was created.')
       }
     } else {
-      const isDefaultTarget = targetFolderName.toLowerCase() === 'writin' || targetFolderName.toLowerCase() === 'mybook'
-      const names = isDefaultTarget
-        ? Array.from(new Set([targetFolderName, 'Writin', 'writin', 'WRITIN', 'MyBook', 'Mybook', 'MYbook', 'MYBOOK', 'mybook']))
-        : [targetFolderName]
-      const nameQueries = names.map((name) => `name='${name.replace(/'/g, "\\'")}'`).join(' or ')
-      const query = `mimeType='${DRIVE_FOLDER_MIME}' and trashed=false and 'me' in owners and (${nameQueries})`
-      const candidates = new Map<string, DriveFolder>()
-      const seenPages = new Set<string>()
-      let pageToken: string | undefined
-      do {
-        const params = new URLSearchParams({
-          q: query,
-          fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,trashed)',
-          spaces: 'drive',
-          pageSize: '1000',
-        })
-        if (pageToken) params.set('pageToken', pageToken)
-        const result = await driveFetch(`/files?${params}`)
-        if (!result.success) throw new Error(result.error)
-        const data = await result.response.json() as { files?: DriveFolder[]; nextPageToken?: string; incompleteSearch?: boolean }
-        if (data.incompleteSearch || !Array.isArray(data.files)) {
-          throw new Error('Drive workspace discovery was incomplete. Please retry; no new folder was created.')
-        }
-        for (const candidate of data.files) {
-          if (!candidate || typeof candidate.id !== 'string' || !candidate.id || typeof candidate.name !== 'string' || candidate.mimeType !== DRIVE_FOLDER_MIME || candidate.trashed) {
-            throw new Error('Drive returned incomplete workspace metadata. Please retry; no new folder was created.')
-          }
-          candidates.set(candidate.id, candidate)
-        }
-        pageToken = data.nextPageToken
-        if (pageToken) {
-          if (seenPages.has(pageToken)) throw new Error('Drive workspace discovery could not finish. Please retry.')
-          seenPages.add(pageToken)
-        }
-      } while (pageToken)
+      const isDefaultTarget = ['writin', 'mybook'].includes(normalizedDriveFolderName(targetFolderName))
+      const legacyNames = new Set(isDefaultTarget ? ['writin', 'mybook'] : [normalizedDriveFolderName(targetFolderName)])
+      const rootFolders = await listDriveRootFolders()
+      const candidates = new Map(rootFolders
+        .filter((candidate) => legacyNames.has(normalizedDriveFolderName(candidate.name)))
+        .map((candidate) => [candidate.id, candidate]))
       if (candidates.size > 1) {
         throw new Error('Multiple existing Drive workspaces were found. Open the browser already connected to your workspace to rename it safely. No folders were created or merged.')
       }
       folder = candidates.values().next().value
       if (!folder) {
-        folder = await createVisibleFolder(targetFolderName)
+        folder = await createVisibleFolder(targetFolderName, { writin_vault: 'true' })
         created = true
       }
       if (!folder.id || folder.mimeType !== DRIVE_FOLDER_MIME || folder.trashed) {

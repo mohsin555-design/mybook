@@ -56,6 +56,17 @@ function renderLoginPage() {
   )
 }
 
+function renderBackendLoginReturn() {
+  render(
+    <MemoryRouter initialEntries={['/login?setup=google&returnTo=%2Fsettings']}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/settings" element={<p>Settings</p>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
 describe('LoginPage local workspace setup', () => {
   let mockInitialize: ReturnType<typeof vi.fn>
   let mockRenderButton: ReturnType<typeof vi.fn>
@@ -185,6 +196,21 @@ describe('LoginPage local workspace setup', () => {
     await waitFor(() => expect(screen.getByText('Home')).toBeInTheDocument())
     expect(selectExistingDriveVault).toHaveBeenCalledWith('vault-2', 'Personal')
     expect(useWorkspaceStore.getState().mode).toBe('drive')
+  })
+
+  it('opens vault setup after backend Google login and preserves the requested destination', async () => {
+    vi.mocked(listExistingDriveVaults).mockResolvedValue([
+      { id: 'vault-1', name: 'Work Notes' },
+    ])
+
+    renderBackendLoginReturn()
+
+    expect(await screen.findByText('Set Up Google Drive Vault')).toBeInTheDocument()
+    expect(await screen.findByText('Work Notes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Vault' }))
+
+    await waitFor(() => expect(screen.getByText('Settings')).toBeInTheDocument())
+    expect(selectExistingDriveVault).toHaveBeenCalledWith('vault-1', 'Work Notes')
   })
 
   it('shows a root-folder name conflict and disables vault creation', async () => {

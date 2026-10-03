@@ -94,6 +94,12 @@ export function groupSlashCommands(commands: SlashCommand[]) {
 export function filterSlashCommands(query: string) {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return slashCommands
+
+  const titleMatches = slashCommands.filter((command) =>
+    command.title.toLowerCase().startsWith(normalized),
+  )
+  if (titleMatches.length > 0) return titleMatches
+
   return slashCommands.filter((command) => {
     const haystack = [command.title, command.description, ...command.keywords].join(' ').toLowerCase()
     return haystack.includes(normalized)

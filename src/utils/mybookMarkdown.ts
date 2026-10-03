@@ -92,7 +92,7 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   if (node.type === 'audioBlock') return audioMarkdown(node)
   if (node.type === 'fileAttachment' && typeof node.attrs?.src === 'string') {
     return [
-      `:::file name=${readJsonAttribute(node.attrs.name)} mime=${readJsonAttribute(node.attrs.mimeType)} size=${Number(node.attrs.size ?? 0)}`,
+      `:::file name=${readJsonAttribute(node.attrs.name)} mime=${readJsonAttribute(node.attrs.mimeType)} size=${Number(node.attrs.size ?? 0)}${node.attrs.pdfPreview === true ? ' preview=pdf' : ''}`,
       node.attrs.src,
       ':::',
     ].join('\n')
@@ -1013,7 +1013,7 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
     if (blockKind === 'file') {
       flushParagraph()
       const opener = line.trim()
-      const file = /^:::file\s+name=("([^"]*)"|'([^']*)'|[^\s]+)(?:\s+mime=("([^"]*)"|'([^']*)'|[^\s]+))?(?:\s+size=(\d+))?\s*$/u.exec(opener)
+      const file = /^:::file\s+name=("([^"]*)"|'([^']*)'|[^\s]+)(?:\s+mime=("([^"]*)"|'([^']*)'|[^\s]+))?(?:\s+size=(\d+))?(?:\s+preview=(pdf))?\s*$/u.exec(opener)
       const collected = collectCustomBlock(lines, lineIndex)
       lineIndex = collected.index - 1
       if (!file || !collected.closed) {
@@ -1030,6 +1030,7 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
           mimeType: readAttributeValue(rawMime) ?? '',
           size: Number(file[7] ?? 0),
           src: srcLines.map((srcLine) => srcLine.trim()).join(''),
+          ...(file[8] === 'pdf' ? { pdfPreview: true } : {}),
         },
       })
       continue

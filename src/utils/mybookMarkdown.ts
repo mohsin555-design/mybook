@@ -136,6 +136,11 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   if (node.type === 'embedBlock') return embedMarkdown(node)
   if (node.type === 'videoBlock') return videoMarkdown(node)
   if (node.type === 'databaseBlock') return databaseMarkdown(node)
+  if (node.type === 'dateTimeBlock') {
+    const value = typeof node.attrs?.value === 'string' ? node.attrs.value : null
+    const includeTime = node.attrs?.includeTime === true
+    return [':::date-time', JSON.stringify({ includeTime, value }, null, 2), ':::'].join('\n')
+  }
   return (node.content ?? []).map((child) => blockMarkdown(child, depth)).join('\n\n')
 }
 
@@ -186,7 +191,7 @@ export function isMarkdownText(text: string): boolean {
   if (/^(?:---|\*\*\*|___)\s*$/m.test(trimmed)) return true
 
   // Custom blocks: :::callout, :::toggle, :::file, :::table, :::video, :::audio, :::image
-  if (/^:::(?:callout|toggle|file|table|video|audio|image|toc|bookmark|embed|database)/m.test(trimmed)) return true
+  if (/^:::(?:callout|toggle|file|table|video|audio|image|toc|bookmark|embed|database|date-time)/m.test(trimmed)) return true
 
   // Inline formatting spanning multiple words with links or formatting combinations
   if (/(\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~)\s*(?:and|or|,\s*|\[[^\]]+\]\([^)]+\)|\*)/.test(trimmed)) return true
@@ -219,7 +224,7 @@ export function documentToMyBookMarkdown(
 }
 
 type InlineMark = NonNullable<JSONContent['marks']>[number]
-type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'audio' | 'image' | 'unknown'
+type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'audio' | 'image' | 'date-time' | 'unknown'
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 function findUnescaped(value: string, needle: string, start: number) {
@@ -491,7 +496,7 @@ function customBlockKind(line: string): CustomBlockKind | null {
   if (trimmed === ':::') return null
   const name = /^:::([A-Za-z][\w-]*)(?:\s|$)/u.exec(trimmed)?.[1]
   if (!name) return null
-  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video' || name === 'audio' || name === 'image') return name
+  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video' || name === 'audio' || name === 'image' || name === 'date-time') return name
   return 'unknown'
 }
 
@@ -960,6 +965,20 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       lineIndex = collected.index - 1
       const database = collected.closed ? parseStructuredDatabase(collected.lines.slice(1, -1)) : null
       content.push(database ?? rawParagraph(collected.lines))
+      continue
+    }
+    if (blockKind === 'date-time') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      try {
+        const parsed: unknown = JSON.parse(collected.lines.slice(1, -1).join('\n'))
+        if (collected.closed && isRecord(parsed) && (parsed.value === null || typeof parsed.value === 'string') && typeof parsed.includeTime === 'boolean') {
+          content.push({ type: 'dateTimeBlock', attrs: { value: parsed.value, includeTime: parsed.includeTime } })
+        } else content.push(rawParagraph(collected.lines))
+      } catch {
+        content.push(rawParagraph(collected.lines))
+      }
       continue
     }
     if (blockKind === 'toc') {

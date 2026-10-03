@@ -40,6 +40,7 @@ import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { Callout, calloutNode } from './extensions/Callout'
 import { CodeBlock } from './extensions/CodeBlock'
 import { DatabaseBlock } from './extensions/DatabaseBlock'
+import { DateTimeBlock } from './extensions/DateTimeBlock'
 import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
 import { EmbedBlock, embedBlockNode } from './extensions/EmbedBlock'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
@@ -1178,6 +1179,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       AudioBlock,
       ToggleBlock,
       DatabaseBlock,
+      DateTimeBlock,
       TableOfContents,
       DocumentLink,
       EmptyBlockPlaceholder,

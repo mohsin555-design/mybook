@@ -3,6 +3,7 @@ import { TextSelection } from '@tiptap/pm/state'
 
 import { calloutNode } from './extensions/Callout'
 import { databaseBlockNode } from './extensions/DatabaseBlock'
+import { dateTimeBlockNode } from './extensions/DateTimeBlock'
 import { tableOfContentsNode } from './extensions/TableOfContents'
 import { toggleBlockNode } from './extensions/ToggleBlock'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
@@ -82,6 +83,7 @@ export const allSlashCommands: SlashCommand[] = [
   { id: 'document-link', title: 'Link to Page', description: 'Link to another workspace item', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document', 'database', 'spreadsheet'], category: 'Media', shortcut: '[[' },
   { id: 'table', title: 'Basic Table', description: 'Insert a basic table', keywords: ['table', 'basic table', 'grid'], category: 'Data' },
   { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data', hidden: !ENABLE_DATABASE_BLOCK },
+  { id: 'date-time', title: 'Date & Time', description: 'Insert a date with optional time', keywords: ['date', 'time', 'calendar', 'datetime'], category: 'Data' },
   { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'], category: 'Advanced' },
   { id: 'toc', title: 'Table of contents', description: 'Show document headings', keywords: ['toc', 'table of contents', 'contents', 'outline'], category: 'Advanced' },
   { id: 'code-block', title: 'Code block', description: 'Insert multiline code', keywords: ['code', 'pre', 'block'], category: 'Advanced', shortcut: '```' },
@@ -165,6 +167,7 @@ export function runSlashCommand(
   else if (commandId === 'toggle-h4') chain.insertContent(toggleBlockNode('Toggle', 4)).run()
   else if (commandId === 'toc') chain.insertContent([tableOfContentsNode(), { type: 'paragraph' }]).run()
   else if (commandId === 'database') chain.insertContent([databaseBlockNode(), { type: 'paragraph' }]).run()
+  else if (commandId === 'date-time') chain.insertContent(dateTimeBlockNode()).run()
   else if (commandId === 'document-link') {
     chain.run()
     window.dispatchEvent(new CustomEvent('mybook:insert-document-link'))

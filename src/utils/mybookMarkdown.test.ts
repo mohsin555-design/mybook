@@ -52,6 +52,12 @@ const databaseAttrs = (): DatabaseAttrs => ({
 })
 const databaseBlock = (attrs = databaseAttrs()): JSONContent => ({ type: 'databaseBlock', attrs })
 const tableOfContentsBlock = (): JSONContent => ({ type: 'tableOfContents' })
+it('preserves date and time block values in Markdown', () => {
+  const block: JSONContent = { type: 'dateTimeBlock', attrs: { value: '2026-10-03T14:30:00.000Z', includeTime: true } }
+  const markdown = documentToMyBookMarkdown('Date & Time', doc(block))
+  expect(markdown).toContain(':::date-time')
+  expect(myBookMarkdownToDocument(markdown).content?.[0]).toMatchObject(block)
+})
 const documentLinkBlock = (targetId = 'doc_b', label = 'Project Notes'): JSONContent => ({ type: 'documentLink', attrs: { targetId, label } })
 const bookmarkBlock = (): JSONContent => ({ type: 'bookmarkBlock', attrs: { href: 'https://example.com/docs/writin-links', title: 'Writin links', domain: 'example.com', description: '' } })
 it('preserves bookmark preview images and the original query in Markdown', () => {

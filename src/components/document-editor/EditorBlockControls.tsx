@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, slashCommands, type SlashCommand } from './slashCommands'
+import { safeSelectionForBlock } from './blockConversion'
 
 export interface BlockTarget {
   node: ProseMirrorNode
@@ -437,14 +438,12 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => {
             if (target) {
-              const selPos = target.node.isTextblock
-                ? Math.min(target.pos + 1, editor.state.doc.content.size)
-                : target.pos
-              const selection = target.node.isTextblock
-                ? TextSelection.create(editor.state.doc, selPos)
-                : NodeSelection.create(editor.state.doc, target.pos)
-              editor.view.dispatch(editor.state.tr.setSelection(selection))
-              editor.view.focus()
+              const currentSel = editor.state.selection
+              if (currentSel.empty) {
+                const selection = safeSelectionForBlock(editor, target.pos)
+                editor.view.dispatch(editor.state.tr.setSelection(selection))
+                editor.view.focus()
+              }
             }
             setIsInsertOpen((open) => !open)
             setIsActionsOpen(false)

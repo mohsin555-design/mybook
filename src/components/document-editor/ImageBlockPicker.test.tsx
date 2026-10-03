@@ -107,7 +107,7 @@ describe('ImageBlockPicker', () => {
 
     await waitFor(() => {
       expect(onInsert).toHaveBeenCalledWith(
-        expect.stringContaining('data:image/png;base64,'),
+        expect.stringMatching(/^data:image\/(?:png|webp);base64,/),
         'sunset'
       )
     })

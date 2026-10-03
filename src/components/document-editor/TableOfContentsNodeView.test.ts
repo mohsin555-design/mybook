@@ -22,6 +22,14 @@ function paragraphNode(textContent: string) {
   }
 }
 
+function toggleBlockNode(level: number | null, title: string) {
+  return {
+    type: { name: 'toggleBlock' },
+    attrs: { level, title },
+    textContent: '',
+  }
+}
+
 function docWithNodes(nodes: Array<ReturnType<typeof headingNode> | ReturnType<typeof paragraphNode>>) {
   return {
     descendants(callback: (node: ReturnType<typeof headingNode> | ReturnType<typeof paragraphNode>, pos: number) => boolean | void) {
@@ -50,6 +58,24 @@ describe('table of contents block', () => {
       { id: 'toc-20-1', level: 2, pos: 20, text: 'Product goals' },
       { id: 'toc-30-2', level: 3, pos: 30, text: 'Requirements' },
       { id: 'toc-40-3', level: 4, pos: 40, text: 'Details' },
+    ])
+  })
+
+  it('extracts toggle headings with levels 1 to 4 and skips normal or empty-title toggles', () => {
+    const entries = getTableOfContentsEntries(docWithNodes([
+      toggleBlockNode(1, 'Toggle Heading 1'),
+      toggleBlockNode(null, 'Normal Toggle without Level'),
+      toggleBlockNode(2, '   '),
+      headingNode(2, 'Standard Heading 2'),
+      toggleBlockNode(3, 'Toggle Heading 3'),
+      toggleBlockNode(4, 'Toggle Heading 4'),
+    ]) as never)
+
+    expect(entries).toEqual([
+      { id: 'toc-0-0', level: 1, pos: 0, text: 'Toggle Heading 1' },
+      { id: 'toc-30-1', level: 2, pos: 30, text: 'Standard Heading 2' },
+      { id: 'toc-40-2', level: 3, pos: 40, text: 'Toggle Heading 3' },
+      { id: 'toc-50-3', level: 4, pos: 50, text: 'Toggle Heading 4' },
     ])
   })
 

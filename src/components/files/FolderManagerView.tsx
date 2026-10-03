@@ -166,7 +166,15 @@ export function FolderManagerView({ folderId }: FolderManagerViewProps) {
           deleteFile(fileDeleteTarget)
         }}
       />
-      <FileNameDialog fileName={fileRenameTarget?.name ?? ''} isOpen={Boolean(fileRenameTarget)} onClose={() => setFileRenameTarget(null)} onSubmit={(name) => fileRenameTarget ? fileRepository.update(fileRenameTarget.id, { name }) : Promise.resolve({ success: false })} />
+      <FileNameDialog
+        fileName={fileRenameTarget?.name ?? ''}
+        isOpen={Boolean(fileRenameTarget)}
+        existingFileNames={files
+          .filter((file) => file.folderId === fileRenameTarget?.folderId && file.id !== fileRenameTarget?.id)
+          .map((file) => file.name)}
+        onClose={() => setFileRenameTarget(null)}
+        onSubmit={(name) => fileRenameTarget ? fileRepository.update(fileRenameTarget.id, { name }) : Promise.resolve({ success: false })}
+      />
     </div>
   )
 }

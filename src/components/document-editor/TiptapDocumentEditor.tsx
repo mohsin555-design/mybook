@@ -18,12 +18,14 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { fileRepository } from '../../database/repositories'
+import { appFileName, cleanName, fileRepository } from '../../database/repositories'
+import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { useAutosave } from '../../hooks/useAutosave'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
+import { compressImageFile } from '../../utils/imageCompression'
 import { contentToMarkdown, documentToMyBookMarkdown, downloadMyBookMarkdown, isMarkdownText, myBookMarkdownToDocument } from '../../utils/mybookMarkdown'
 import { EmptyState } from '../common/EmptyState'
 import { AppHeader } from '../common/AppHeader'
@@ -53,6 +55,8 @@ import { FixedTable } from './extensions/FixedTable'
 import { TableInteraction } from './extensions/TableInteraction'
 import { StyledTableCell, StyledTableHeader } from './extensions/TableCellStyles'
 import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
+import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
+import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
 import { DocumentLinkProvider } from './DocumentLinkContext'
 import { documentLinkLocation, documentLinkTargets } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
@@ -935,6 +939,34 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const blankOverlayRef = useRef<HTMLDivElement | null>(null)
   const blankSelectionRangeRef = useRef<{ from: number; to: number } | null>(null)
   const lastActiveSelectionRef = useRef({ from: 1, to: 1 })
+  const contentSyncTimerRef = useRef<number | null>(null)
+  const flushContentSync = useCallback((currentEditor?: NonNullable<ReturnType<typeof useEditor>> | null) => {
+    if (contentSyncTimerRef.current !== null) {
+      window.clearTimeout(contentSyncTimerRef.current)
+      contentSyncTimerRef.current = null
+    }
+    const target = currentEditor ?? editorRef.current
+    if (!target || target.isDestroyed) return
+    const next = JSON.stringify(target.getJSON())
+    if (editorContentRef.current !== next) {
+      editorContentRef.current = next
+      setContent(next)
+    }
+  }, [setContent])
+
+  useEffect(() => {
+    const handleFlush = () => flushContentSync()
+    window.addEventListener('pagehide', handleFlush)
+    document.addEventListener('visibilitychange', handleFlush)
+    return () => {
+      if (contentSyncTimerRef.current !== null) {
+        window.clearTimeout(contentSyncTimerRef.current)
+        contentSyncTimerRef.current = null
+      }
+      window.removeEventListener('pagehide', handleFlush)
+      document.removeEventListener('visibilitychange', handleFlush)
+    }
+  }, [flushContentSync])
   const restoreLastActiveSelection = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
@@ -949,6 +981,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     titleRef.current = nextTitle
     setTitle(nextTitle)
   }, [])
+
+  const duplicateTitleFile = useMemo(() => {
+    if (!file) return null
+    const cleanedCurrent = cleanName(title)
+    if (!cleanedCurrent) return null
+    const normalizedCurrent = appFileName(cleanedCurrent, file.type).toLocaleLowerCase()
+    return files.find((candidate) => {
+      if (candidate.id === file.id || candidate.isDeleted) return false
+      if (candidate.folderId !== file.folderId) return false
+      return appFileName(candidate.name, candidate.type).toLocaleLowerCase() === normalizedCurrent
+    }) ?? null
+  }, [file, files, title])
+
+  const duplicateTitleWarning = duplicateTitleFile
+    ? `A document named "${appFileName(duplicateTitleFile.name, duplicateTitleFile.type)}" already exists in this folder.`
+    : null
   const closeImagePicker = useCallback(() => {
     imagePickerRef.current = null
     setImagePicker(null)
@@ -1132,6 +1180,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       ListMarkerDepth,
       BlankBlockSelection,
       EditorKeyboardShortcuts,
+      BlockMarkdownShortcuts,
     ],
     content: emptyDocument,
     editorProps: {
@@ -1143,6 +1192,23 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       transformPastedHTML: cleanPastedHtml,
       transformPastedText: cleanPastedText,
       handlePaste: (view, event) => {
+        const clipboardImage = event.clipboardData?.files?.[0]
+        if (clipboardImage && clipboardImage.type.startsWith('image/')) {
+          event.preventDefault()
+          void (async () => {
+            try {
+              const src = await compressImageFile(clipboardImage)
+              const alt = clipboardImage.name ? clipboardImage.name.replace(/\.[^.]+$/u, '') : 'Image'
+              editorRef.current?.chain().focus().insertContent([imageBlockNode(src, alt), { type: 'paragraph' }]).run()
+            } catch (err) {
+              devLog('error', 'Could not paste image.', err)
+            }
+          })()
+          closePasteAsMenu()
+          closeInlineLinkToolbar()
+          return true
+        }
+
         const html = event.clipboardData?.getData('text/html') ?? ''
         const text = event.clipboardData?.getData('text/plain') ?? ''
 
@@ -1320,12 +1386,36 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           return true
         },
         blur: () => {
+          flushContentSync()
           if (!slashMenuRef.current) return false
           slashMenuDismissedRef.current = true
           slashMenuRef.current = null
           setSlashMenu(null)
           slashSelectedIndexRef.current = 0
           setSlashSelectedIndex(0)
+          return false
+        },
+        drop: (view, event) => {
+          const droppedFile = event.dataTransfer?.files?.[0]
+          if (droppedFile && droppedFile.type.startsWith('image/')) {
+            event.preventDefault()
+            const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
+            const pos = coords?.pos
+            void (async () => {
+              try {
+                const src = await compressImageFile(droppedFile)
+                const alt = droppedFile.name ? droppedFile.name.replace(/\.[^.]+$/u, '') : 'Image'
+                if (pos !== undefined && editorRef.current) {
+                  editorRef.current.chain().focus().insertContentAt(pos, [imageBlockNode(src, alt), { type: 'paragraph' }]).run()
+                } else if (editorRef.current) {
+                  editorRef.current.chain().focus().insertContent([imageBlockNode(src, alt), { type: 'paragraph' }]).run()
+                }
+              } catch (err) {
+                devLog('error', 'Could not drop image.', err)
+              }
+            })()
+            return true
+          }
           return false
         },
       },
@@ -1494,12 +1584,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       },
     },
     onUpdate: ({ editor: currentEditor }) => {
-      const next = JSON.stringify(currentEditor.getJSON())
-      editorContentRef.current = next
-      setContent(next)
       updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
+
+      if (contentSyncTimerRef.current !== null) {
+        window.clearTimeout(contentSyncTimerRef.current)
+      }
+      contentSyncTimerRef.current = window.setTimeout(() => {
+        contentSyncTimerRef.current = null
+        flushContentSync(currentEditor)
+      }, 250)
     },
     onSelectionUpdate: ({ editor: currentEditor }) => {
       if (!currentEditor.state.selection.empty) {
@@ -1775,6 +1870,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const saveTitle = useCallback(async () => {
     const nextTitle = titleRef.current.trim()
     if (!file || !nextTitle || nextTitle === file.name) return
+    const cleanedNext = cleanName(nextTitle)
+    const normalizedNext = appFileName(cleanedNext, file.type).toLocaleLowerCase()
+    const isDuplicate = filesRef.current.some((candidate) =>
+      candidate.id !== file.id &&
+      !candidate.isDeleted &&
+      candidate.folderId === file.folderId &&
+      appFileName(candidate.name, candidate.type).toLocaleLowerCase() === normalizedNext
+    )
+    if (isDuplicate) return
     const result = await fileRepository.update(file.id, { name: nextTitle, syncStatus: isLocalWorkspace() ? 'local' : 'pending' })
     if (result.success) {
       lastSavedTitleRef.current = nextTitle
@@ -1825,7 +1929,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   if (file === undefined || !editor) return <div role="status" className="p-4 text-muted-foreground">Loading editor…</div>
   if (!file || file.isDeleted) return <EmptyState title="Document not found" description="This document may have been moved to Trash or deleted." />
 
-  const saveAll = async () => { await Promise.all([save(), saveTitle()]) }
+  const saveAll = async () => {
+    flushContentSync()
+    await Promise.all([save(), saveTitle()])
+  }
   const backupNow = async () => {
     if (!file) return
     await saveAll()
@@ -2062,12 +2169,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         setDocxMessage('Image is too large. Choose an image under 5 MB.')
         return
       }
-      const src = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result ?? ''))
-        reader.onerror = () => reject(reader.error ?? new Error('Image read failed.'))
-        reader.readAsDataURL(selectedFile)
-      })
+      const src = await compressImageFile(selectedFile)
       editor.chain().focus().insertContent([imageBlockNode(src, selectedFile.name.replace(/\.[^.]+$/u, '')), { type: 'paragraph' }]).run()
       setDocxMessage('Image inserted.')
     } catch (error) {
@@ -2158,30 +2260,32 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       return
     }
 
-    if (blockTarget) {
+    const { selection } = editor.state
+    const hasSelection = !selection.empty
+
+    if (isFormatCommand(commandId)) {
+      if (hasSelection) {
+        convertSelectedBlocks(editor, commandId)
+        return
+      }
+      if (blockTarget) {
+        convertSelectedBlocks(editor, commandId, blockTarget)
+        return
+      }
+      convertSelectedBlocks(editor, commandId)
+      return
+    }
+
+    if (blockTarget && !hasSelection) {
       const doc = editor.state.doc
       const targetNode = doc.nodeAt(blockTarget.pos) ?? blockTarget.node
       const targetPos = blockTarget.pos
       const isEmpty = targetNode.isTextblock && targetNode.content.size === 0
-      const isFormatCommand = ['paragraph', 'h1', 'h2', 'h3', 'h4', 'bullet', 'numbered', 'task', 'quote', 'code-block'].includes(commandId)
 
       if (isEmpty) {
-        if (isFormatCommand) {
-          const sel = TextSelection.create(editor.state.doc, Math.min(targetPos + 1, editor.state.doc.content.size))
-          editor.view.dispatch(editor.state.tr.setSelection(sel))
-          runSlashCommand(editor, commandId, { from: targetPos + 1, to: targetPos + 1 }, true)
-        } else {
-          const nodeEnd = targetPos + targetNode.nodeSize
-          editor.chain().focus().deleteRange({ from: targetPos, to: nodeEnd }).run()
-          runSlashCommand(editor, commandId, { from: targetPos, to: targetPos })
-        }
-        return
-      }
-
-      if (isFormatCommand) {
-        const sel = TextSelection.create(editor.state.doc, Math.min(targetPos + 1, editor.state.doc.content.size))
-        editor.view.dispatch(editor.state.tr.setSelection(sel))
-        runSlashCommand(editor, commandId, { from: targetPos + 1, to: targetPos + 1 }, true)
+        const nodeEnd = targetPos + targetNode.nodeSize
+        editor.chain().focus().deleteRange({ from: targetPos, to: nodeEnd }).run()
+        runSlashCommand(editor, commandId, { from: targetPos, to: targetPos })
         return
       }
 
@@ -2198,9 +2302,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const pageScale = zoom / 100
   const desktopPageWidth = '100%'
   const documentSurfaceClass = 'bg-[var(--app-surface)]'
-  const documentPageClass = `mybook-document-page ${isFullWidth ? '' : 'mybook-document-page--continuous '}mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-20 pb-[55vh] pt-3 shadow-none sm:px-24 md:px-28 md:pb-[55vh] md:pt-7`
+  const documentPageClass = `mybook-document-page ${isFullWidth ? '' : 'mybook-document-page--continuous '}mx-auto min-h-[calc(100dvh-13rem)] w-full bg-[var(--app-surface)] px-20 pb-[55vh] pt-6 shadow-none sm:px-24 md:px-28 md:pb-[55vh] md:pt-7`
   const placeholderTitle = 'Untitled'
-  const documentTitle = title.trim() || placeholderTitle
+  const validSavedTitle = file.name ? (titleInputValue(file.name) || placeholderTitle) : placeholderTitle
+  const documentTitle = duplicateTitleFile ? validSavedTitle : (title.trim() || placeholderTitle)
   const localSaveStatusActive = status === 'editing' || status === 'saving-locally' || status === 'saved-locally'
   const editorStatus = localSaveStatusActive ? status : file.syncStatus
   const editorStatusWorkspace = file.workspaceType === 'local' || file.syncStatus === 'local' ? 'local' : 'drive'
@@ -2473,7 +2578,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 navigate(target?.type === 'spreadsheet' ? `/spreadsheet/${targetId}` : `/document/${targetId}`)
               }}
             >
-              <div className="mb-5">
+              <div className="relative mb-5">
+                {duplicateTitleWarning ? (
+                  <p
+                    role="alert"
+                    id="page-document-title-duplicate-error"
+                    className="absolute bottom-full left-0 z-10 mb-1.5 flex max-w-full items-center gap-1.5 text-xs font-medium text-destructive pointer-events-none"
+                  >
+                    <ExclamationCircleIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+                    <span className="truncate">{duplicateTitleWarning}</span>
+                  </p>
+                ) : null}
                 <label htmlFor="page-document-title" className="sr-only">Page title</label>
                 <textarea
                   ref={pageTitleRef}
@@ -2481,6 +2596,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   value={title}
                   rows={1}
                   placeholder={placeholderTitle}
+                  aria-invalid={Boolean(duplicateTitleWarning)}
+                  aria-describedby={duplicateTitleWarning ? 'page-document-title-duplicate-error' : undefined}
                   onFocus={(event) => {
                     const titleElement = event.currentTarget
                     window.requestAnimationFrame(() => titleElement.setSelectionRange(0, 0))
@@ -2490,9 +2607,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return
                     event.preventDefault()
-                    editor.chain().focus('start').run()
+                    const firstNode = editor.state.doc.firstChild
+                    const isFirstNodeEmptyParagraph = firstNode?.type.name === 'paragraph' && firstNode.content.size === 0
+                    if (isFirstNodeEmptyParagraph) {
+                      editor.chain().focus('start').run()
+                    } else {
+                      editor.chain().focus().insertContentAt(0, { type: 'paragraph' }).setTextSelection(1).run()
+                    }
                   }}
-                  className="block min-h-[2.1875rem] sm:min-h-[3rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.875rem] font-extrabold leading-[1.2] tracking-normal text-foreground outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-[2.75rem] sm:leading-[1.15]"
+                  className={`block min-h-[2.1875rem] sm:min-h-[3rem] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[1.875rem] font-extrabold leading-[1.2] tracking-normal outline-none placeholder:text-muted-foreground placeholder:opacity-60 focus-visible:ring-0 sm:text-[2.75rem] sm:leading-[1.15] ${duplicateTitleWarning ? 'text-destructive' : 'text-foreground'}`}
                   aria-label="Page title"
                 />
               </div>

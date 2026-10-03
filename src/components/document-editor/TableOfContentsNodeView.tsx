@@ -21,6 +21,18 @@ export function TableOfContentsNodeView({ editor, getPos, selected }: NodeViewPr
 
   const goToHeading = useCallback((pos: number) => {
     const { state, view } = editor
+    const targetNode = state.doc.nodeAt(pos)
+    if (targetNode?.type.name === 'toggleBlock') {
+      const dom = view.nodeDOM(pos)
+      if (dom instanceof HTMLElement) {
+        dom.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        const titleInput = dom.querySelector<HTMLInputElement>('input.mybook-toggle-title')
+        if (titleInput) {
+          titleInput.focus({ preventScroll: true })
+          return
+        }
+      }
+    }
     const selection = TextSelection.near(state.doc.resolve(Math.min(pos + 1, state.doc.content.size)))
     view.dispatch(state.tr.setSelection(selection).scrollIntoView())
     view.focus()

@@ -16,11 +16,11 @@ function failure(error: unknown, fallback: string): RepositoryResult<never> {
   return { success: false, error: error instanceof Error ? error.message : fallback }
 }
 
-function cleanName(name: string) {
+export function cleanName(name: string) {
   return name.trim().replace(/\s+/g, ' ')
 }
 
-function appFileName(name: string, type: FileType) {
+export function appFileName(name: string, type: FileType) {
   const cleaned = cleanName(name)
   const withoutExtension = type === 'spreadsheet'
     ? cleaned.replace(/\.xlsx$/i, '')
@@ -547,6 +547,13 @@ export const fileRepository = {
       processPendingDriveSyncInBackground()
       return { success: true, data: copy }
     } catch (error) { return failure(error, 'Could not duplicate file.') }
+  },
+  async isNameAvailable(name: string, folderId: string | null, excludedId?: string): Promise<boolean> {
+    try {
+      const normalized = cleanName(name)
+      if (!normalized) return false
+      return await uniqueFileName(normalized, folderId, excludedId)
+    } catch (error) { devLog('error', 'Could not check file name availability.', error); return true }
   },
 }
 

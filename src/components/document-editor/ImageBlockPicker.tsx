@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEven
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
+import { compressImageFile } from '../../utils/imageCompression'
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
 
@@ -156,13 +157,7 @@ export function ImageBlockPicker({
     setUploadError(null)
 
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result))
-        reader.onerror = () => reject(reader.error ?? new Error('Image read failed.'))
-        reader.readAsDataURL(selectedFile)
-      })
-
+      const dataUrl = await compressImageFile(selectedFile)
       const alt = selectedFile.name.replace(/\.[^.]+$/u, '')
       onInsert(dataUrl, alt)
     } catch {

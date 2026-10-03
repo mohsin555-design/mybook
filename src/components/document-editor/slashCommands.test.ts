@@ -95,4 +95,28 @@ describe('slashCommands', () => {
     editor.destroy()
     element.remove()
   })
+
+  it('includes 5 Toggle insertion options under Lists category', () => {
+    const toggleOptions = ['toggle', 'toggle-h1', 'toggle-h2', 'toggle-h3', 'toggle-h4']
+    for (const id of toggleOptions) {
+      const cmd = slashCommands.find((c) => c.id === id)
+      expect(cmd).toBeDefined()
+      expect(cmd?.category).toBe('Lists')
+    }
+
+    expect(slashCommands.find((c) => c.id === 'toggle')?.title).toBe('Toggle')
+    expect(slashCommands.find((c) => c.id === 'toggle-h1')?.title).toBe('Toggle H1')
+    expect(slashCommands.find((c) => c.id === 'toggle-h2')?.title).toBe('Toggle H2')
+    expect(slashCommands.find((c) => c.id === 'toggle-h3')?.title).toBe('Toggle H3')
+    expect(slashCommands.find((c) => c.id === 'toggle-h4')?.title).toBe('Toggle H4')
+  })
+
+  it('filters toggle options on query "toggle"', () => {
+    const results = filterSlashCommands('toggle')
+    expect(results.some((c) => c.id === 'toggle')).toBe(true)
+    expect(results.some((c) => c.id === 'toggle-h1')).toBe(true)
+    expect(results.some((c) => c.id === 'toggle-h2')).toBe(true)
+    expect(results.some((c) => c.id === 'toggle-h3')).toBe(true)
+    expect(results.some((c) => c.id === 'toggle-h4')).toBe(true)
+  })
 })

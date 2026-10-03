@@ -58,6 +58,23 @@ describe('IndexedDB repositories', () => {
     ])
   })
 
+  it('checks file name availability and rejects renaming to duplicate name', async () => {
+    const first = await fileRepository.create('document')
+    const second = await fileRepository.create('document')
+    await fileRepository.update(first.data!.id, { name: 'Quarterly Report' })
+
+    // Name availability checks
+    expect(await fileRepository.isNameAvailable('Quarterly Report', null)).toBe(false)
+    expect(await fileRepository.isNameAvailable('quarterly report', null)).toBe(false)
+    expect(await fileRepository.isNameAvailable('Quarterly Report', null, first.data!.id)).toBe(true)
+    expect(await fileRepository.isNameAvailable('Different Report', null)).toBe(true)
+
+    // Rejects renaming second to first's name
+    const updateResult = await fileRepository.update(second.data!.id, { name: 'Quarterly Report' })
+    expect(updateResult.success).toBe(false)
+    expect(updateResult.error).toBe('A file with this name already exists here.')
+  })
+
   it('creates nested folders and queues offline Drive work', async () => {
     const parent = await folderRepository.create('Projects')
     const child = await folderRepository.create('2026', parent.data!.id)

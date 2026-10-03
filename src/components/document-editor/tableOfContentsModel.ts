@@ -23,6 +23,22 @@ export function tableOfContentsNode() {
 export function getTableOfContentsEntries(doc: ProseMirrorNode): TableOfContentsEntry[] {
   const entries: TableOfContentsEntry[] = []
   doc.descendants((node, pos) => {
+    if (node.type.name === 'toggleBlock') {
+      const level = Number(node.attrs.level)
+      if (level === 1 || level === 2 || level === 3 || level === 4) {
+        const text = String(node.attrs.title ?? '').trim()
+        if (text) {
+          entries.push({
+            id: `toc-${pos}-${entries.length}`,
+            level,
+            pos,
+            text,
+          })
+        }
+      }
+      return true
+    }
+
     if (node.type.name !== 'heading') return true
     const level = Number(node.attrs.level)
     if (level !== 1 && level !== 2 && level !== 3 && level !== 4) return false

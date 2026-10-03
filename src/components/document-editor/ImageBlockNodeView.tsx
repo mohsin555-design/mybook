@@ -643,6 +643,8 @@ export function ImageBlockNodeView({
             ref={imageRef}
             src={src}
             alt={alt}
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             draggable={false}
             onLoad={() => setImageStatus('loaded')}

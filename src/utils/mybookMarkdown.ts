@@ -85,8 +85,10 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   if (node.type === 'toggleBlock') {
     const title = typeof node.attrs?.title === 'string' ? node.attrs.title : 'Toggle'
     const open = node.attrs?.open === false ? 'false' : 'true'
+    const level = Number(node.attrs?.level)
+    const levelAttr = (level === 1 || level === 2 || level === 3 || level === 4) ? ` level=${level}` : ''
     const body = (node.content ?? []).map((child) => blockMarkdown(child, depth)).filter(Boolean).join('\n\n')
-    return [`:::toggle title=${quoteMarkdownAttribute(title)} open=${open}`, body, ':::'].filter(Boolean).join('\n')
+    return [`:::toggle title=${quoteMarkdownAttribute(title)} open=${open}${levelAttr}`, body, ':::'].filter(Boolean).join('\n')
   }
   if (node.type === 'imageBlock') return imageMarkdown(node)
   if (node.type === 'audioBlock') return audioMarkdown(node)
@@ -510,6 +512,13 @@ function parseToggleOpen(value: string | undefined) {
   if (/^true$/iu.test(value)) return true
   if (/^false$/iu.test(value)) return false
   return true
+}
+
+function parseToggleLevel(value: string | undefined): 1 | 2 | 3 | 4 | null {
+  if (!value) return null
+  const cleaned = value.replace(/^['"]|['"]$/g, '')
+  const num = Number(cleaned)
+  return (num === 1 || num === 2 || num === 3 || num === 4) ? (num as 1 | 2 | 3 | 4) : null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1054,19 +1063,30 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
         continue
       }
 
-      const toggle = /^:::toggle(?:\s+title=("([^"]*)"|'([^']*)'|[^\s]+))?(?:\s+open=(\S+))?\s*$/iu.exec(opener)
+      const toggle = /^:::toggle(?:\s+(?:title=(?:"([^"]*)"|'([^']*)'|[^\s]+)|open=(\S+)|level=(\S+)))*\s*$/iu.exec(opener)
       if (!toggle || !collected.closed) {
         content.push(rawParagraph(collected.lines))
         continue
       }
+      const titleMatch = /\btitle=(?:"([^"]*)"|'([^']*)'|([^\s]+))/iu.exec(opener)
+      const openMatch = /\bopen=(\S+)/iu.exec(opener)
+      const levelMatch = /\blevel=(\S+)/iu.exec(opener)
+      const rawTitle = titleMatch ? (titleMatch[1] ?? titleMatch[2] ?? titleMatch[3] ?? 'Toggle') : 'Toggle'
       const parsed = myBookMarkdownToDocument(collected.lines.slice(1, -1).join('\n'))
-        const rawTitle = toggle[2] ?? toggle[3] ?? toggle[1] ?? 'Toggle'
-        content.push({
-          type: 'toggleBlock',
-          attrs: { title: readAttributeValue(rawTitle) ?? 'Toggle', open: parseToggleOpen(toggle[4]) },
-          content: parsed.content?.length ? parsed.content : [{ type: 'paragraph' }],
-        })
-        continue
+      const parsedAttrs: Record<string, unknown> = {
+        title: readAttributeValue(rawTitle) ?? 'Toggle',
+        open: parseToggleOpen(openMatch?.[1]),
+      }
+      const level = parseToggleLevel(levelMatch?.[1])
+      if (level !== null) {
+        parsedAttrs.level = level
+      }
+      content.push({
+        type: 'toggleBlock',
+        attrs: parsedAttrs,
+        content: parsed.content?.length ? parsed.content : [{ type: 'paragraph' }],
+      })
+      continue
     }
     if (blockKind === 'unknown') {
       flushParagraph()

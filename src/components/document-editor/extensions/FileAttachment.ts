@@ -37,6 +37,11 @@ export const FileAttachment = Node.create({
           '',
         renderHTML: (attributes) => ({ 'data-src': attributes.src ?? '' }),
       },
+      pdfPreview: {
+        default: false,
+        parseHTML: (element) => element.getAttribute('data-pdf-preview') === 'true',
+        renderHTML: (attributes) => attributes.pdfPreview ? { 'data-pdf-preview': 'true' } : {},
+      },
     }
   },
 

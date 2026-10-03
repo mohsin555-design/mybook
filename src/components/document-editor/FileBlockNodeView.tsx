@@ -60,6 +60,10 @@ export function FileBlockNodeView({
   }, [fileName])
 
   const isUrl = Boolean(src && (src.startsWith('http://') || src.startsWith('https://')))
+  const isLocalFile = src.startsWith('data:') || src.startsWith('blob:')
+  const isPdf = String(mimeType).toLowerCase() === 'application/pdf' || /\.pdf$/iu.test(fileName) || /^data:application\/pdf(?:;|,)/iu.test(src)
+  const canPreviewPdf = isLocalFile && isPdf
+  const isPdfPreview = canPreviewPdf && node.attrs.pdfPreview === true
   const { extension, label, icon: FileIcon, sizeFormatted } = getFileTypeDetails(fileName, mimeType, size)
 
   const [isMoreOpen, setIsMoreOpen] = useState(false)
@@ -174,6 +178,12 @@ export function FileBlockNodeView({
     }
   }
 
+  const togglePdfPreview = () => {
+    if (!canPreviewPdf) return
+    updateAttributes({ pdfPreview: !isPdfPreview })
+    setIsMoreOpen(false)
+  }
+
   const handleDuplicate = () => {
     const pos = getPos()
     if (pos === undefined) return
@@ -234,34 +244,32 @@ export function FileBlockNodeView({
         }`}
       >
         <CardContent className="mybook-bookmark-content px-0">
-          <button
-            type="button"
-            onClick={handleOpen}
-            onKeyDown={handleKeyDown}
-            aria-label={`Open ${displayName}`}
-            className="mybook-bookmark-card"
-          >
-            {/* Left: File-type logo container (reduced thumb) */}
-            <span className="mybook-bookmark-logo" aria-hidden="true">
-              <HugeiconsIcon icon={FileIcon} strokeWidth={1.75} className="size-5 text-primary" />
-            </span>
-
-            {/* Middle: File Name without extension & Secondary Info matching bookmark domain font style */}
-            <span className="mybook-bookmark-body">
-              <span
-                className="mybook-bookmark-title"
-                title={fileName}
-              >
-                {displayName}
+          {isPdfPreview ? (
+            <div className="w-full p-3">
+              <iframe
+                title={`PDF preview: ${fileName}`}
+                src={src}
+                className="block h-[min(70dvh,56rem)] min-h-72 w-full rounded-md bg-muted"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">If the preview does not load, use Download from More actions.</p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleOpen}
+              onKeyDown={handleKeyDown}
+              aria-label={`Open ${displayName}`}
+              className="mybook-bookmark-card"
+            >
+              <span className="mybook-bookmark-logo" aria-hidden="true">
+                <HugeiconsIcon icon={FileIcon} strokeWidth={1.75} className="size-5 text-primary" />
               </span>
-              <span
-                className="mybook-bookmark-domain"
-                title={label}
-              >
-                {metaText}
+              <span className="mybook-bookmark-body">
+                <span className="mybook-bookmark-title" title={fileName}>{displayName}</span>
+                <span className="mybook-bookmark-domain" title={label}>{metaText}</span>
               </span>
-            </span>
-          </button>
+            </button>
+          )}
         </CardContent>
 
         {/* Right: Action Toolbar on Hover */}
@@ -379,6 +387,15 @@ export function FileBlockNodeView({
                   <HugeiconsIcon icon={SquareArrowOutUpRightIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
                   <span className="whitespace-nowrap">Open</span>
                 </DropdownMenuItem>
+              ) : null}
+
+              {canPreviewPdf ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={togglePdfPreview} className="flex items-center gap-2">
+                    <span className="whitespace-nowrap">{isPdfPreview ? 'Show as file card' : 'Embed PDF'}</span>
+                  </DropdownMenuItem>
+                </>
               ) : null}
 
               <DropdownMenuItem

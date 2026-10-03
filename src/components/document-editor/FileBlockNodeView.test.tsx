@@ -14,6 +14,7 @@ describe('FileBlockNodeView', () => {
       name: string
       mimeType: string
       size: number
+      pdfPreview?: boolean
     }
     nodeSize: number
     toJSON: () => unknown
@@ -145,6 +146,60 @@ describe('FileBlockNodeView', () => {
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://example.com/files/spec.pdf')
     })
+  })
+
+  it('offers inline preview only for uploaded PDFs and keeps the original download action', () => {
+    const uploadedPdfNode: typeof mockNode = {
+      ...mockNode,
+      attrs: {
+        src: 'data:application/pdf;base64,JVBERi0xLjQ=',
+        name: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+      },
+    }
+    render(<FileBlockNodeView {...createProps(uploadedPdfNode)} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Embed PDF' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Download' })).toBeInTheDocument()
+  })
+
+  it('switches an uploaded PDF to inline preview and can switch back to its file card', () => {
+    const uploadedPdfNode: typeof mockNode = {
+      ...mockNode,
+      attrs: {
+        src: 'data:application/pdf;base64,JVBERi0xLjQ=',
+        name: 'report.pdf',
+        mimeType: 'application/pdf',
+        size: 100,
+      },
+    }
+    const props = createProps(uploadedPdfNode)
+    const { rerender } = render(<FileBlockNodeView {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Embed PDF' }))
+    expect(updateAttributes).toHaveBeenCalledWith({ pdfPreview: true })
+
+    uploadedPdfNode.attrs = { ...uploadedPdfNode.attrs, pdfPreview: true }
+    rerender(<FileBlockNodeView {...props} />)
+    expect(screen.getByTitle('PDF preview: report.pdf')).toHaveAttribute('src', uploadedPdfNode.attrs.src)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show as file card' }))
+    expect(updateAttributes).toHaveBeenLastCalledWith({ pdfPreview: false })
+  })
+
+  it('does not offer inline PDF preview for external PDF URLs', () => {
+    render(<FileBlockNodeView {...createProps()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
+
+    expect(screen.queryByRole('menuitem', { name: 'Embed PDF' })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Open' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Copy link' })).toBeInTheDocument()
   })
 
   it('opens Replace file popover when Replace action is clicked', () => {

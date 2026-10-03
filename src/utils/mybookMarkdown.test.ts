@@ -487,6 +487,17 @@ describe('MyBook Markdown serialization', () => {
     expect(markdown).toContain(':::file name="report.pdf" mime="application/pdf" size=12345\ndata:application/pdf;base64,abc123\n:::')
   })
 
+  it('preserves the uploaded PDF inline preview setting in MyBook Markdown', () => {
+    const source = doc({
+      type: 'fileAttachment',
+      attrs: { name: 'report.pdf', mimeType: 'application/pdf', size: 12345, src: 'data:application/pdf;base64,abc123', pdfPreview: true },
+    })
+    const markdown = documentToMyBookMarkdown('PDF', source)
+
+    expect(markdown).toContain(':::file name="report.pdf" mime="application/pdf" size=12345 preview=pdf\ndata:application/pdf;base64,abc123\n:::')
+    expect(myBookMarkdownToDocument(markdown).content?.[0]?.attrs?.pdfPreview).toBe(true)
+  })
+
   it('exports simple tables as Markdown tables', () => {
     const markdown = documentToMyBookMarkdown('Simple Table', doc({
       type: 'table',

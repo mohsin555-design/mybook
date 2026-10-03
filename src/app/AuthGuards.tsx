@@ -25,11 +25,14 @@ export function RedirectAuthenticated() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const isLoading = useAuthStore((state) => state.isLoading)
   const workspaceMode = useWorkspaceStore((state) => state.mode)
+  const location = useLocation()
+  const isGoogleSetupReturn = new URLSearchParams(location.search).get('setup') === 'google'
 
   if (isLoading) {
     return <LoadingOverlay message="Checking your session…" />
   }
 
-  return (isAuthenticated && workspaceMode === 'drive') || workspaceMode === 'local' ? <Navigate to="/home" replace /> : <Outlet />
+  return ((isAuthenticated && workspaceMode === 'drive' && !isGoogleSetupReturn) || workspaceMode === 'local')
+    ? <Navigate to="/home" replace />
+    : <Outlet />
 }
-

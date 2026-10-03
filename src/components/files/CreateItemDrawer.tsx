@@ -8,9 +8,10 @@ import { MobileBottomSheet } from '../common/MobileBottomSheet'
 interface CreateItemDrawerProps {
   folderId: string | null
   onCreateFolder: () => void
+  onImportDocument?: () => void
 }
 
-export function CreateItemDrawer({ folderId, onCreateFolder }: CreateItemDrawerProps) {
+export function CreateItemDrawer({ folderId, onCreateFolder, onImportDocument }: CreateItemDrawerProps) {
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
 
@@ -25,6 +26,11 @@ export function CreateItemDrawer({ folderId, onCreateFolder }: CreateItemDrawerP
     onCreateFolder()
   }
 
+  const importDocument = () => {
+    setIsOpen(false)
+    onImportDocument?.()
+  }
+
   return (
     <MobileBottomSheet
       isOpen={isOpen}
@@ -36,6 +42,7 @@ export function CreateItemDrawer({ folderId, onCreateFolder }: CreateItemDrawerP
     >
       <div role="menu" aria-label="Create options" className="space-y-1 pb-[env(safe-area-inset-bottom)]">
         <CreateOption iconSrc="/icons/file.svg" label="New document" onSelect={() => void createFile('document')} />
+        {onImportDocument ? <CreateOption iconSrc="/icons/file.svg" label="Import document" onSelect={importDocument} /> : null}
         <CreateOption iconSrc="/icons/sheet.svg" label="New spreadsheet" onSelect={() => void createFile('spreadsheet')} />
         <CreateOption iconSrc="/icons/folder.svg" label="New folder" onSelect={createFolder} />
       </div>

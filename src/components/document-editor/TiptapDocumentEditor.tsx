@@ -65,6 +65,7 @@ import { analyzePastedUrl, type PasteUrlInfo } from './pasteUrlModel'
 import { filterSlashCommands, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
 import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
+import { convertRtfToHtml, documentImportTitle, isSupportedDocumentImport, normalizeInlineFormatting, plainTextToHtml, takeDocumentImport } from '../../services/documentImport'
 import { deletedToast } from '../../utils/deleteToast'
 import { toast } from '../ui/toast'
 import { Button } from '../ui/button'
@@ -911,6 +912,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [pasteAsMenu, setPasteAsMenu] = useState<PasteAsMenuState | null>(null)
   const [inlineLinkToolbar, setInlineLinkToolbar] = useState<InlineLinkToolbarState | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const handledPendingImportRef = useRef<string | null>(null)
+  const importDocumentFileRef = useRef<((selectedFile: File) => Promise<void>) | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const pageTitleRef = useRef<HTMLTextAreaElement>(null)
@@ -1851,6 +1854,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     editorContentRef.current = content
     setLoadedId(file.id)
   }, [content, editor, file, isHydrated, loadedId])
+
+  useEffect(() => {
+    if (!editor || !file || !isHydrated || loadedId !== file.id || handledPendingImportRef.current === file.id) return
+    const pendingFile = takeDocumentImport(file.id)
+    if (!pendingFile) return
+    handledPendingImportRef.current = file.id
+    void importDocumentFileRef.current?.(pendingFile)
+  }, [editor, file, isHydrated, loadedId])
+
   useEffect(() => {
     const titleElement = pageTitleRef.current
     if (!titleElement) return
@@ -2134,30 +2146,47 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }
 
   const importDocumentFile = async (selectedFile: File) => {
+    if (!isSupportedDocumentImport(selectedFile)) {
+      setDocxMessage('Choose a supported Markdown, text, Word, HTML, or Rich Text file.')
+      return
+    }
     try {
-      if (/\.md$/i.test(selectedFile.name)) {
+      let statusMessage = ''
+      if (/\.(?:md|markdown)$/i.test(selectedFile.name)) {
         const parsed = myBookMarkdownToDocument(await selectedFile.text())
         editor.commands.setContent(parsed)
+        statusMessage = 'Markdown imported.'
+      } else if (/\.txt$/i.test(selectedFile.name)) {
+        editor.commands.setContent(cleanPastedHtml(plainTextToHtml(await selectedFile.text())))
+        statusMessage = 'Text file imported.'
+      } else if (/\.html?$/i.test(selectedFile.name)) {
+        editor.commands.setContent(cleanPastedHtml(normalizeInlineFormatting(await selectedFile.text())))
+        statusMessage = 'HTML imported.'
+      } else if (/\.rtf$/i.test(selectedFile.name)) {
+        const html = await convertRtfToHtml(await selectedFile.arrayBuffer())
+        editor.commands.setContent(cleanPastedHtml(normalizeInlineFormatting(html)))
+        statusMessage = 'Rich Text file imported.'
       } else {
         const mammoth = (await import('mammoth')).default
         const result = await mammoth.convertToHtml({ arrayBuffer: await selectedFile.arrayBuffer() })
-        editor.commands.setContent(result.value)
-        setDocxMessage(result.messages.length ? 'DOCX imported with some formatting simplified.' : 'DOCX imported.')
+        editor.commands.setContent(cleanPastedHtml(normalizeInlineFormatting(result.value)))
+        statusMessage = result.messages.length ? 'Word document imported with some formatting simplified.' : 'Word document imported.'
       }
-      const importedTitle = selectedFile.name.replace(/\.docx$/i, '')
-        .replace(/\.mybook\.md$/i, '')
-        .replace(/\.md$/i, '')
+      const importedTitle = documentImportTitle(selectedFile.name)
       const updateResult = await fileRepository.update(file.id, { name: importedTitle })
       if (updateResult.success) {
         lastSavedTitleRef.current = importedTitle
         updateTitle(importedTitle)
+      } else {
+        statusMessage = 'Content imported, but the document title could not be updated.'
       }
-      if (/\.md$/i.test(selectedFile.name)) setDocxMessage('Writin Markdown imported.')
+      setDocxMessage(statusMessage)
     } catch (error) {
       devLog('error', 'Could not import document.', error)
       setDocxMessage('Document import failed.')
     }
   }
+  importDocumentFileRef.current = importDocumentFile
 
   const insertImageFile = async (selectedFile: File) => {
     try {
@@ -2501,7 +2530,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         </div>
       </nav>
       <div className="hidden"><DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="desktop" /></div>
-      <input ref={importInputRef} type="file" accept=".docx,.md,.mybook.md,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" aria-label="Import document file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void importDocumentFile(selectedFile); event.target.value = '' }} />
+      <input ref={importInputRef} type="file" accept=".md,.markdown,.mybook.md,.txt,.docx,.html,.htm,.rtf,text/markdown,text/plain,text/html,application/rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" aria-label="Import document file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void importDocumentFile(selectedFile); event.target.value = '' }} />
       <input ref={fileInputRef} type="file" className="sr-only" aria-label="Attach file" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertAttachmentFile(selectedFile); event.target.value = '' }} />
       <input ref={imageInputRef} type="file" accept="image/*" className="sr-only" aria-label="Insert image" onChange={(event) => { const selectedFile = event.target.files?.[0]; if (selectedFile) void insertImageFile(selectedFile); event.target.value = '' }} />
       {docxMessage ? <p role="status" className="mx-auto mt-3 max-w-3xl px-4 text-sm text-muted-foreground sm:px-6">{docxMessage}<span className="sr-only">{docxBlob ? ` Export size ${docxBlob.size} bytes.` : ''}</span></p> : null}

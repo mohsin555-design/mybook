@@ -68,6 +68,7 @@ import {
   SidebarProvider,
 } from '../ui/sidebar'
 import { MobileBottomNavigation } from './MobileBottomNavigation'
+import { isSupportedDocumentImport, queueDocumentImport } from '../../services/documentImport'
 
 export function AppLayout() {
   const { theme, toggleTheme } = useAppStore()
@@ -78,6 +79,7 @@ export function AppLayout() {
   useLocalMirrorSync()
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const importInputRef = useRef<HTMLInputElement>(null)
   const isEditor = pathname.startsWith('/document/') || pathname.startsWith('/spreadsheet/')
   const favorites = activeFavoriteItems(files, folders)
   const sidebarFavorites = favorites.slice(0, 5)
@@ -236,6 +238,21 @@ export function AppLayout() {
     void fileRepository.create('document', targetFolderId).then((result) => {
       if (result.data) navigate(`/document/${result.data.id}`)
     })
+  }
+
+  const handleImportDocument = async (selectedFile: File | undefined) => {
+    if (!selectedFile) return
+    if (!isSupportedDocumentImport(selectedFile)) {
+      toast.add({ title: 'Unsupported document type', description: 'Choose a Markdown, text, Word, HTML, or Rich Text document.', type: 'error' })
+      return
+    }
+    const result = await fileRepository.create('document', targetFolderId)
+    if (!result.data) {
+      toast.add({ title: 'Import failed', description: result.error ?? 'Could not create a document for this import.', type: 'error' })
+      return
+    }
+    queueDocumentImport(result.data.id, selectedFile)
+    navigate(`/document/${result.data.id}`)
   }
 
   const openSearchResult = (result: (typeof searchResults)[number]) => {
@@ -498,6 +515,17 @@ export function AppLayout() {
       </Sidebar>
 
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".md,.markdown,.mybook.md,.txt,.docx,.html,.htm,.rtf,text/markdown,text/plain,text/html,application/rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          className="sr-only"
+          aria-label="Import document file"
+          onChange={(event) => {
+            void handleImportDocument(event.target.files?.[0])
+            event.target.value = ''
+          }}
+        />
         {!isEditor ? (
           <AppHeader
             title={headerTitle}
@@ -562,6 +590,7 @@ export function AppLayout() {
               showAddNew ? (
                 <>
                   <DropdownMenuItem onClick={handleCreateDocument}>Document</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setIsCreatingFolder(true)}>Folder</DropdownMenuItem>
                 </>
               ) : undefined

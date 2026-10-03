@@ -41,6 +41,20 @@ describe('slashCommands', () => {
     expect(musicResults.some((c) => c.id === 'audio')).toBe(true)
   })
 
+  it('prioritizes matching command titles over incidental description matches', () => {
+    expect(filterSlashCommands('fil').map((command) => command.id)).toEqual(['file'])
+    expect(filterSlashCommands('file').map((command) => command.id)).toEqual(['file'])
+  })
+
+  it('keeps media keyword search broad across media commands', () => {
+    expect(filterSlashCommands('media').map((command) => command.id)).toEqual([
+      'image',
+      'video',
+      'audio',
+      'file',
+    ])
+  })
+
   it('dispatches mybook:insert-video event on runSlashCommand with video', () => {
     const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
     const mockEditor = {

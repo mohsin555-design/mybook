@@ -969,11 +969,34 @@ export async function openDriveFileInBrowser(fileId: string) {
   window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank', 'noopener,noreferrer')
 }
 
-export async function getDriveFileStatus(fileId: string): Promise<{ exists: boolean; modifiedTime?: string; error?: string }> {
-  const result = await driveFetch(`/files/${encodeURIComponent(fileId)}?fields=id,trashed,modifiedTime`)
+export async function getDriveFileStatus(fileId: string): Promise<{
+  exists: boolean
+  name?: string
+  mimeType?: string
+  parents?: string[]
+  modifiedTime?: string
+  appProperties?: Record<string, string>
+  error?: string
+}> {
+  const result = await driveFetch(`/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,parents,trashed,modifiedTime,appProperties`)
   if (result.success) {
-    const file = await result.response.json() as { id?: string; trashed?: boolean; modifiedTime?: string }
-    return { exists: Boolean(file.id) && !file.trashed, modifiedTime: file.modifiedTime }
+    const file = await result.response.json() as {
+      id?: string
+      name?: string
+      mimeType?: string
+      parents?: string[]
+      trashed?: boolean
+      modifiedTime?: string
+      appProperties?: Record<string, string>
+    }
+    return {
+      exists: Boolean(file.id) && !file.trashed,
+      name: file.name,
+      mimeType: file.mimeType,
+      parents: file.parents,
+      modifiedTime: file.modifiedTime,
+      appProperties: file.appProperties,
+    }
   }
   if (result.error.includes('not found')) return { exists: false }
   return { exists: false, error: result.error }
@@ -1578,38 +1601,79 @@ export async function importDriveFilesToLocal(
   onProgress?.({ loaded: processedFiles, total: totalDiscoveredFiles, percent: 100 })
 }
 
+const refreshDriveFileInFlight = new Map<string, Promise<{ updated: boolean; modifiedTime?: string; error?: string }>>()
+
 export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated: boolean; modifiedTime?: string; error?: string }> {
-  const local = await db.files.get(fileId)
-  if (!local?.driveFileId) return { updated: false }
-  try {
-    const status = await getDriveFileStatus(local.driveFileId)
-    if (!status.exists) return { updated: false, error: status.error ?? 'Drive file was not found.' }
-    const driveModifiedTime = status.modifiedTime ?? new Date().toISOString()
-    const driveFile: DriveFile = {
-      id: local.driveFileId,
-      name: local.name,
-      mimeType: local.type === 'spreadsheet' ? XLSX_MIME : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      modifiedTime: driveModifiedTime,
+  const existingFlight = refreshDriveFileInFlight.get(fileId)
+  if (existingFlight) return existingFlight
+
+  const flight = (async () => {
+    const local = await db.files.get(fileId)
+    if (!local?.driveFileId) return { updated: false }
+    try {
+      const status = await getDriveFileStatus(local.driveFileId)
+      if (!status.exists) return { updated: false, error: status.error ?? 'Drive file was not found.' }
+      const driveModifiedTime = status.modifiedTime ?? new Date().toISOString()
+
+      // Skip reading content if Drive file hasn't been modified after local sync
+      if (!driveModifiedAfterLastSync(driveModifiedTime, local.lastSyncedAt)) {
+        return { updated: false, modifiedTime: driveModifiedTime }
+      }
+
+      // Skip if local has pending unpushed sync changes
+      const unresolved = await unresolvedSyncIndex()
+      if (unresolved.has('file', local.id) || local.syncStatus === 'pending') {
+        return { updated: false, modifiedTime: driveModifiedTime }
+      }
+
+      const fileType = local.type ?? inferFileType(status.name ?? local.name, status.mimeType ?? '')
+      const driveFile: DriveFile = {
+        id: local.driveFileId,
+        name: status.name ?? (fileType === 'document' ? safeMarkdownName(local.name) : local.name),
+        mimeType: status.mimeType ?? (fileType === 'spreadsheet' ? XLSX_MIME : MYBOOK_MARKDOWN_MIME),
+        parents: status.parents,
+        modifiedTime: driveModifiedTime,
+        appProperties: status.appProperties,
+      }
+      const imported = await readDriveFileAsLocalContent(driveFile, local.id)
+      const content = imported.content
+      const cleanTitle = status.name ? localFileName(status.name, fileType) : local.name
+      const contentChanged = Boolean(content && content !== local.content)
+      const titleChanged = Boolean(cleanTitle && cleanTitle !== local.name)
+
+      if (!contentChanged && !titleChanged) {
+        await db.files.update(local.id, {
+          workspaceType: 'drive',
+          lastSyncedAt: driveModifiedTime,
+          syncStatus: 'backed-up',
+          syncError: null,
+        })
+        return { updated: false, modifiedTime: driveModifiedTime }
+      }
+
+      if (contentChanged) {
+        await saveVersionBeforeDriveUpdate(local.id, driveModifiedTime)
+      }
+
+      await db.files.update(local.id, {
+        ...(contentChanged ? { content } : {}),
+        ...(titleChanged ? { name: cleanTitle } : {}),
+        workspaceType: 'drive',
+        lastSyncedAt: driveModifiedTime,
+        syncStatus: 'backed-up',
+        syncError: null,
+        updatedAt: driveModifiedTime,
+      })
+      return { updated: true, modifiedTime: driveModifiedTime }
+    } catch (error) {
+      return { updated: false, error: error instanceof Error ? error.message : 'Could not refresh the Drive file.' }
     }
-    const imported = await readDriveFileAsLocalContent(driveFile, local.id)
-    const content = imported.content
-    if (!content || content === local.content) {
-      await db.files.update(local.id, { workspaceType: 'drive', lastSyncedAt: driveModifiedTime, syncStatus: 'backed-up', syncError: null })
-      return { updated: false, modifiedTime: driveModifiedTime }
-    }
-    await saveVersionBeforeDriveUpdate(local.id, driveModifiedTime)
-    await db.files.update(local.id, {
-      content,
-      workspaceType: 'drive',
-      lastSyncedAt: driveModifiedTime,
-      syncStatus: 'backed-up',
-      syncError: null,
-      updatedAt: driveModifiedTime,
-    })
-    return { updated: true, modifiedTime: driveModifiedTime }
-  } catch (error) {
-    return { updated: false, error: error instanceof Error ? error.message : 'Could not refresh the Drive file.' }
-  }
+  })().finally(() => {
+    refreshDriveFileInFlight.delete(fileId)
+  })
+
+  refreshDriveFileInFlight.set(fileId, flight)
+  return flight
 }
 
 // Share setup within a tab; Web Locks also serialize tabs on the same origin.

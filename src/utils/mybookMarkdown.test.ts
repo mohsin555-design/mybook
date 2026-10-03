@@ -719,6 +719,15 @@ describe('MyBook Markdown parsing', () => {
     ))
   })
 
+  it('round trips toggle headings with levels 1 to 4', () => {
+    expectRoundTrip(doc(
+      { type: 'toggleBlock', attrs: { title: 'Section 1', open: true, level: 1 }, content: [paragraph(text('H1 body'))] },
+      { type: 'toggleBlock', attrs: { title: 'Section 2', open: false, level: 2 }, content: [paragraph(text('H2 body'))] },
+      { type: 'toggleBlock', attrs: { title: 'Section 3', open: true, level: 3 }, content: [paragraph(text('H3 body'))] },
+      { type: 'toggleBlock', attrs: { title: 'Section 4', open: false, level: 4 }, content: [paragraph(text('H4 body'))] },
+    ))
+  })
+
   it('preserves legacy toggle blocks without open as open by default', () => {
     expect(normalize(myBookMarkdownToDocument(':::toggle title="Legacy details"\nContent\n:::'))).toEqual(normalize(doc(
       { type: 'toggleBlock', attrs: { title: 'Legacy details', open: true }, content: [paragraph(text('Content'))] },

@@ -1,0 +1,300 @@
+// @vitest-environment jsdom
+import { describe, expect, it } from 'vitest'
+import { Editor } from '@tiptap/core'
+import StarterKit from '@tiptap/starter-kit'
+import { TaskList } from '@tiptap/extension-task-list'
+import { TaskItem } from '@tiptap/extension-task-item'
+
+import { convertSelectedBlocks } from './blockConversion'
+import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
+
+function createTestEditor(content: string) {
+  const element = document.body.appendChild(document.createElement('div'))
+  const editor = new Editor({
+    element,
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      BlockMarkdownShortcuts,
+    ],
+    content,
+  })
+
+  return {
+    editor,
+    cleanup: () => {
+      editor.destroy()
+      element.remove()
+    },
+  }
+}
+
+describe('blockConversion', () => {
+  describe('Multiple Block Selection and Conversion', () => {
+    it('converts multiple checklist items to bullet list at once', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Item 1</p></li><li data-type="taskItem" data-checked="false"><p>Item 2</p></li><li data-type="taskItem" data-checked="false"><p>Item 3</p></li></ul>',
+      )
+
+      // Select all 3 items (from inside item 1 to inside item 3)
+      let pos1 = 0, pos3 = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Item 1') pos1 = pos
+        if (node.isText && node.text === 'Item 3') pos3 = pos
+      })
+      editor.commands.setTextSelection({ from: pos1, to: pos3 + 6 })
+
+      const result = convertSelectedBlocks(editor, 'bullet')
+      expect(result).toBe(true)
+
+      const html = editor.getHTML()
+      expect(html).toContain('<ul><li><p>Item 1</p></li><li><p>Item 2</p></li><li><p>Item 3</p></li></ul>')
+      expect(html).not.toContain('taskList')
+      expect(html).not.toContain('taskItem')
+
+      cleanup()
+    })
+
+    it('converts multiple checklist items to numbered list at once', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Step A</p></li><li data-type="taskItem" data-checked="false"><p>Step B</p></li></ul>',
+      )
+
+      let posA = 0, posB = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Step A') posA = pos
+        if (node.isText && node.text === 'Step B') posB = pos
+      })
+      editor.commands.setTextSelection({ from: posA, to: posB + 6 })
+
+      const result = convertSelectedBlocks(editor, 'numbered')
+      expect(result).toBe(true)
+
+      const html = editor.getHTML()
+      expect(html).toContain('<ol><li><p>Step A</p></li><li><p>Step B</p></li></ol>')
+      expect(html).not.toContain('taskList')
+
+      cleanup()
+    })
+
+    it('converts multiple checklist items to headings at once', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Section 1</p></li><li data-type="taskItem" data-checked="false"><p>Section 2</p></li></ul>',
+      )
+
+      let pos1 = 0, pos2 = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Section 1') pos1 = pos
+        if (node.isText && node.text === 'Section 2') pos2 = pos
+      })
+      editor.commands.setTextSelection({ from: pos1, to: pos2 + 9 })
+
+      const result = convertSelectedBlocks(editor, 'h2')
+      expect(result).toBe(true)
+
+      const html = editor.getHTML()
+      expect(html).toContain('<h2>Section 1</h2><h2>Section 2</h2>')
+      expect(html).not.toContain('taskList')
+
+      cleanup()
+    })
+
+    it('converts multiple bullet list items to checklist items at once', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul><li><p>Task A</p></li><li><p>Task B</p></li></ul>',
+      )
+
+      let posA = 0, posB = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Task A') posA = pos
+        if (node.isText && node.text === 'Task B') posB = pos
+      })
+      editor.commands.setTextSelection({ from: posA, to: posB + 6 })
+
+      const result = convertSelectedBlocks(editor, 'task')
+      expect(result).toBe(true)
+
+      const html = editor.getHTML()
+      expect(html).toContain('data-type="taskList"')
+      expect(html).toContain('Task A')
+      expect(html).toContain('Task B')
+
+      cleanup()
+    })
+
+    it('converts a subset of checklist items leaving unselected items intact', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Keep 1</p></li><li data-type="taskItem" data-checked="false"><p>Convert 2</p></li><li data-type="taskItem" data-checked="false"><p>Convert 3</p></li><li data-type="taskItem" data-checked="false"><p>Keep 4</p></li></ul>',
+      )
+
+      let pos2 = 0, pos3 = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Convert 2') pos2 = pos
+        if (node.isText && node.text === 'Convert 3') pos3 = pos
+      })
+      editor.commands.setTextSelection({ from: pos2, to: pos3 + 9 })
+
+      const result = convertSelectedBlocks(editor, 'bullet')
+      expect(result).toBe(true)
+
+      const html = editor.getHTML()
+      expect(html).toContain('Keep 1')
+      expect(html).toContain('<ul><li><p>Convert 2</p></li><li><p>Convert 3</p></li></ul>')
+      expect(html).toContain('Keep 4')
+
+      cleanup()
+    })
+  })
+
+  describe('Single Block Conversion', () => {
+    it('converts a single checklist item to a bullet list item via blockTarget', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Single Task</p></li></ul>',
+      )
+
+      // Find the taskItem node
+      let targetPos = 0
+      let targetNode = editor.state.doc.firstChild!
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'taskItem') {
+          targetPos = pos
+          targetNode = node
+          return false
+        }
+      })
+
+      const blockTarget = {
+        node: targetNode,
+        pos: targetPos,
+        rect: new DOMRect(),
+        controlRect: new DOMRect(),
+      }
+
+      // Cursor is elsewhere or selection is empty
+      editor.commands.setTextSelection(1)
+
+      const result = convertSelectedBlocks(editor, 'bullet', blockTarget)
+      expect(result).toBe(true)
+
+      const html = editor.getHTML()
+      expect(html).toContain('<ul><li><p>Single Task</p></li></ul>')
+      expect(html).not.toContain('taskList')
+
+      cleanup()
+    })
+
+    it('converts a single checklist item to Heading 3 via blockTarget', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Heading Section</p></li></ul>',
+      )
+
+      let targetPos = 0
+      let targetNode = editor.state.doc.firstChild!
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'taskItem') {
+          targetPos = pos
+          targetNode = node
+          return false
+        }
+      })
+
+      const blockTarget = {
+        node: targetNode,
+        pos: targetPos,
+        rect: new DOMRect(),
+        controlRect: new DOMRect(),
+      }
+
+      const result = convertSelectedBlocks(editor, 'h3', blockTarget)
+      expect(result).toBe(true)
+
+      const html = editor.getHTML()
+      expect(html).toContain('<h3>Heading Section</h3>')
+      expect(html).not.toContain('taskList')
+
+      cleanup()
+    })
+  })
+
+  describe('Markdown Shortcut on Existing Blocks', () => {
+    it('converts existing checklist item with text to bullet list when typing "- "', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Existing task text</p></li></ul>',
+      )
+
+      let textPos = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Existing task text') textPos = pos
+      })
+
+      // Place cursor at beginning of existing text
+      editor.commands.setTextSelection(textPos)
+      editor.view.dispatch(editor.state.tr.insertText('-', textPos))
+
+      // Trigger space
+      const handleTextInput1 = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      handleTextInput1?.(editor.view, textPos + 1, textPos + 1, ' ')
+
+      const html = editor.getHTML()
+      expect(html).toContain('<ul><li><p>Existing task text</p></li></ul>')
+      expect(html).not.toContain('taskList')
+
+      cleanup()
+    })
+
+    it('converts existing bullet item with text to checklist when typing "[ ] "', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul><li><p>Existing bullet text</p></li></ul>',
+      )
+
+      let textPos = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Existing bullet text') textPos = pos
+      })
+
+      editor.commands.setTextSelection(textPos)
+      editor.view.dispatch(editor.state.tr.insertText('[ ]', textPos))
+
+      // Trigger space after "[ ]"
+      const handleTextInput2 = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      handleTextInput2?.(editor.view, textPos + 3, textPos + 3, ' ')
+
+      const html = editor.getHTML()
+      expect(html).toContain('data-type="taskList"')
+      expect(html).toContain('Existing bullet text')
+
+      cleanup()
+    })
+
+    it('converts existing checklist item with text to Heading 2 when typing "## "', () => {
+      const { editor, cleanup } = createTestEditor(
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>My Section Title</p></li></ul>',
+      )
+
+      let textPos = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'My Section Title') textPos = pos
+      })
+
+      editor.commands.setTextSelection(textPos)
+      editor.view.dispatch(editor.state.tr.insertText('##', textPos))
+
+      // Trigger space after "##"
+      const handleTextInput3 = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      handleTextInput3?.(editor.view, textPos + 2, textPos + 2, ' ')
+
+      const html = editor.getHTML()
+      expect(html).toContain('<h2>My Section Title</h2>')
+      expect(html).not.toContain('taskList')
+
+      cleanup()
+    })
+  })
+})

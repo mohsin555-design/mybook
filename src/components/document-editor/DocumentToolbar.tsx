@@ -131,15 +131,21 @@ function ToolbarControls({
     runSlashCommand(editor, 'quote', { from, to })
   }
 
-  const heading = editor.isActive('heading', { level: 1 })
-    ? '1'
-    : editor.isActive('heading', { level: 2 })
-      ? '2'
-      : editor.isActive('heading', { level: 3 })
-        ? '3'
-        : editor.isActive('heading', { level: 4 })
-          ? '4'
-          : '0'
+  const activeToggleLevel = editor.isActive('toggleBlock') && !editor.isActive('heading')
+    ? (editor.getAttributes('toggleBlock').level as number | null | undefined)
+    : null
+
+  const heading = activeToggleLevel
+    ? String(activeToggleLevel)
+    : editor.isActive('heading', { level: 1 })
+      ? '1'
+      : editor.isActive('heading', { level: 2 })
+        ? '2'
+        : editor.isActive('heading', { level: 3 })
+          ? '3'
+          : editor.isActive('heading', { level: 4 })
+            ? '4'
+            : '0'
 
   const moreActions = [
     { label: 'Quote', icon: ChatBubbleBottomCenterTextIcon, active: editor.isActive('blockquote'), disabled: false, run: insertQuote },
@@ -193,6 +199,11 @@ function ToolbarControls({
             value={heading}
             onChange={(event) => {
               const level = Number(event.target.value)
+              if (editor.isActive('toggleBlock') && !editor.isActive('heading')) {
+                const newLevel = level === 0 ? null : (level as 1 | 2 | 3 | 4)
+                editor.chain().focus().updateAttributes('toggleBlock', { level: newLevel }).run()
+                return
+              }
               if (level === 0) editor.chain().focus().setParagraph().run()
               else editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 | 4 }).run()
             }}
@@ -287,6 +298,11 @@ function ToolbarControls({
           value={heading}
           onChange={(event) => {
             const level = Number(event.target.value)
+            if (editor.isActive('toggleBlock') && !editor.isActive('heading')) {
+              const newLevel = level === 0 ? null : (level as 1 | 2 | 3 | 4)
+              editor.chain().focus().updateAttributes('toggleBlock', { level: newLevel }).run()
+              return
+            }
             if (level === 0) editor.chain().focus().setParagraph().run()
             else editor.chain().focus().setHeading({ level: level as 1 | 2 | 3 | 4 }).run()
           }}

@@ -5,6 +5,7 @@ import { calloutNode } from './extensions/Callout'
 import { databaseBlockNode } from './extensions/DatabaseBlock'
 import { tableOfContentsNode } from './extensions/TableOfContents'
 import { toggleBlockNode } from './extensions/ToggleBlock'
+import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
 
 export interface SlashCommand {
   id: string
@@ -70,6 +71,10 @@ export const allSlashCommands: SlashCommand[] = [
   { id: 'numbered', title: 'Numbered list', description: 'Create an ordered list', keywords: ['numbered', 'ordered', 'list', 'ol'], category: 'Lists', shortcut: '1.' },
   { id: 'task', title: 'To-do list', description: 'Track tasks and todos', keywords: ['task', 'check', 'todo', 'todo list', 'checklist'], category: 'Lists', shortcut: '[]' },
   { id: 'toggle', title: 'Toggle', description: 'Hide details under a title', keywords: ['toggle', 'details', 'collapse'], category: 'Lists' },
+  { id: 'toggle-h1', title: 'Toggle H1', description: 'Large heading with collapsible details', keywords: ['toggle', 'h1', 'heading', 'toggle h1', 'details', 'collapse'], category: 'Lists' },
+  { id: 'toggle-h2', title: 'Toggle H2', description: 'Medium heading with collapsible details', keywords: ['toggle', 'h2', 'heading', 'toggle h2', 'details', 'collapse'], category: 'Lists' },
+  { id: 'toggle-h3', title: 'Toggle H3', description: 'Small heading with collapsible details', keywords: ['toggle', 'h3', 'heading', 'toggle h3', 'details', 'collapse'], category: 'Lists' },
+  { id: 'toggle-h4', title: 'Toggle H4', description: 'Smallest heading with collapsible details', keywords: ['toggle', 'h4', 'heading', 'toggle h4', 'details', 'collapse'], category: 'Lists' },
   { id: 'image', title: 'Image', description: 'Upload an image', keywords: ['image', 'photo', 'picture', 'media'], category: 'Media' },
   { id: 'video', title: 'Video', description: 'Embed a video or upload a clip', keywords: ['video', 'clip', 'youtube', 'vimeo', 'movie', 'media', 'mp4'], category: 'Media' },
   { id: 'audio', title: 'Audio', description: 'Embed an audio link or upload a sound file', keywords: ['audio', 'sound', 'music', 'podcast', 'recording', 'media', 'mp3', 'wav', 'track'], category: 'Media' },
@@ -134,6 +139,11 @@ export function runSlashCommand(
   range: SlashMenuState['range'],
   isConversion = false,
 ) {
+  if (isConversion && isFormatCommand(commandId)) {
+    convertSelectedBlocks(editor, commandId)
+    return
+  }
+
   let chain = editor.chain().focus()
   if (!isConversion && range.from < range.to) {
     chain = chain.deleteRange(range)
@@ -149,6 +159,10 @@ export function runSlashCommand(
   else if (commandId === 'task') chain.toggleTaskList().run()
   else if (commandId === 'callout') chain.insertContent(calloutNode()).run()
   else if (commandId === 'toggle') chain.insertContent(toggleBlockNode()).run()
+  else if (commandId === 'toggle-h1') chain.insertContent(toggleBlockNode('Toggle', 1)).run()
+  else if (commandId === 'toggle-h2') chain.insertContent(toggleBlockNode('Toggle', 2)).run()
+  else if (commandId === 'toggle-h3') chain.insertContent(toggleBlockNode('Toggle', 3)).run()
+  else if (commandId === 'toggle-h4') chain.insertContent(toggleBlockNode('Toggle', 4)).run()
   else if (commandId === 'toc') chain.insertContent([tableOfContentsNode(), { type: 'paragraph' }]).run()
   else if (commandId === 'database') chain.insertContent([databaseBlockNode(), { type: 'paragraph' }]).run()
   else if (commandId === 'document-link') {

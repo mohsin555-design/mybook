@@ -15,6 +15,7 @@ import {
   listTrashedMyBookDriveFolders,
   listVisibleFoldersByName,
   permanentlyDeleteDriveFile,
+  refreshDriveFileToLocal,
   updateDriveFolder,
   updateDriveFile,
 } from './googleDrive'
@@ -1440,5 +1441,99 @@ describe('googleDrive helpers', () => {
       name: 'DocPage2',
       driveFileId: 'doc-p2',
     }))
+  })
+
+  describe('refreshDriveFileToLocal', () => {
+    it('returns updated: false when file has no driveFileId', async () => {
+      mockedFiles.get.mockResolvedValueOnce({ id: 'local-1', driveFileId: null })
+      const result = await refreshDriveFileToLocal('local-1')
+      expect(result).toEqual({ updated: false })
+    })
+
+    it('skips fetching when drive file is not modified after lastSyncedAt', async () => {
+      mockedFiles.get.mockResolvedValueOnce({
+        id: 'local-1',
+        driveFileId: 'drive-1',
+        lastSyncedAt: '2026-10-03T12:00:00.000Z',
+      })
+      stubDriveFetch(vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          id: 'drive-1',
+          name: 'MyDoc.md',
+          modifiedTime: '2026-10-03T12:00:00.000Z',
+          trashed: false,
+        }),
+      }))
+
+      const result = await refreshDriveFileToLocal('local-1')
+      expect(result).toEqual({ updated: false, modifiedTime: '2026-10-03T12:00:00.000Z' })
+      expect(mockedFiles.update).not.toHaveBeenCalled()
+    })
+
+    it('refreshes document when drive file has newer content', async () => {
+      mockedFiles.get.mockResolvedValueOnce({
+        id: 'local-1',
+        driveFileId: 'drive-1',
+        name: 'Old Title',
+        type: 'document',
+        content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Old"}]}]}',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+
+      const fetchMock = vi.fn()
+        // 1. getDriveFileStatus
+        .mockResolvedValueOnce({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'drive-1',
+            name: 'New Title.md',
+            mimeType: 'text/markdown',
+            modifiedTime: '2026-10-03T12:00:00.000Z',
+            trashed: false,
+          }),
+        })
+        // 2. getDriveFileContent
+        .mockResolvedValueOnce({
+          ok: true,
+          text: vi.fn().mockResolvedValue('# New Title\n\nNew remote text'),
+        })
+
+      stubDriveFetch(fetchMock)
+
+      const result = await refreshDriveFileToLocal('local-1')
+      expect(result.updated).toBe(true)
+      expect(result.modifiedTime).toBe('2026-10-03T12:00:00.000Z')
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', expect.objectContaining({
+        name: 'New Title',
+        lastSyncedAt: '2026-10-03T12:00:00.000Z',
+        syncStatus: 'backed-up',
+      }))
+    })
+
+    it('does not overwrite when local has pending sync status', async () => {
+      mockedFiles.get.mockResolvedValueOnce({
+        id: 'local-1',
+        driveFileId: 'drive-1',
+        name: 'Old Title',
+        type: 'document',
+        syncStatus: 'pending',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+
+      stubDriveFetch(vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          id: 'drive-1',
+          name: 'New Title.md',
+          modifiedTime: '2026-10-03T12:00:00.000Z',
+          trashed: false,
+        }),
+      }))
+
+      const result = await refreshDriveFileToLocal('local-1')
+      expect(result.updated).toBe(false)
+      expect(mockedFiles.update).not.toHaveBeenCalled()
+    })
   })
 })

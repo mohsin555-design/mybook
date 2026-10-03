@@ -96,6 +96,9 @@ export function HomePage({ initialTab = 'recent' }: HomePageProps) {
       <FileNameDialog
         fileName={renameTarget?.name ?? ''}
         isOpen={Boolean(renameTarget)}
+        existingFileNames={files
+          .filter((file) => file.folderId === renameTarget?.folderId && file.id !== renameTarget?.id)
+          .map((file) => file.name)}
         onClose={() => setRenameTarget(null)}
         onSubmit={(name) => renameTarget
           ? fileRepository.update(renameTarget.id, { name })

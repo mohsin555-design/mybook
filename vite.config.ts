@@ -39,10 +39,12 @@ export default defineConfig({
     manifest: {
       name: 'Writin',
       short_name: 'Writin',
+      id: '/',
       description: 'Writin file and document workspace',
       theme_color: '#f7f4ee',
       background_color: '#f7f4ee',
       display: 'standalone',
+      orientation: 'any',
       icons: [
         { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
         { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

@@ -22,6 +22,7 @@ import { appFileName, cleanName, fileRepository } from '../../database/repositor
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { useAutosave } from '../../hooks/useAutosave'
+import { useDriveLiveSync } from '../../hooks/useDriveLiveSync'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
 import { backupDocumentToDrive, copyDriveFileLink, openDriveFileInBrowser } from '../../services/googleDrive'
@@ -1849,11 +1850,22 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [file, updateTitle])
   useEffect(() => {
     if (!editor || !file || !isHydrated) return
-    if (loadedId === file.id && (content === editorContentRef.current || editor.isFocused)) return
+    if (loadedId === file.id && (content === editorContentRef.current || (editor.isFocused && status === 'editing'))) return
+    const isFocused = editor.isFocused
+    const { from, to } = editor.state.selection
     editor.commands.setContent(parseContent(content), { emitUpdate: false })
     editorContentRef.current = content
     setLoadedId(file.id)
-  }, [content, editor, file, isHydrated, loadedId])
+    if (isFocused) {
+      const maxPos = editor.state.doc.content.size
+      if (maxPos > 0) {
+        editor.commands.setTextSelection({
+          from: Math.min(from, maxPos),
+          to: Math.min(to, maxPos),
+        })
+      }
+    }
+  }, [content, editor, file, isHydrated, loadedId, status])
 
   useEffect(() => {
     if (!editor || !file || !isHydrated || loadedId !== file.id || handledPendingImportRef.current === file.id) return
@@ -1879,6 +1891,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       lastBackedUpTitleRef.current = null
     }
   }
+
+  useEffect(() => {
+    if (!file) return
+    if (file.syncStatus === 'backed-up') {
+      lastBackedUpContentRef.current = file.content
+      lastBackedUpTitleRef.current = file.name
+    }
+  }, [file])
+
+  useDriveLiveSync(file?.id, file?.driveFileId, {
+    enabled: Boolean(file && !file.isDeleted && !isLocalWorkspace()),
+    intervalMs: 5000,
+    isEditing: status === 'editing',
+  })
   const saveTitle = useCallback(async () => {
     const nextTitle = titleRef.current.trim()
     if (!file || !nextTitle || nextTitle === file.name) return

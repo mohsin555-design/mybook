@@ -42,6 +42,17 @@ function quoteMarkdownAttribute(value: string) {
 }
 
 function inlineMarkdown(node: JSONContent): string {
+  if (node.type === 'dateTimeBlock') {
+    const attrs = {
+      value: typeof node.attrs?.value === 'string' ? node.attrs.value : null,
+      includeTime: node.attrs?.includeTime !== false,
+      endDateEnabled: node.attrs?.endDateEnabled === true,
+      endValue: typeof node.attrs?.endValue === 'string' ? node.attrs.endValue : null,
+      use24Hour: node.attrs?.use24Hour === true,
+      dateFormat: typeof node.attrs?.dateFormat === 'string' ? node.attrs.dateFormat : 'relative',
+    }
+    return `{{datetime:${encodeURIComponent(JSON.stringify(attrs))}}}`
+  }
   if (node.type === 'text') {
     const codeMark = node.marks?.find((mark) => mark.type === 'code')
     if (codeMark) {
@@ -136,6 +147,17 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
   if (node.type === 'embedBlock') return embedMarkdown(node)
   if (node.type === 'videoBlock') return videoMarkdown(node)
   if (node.type === 'databaseBlock') return databaseMarkdown(node)
+  if (node.type === 'dateTimeBlock') {
+    const attrs = {
+      value: typeof node.attrs?.value === 'string' ? node.attrs.value : null,
+      includeTime: node.attrs?.includeTime !== false,
+      endDateEnabled: node.attrs?.endDateEnabled === true,
+      endValue: typeof node.attrs?.endValue === 'string' ? node.attrs.endValue : null,
+      use24Hour: node.attrs?.use24Hour === true,
+      dateFormat: typeof node.attrs?.dateFormat === 'string' ? node.attrs.dateFormat : 'relative',
+    }
+    return [':::date-time', JSON.stringify(attrs, null, 2), ':::'].join('\n')
+  }
   return (node.content ?? []).map((child) => blockMarkdown(child, depth)).join('\n\n')
 }
 
@@ -186,7 +208,7 @@ export function isMarkdownText(text: string): boolean {
   if (/^(?:---|\*\*\*|___)\s*$/m.test(trimmed)) return true
 
   // Custom blocks: :::callout, :::toggle, :::file, :::table, :::video, :::audio, :::image
-  if (/^:::(?:callout|toggle|file|table|video|audio|image|toc|bookmark|embed|database)/m.test(trimmed)) return true
+  if (/^:::(?:callout|toggle|file|table|video|audio|image|toc|bookmark|embed|database|date-time)/m.test(trimmed)) return true
 
   // Inline formatting spanning multiple words with links or formatting combinations
   if (/(\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~)\s*(?:and|or|,\s*|\[[^\]]+\]\([^)]+\)|\*)/.test(trimmed)) return true
@@ -219,7 +241,7 @@ export function documentToMyBookMarkdown(
 }
 
 type InlineMark = NonNullable<JSONContent['marks']>[number]
-type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'audio' | 'image' | 'unknown'
+type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'audio' | 'image' | 'date-time' | 'unknown'
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 function findUnescaped(value: string, needle: string, start: number) {
@@ -268,6 +290,36 @@ function parseInline(text: string, marks: InlineMark[] = []): JSONContent[] {
       plain += text[index + 1]
       index += 2
       continue
+    }
+
+    const dateTimeMatch = /^\{\{datetime:([^}]*)\}\}/u.exec(text.slice(index))
+    if (dateTimeMatch) {
+      const encodedValue = dateTimeMatch[1] ?? ''
+      let attrs: Record<string, unknown> | null = null
+      try {
+        const decoded: unknown = JSON.parse(decodeURIComponent(encodedValue))
+        if (isRecord(decoded)) attrs = decoded
+      } catch {
+        const legacy = /^(.*)\|([01])$/u.exec(encodedValue)
+        if (legacy) {
+          let value: string | null = null
+          try { value = legacy[1] ? decodeURIComponent(legacy[1]) : null } catch { value = null }
+          attrs = { value, includeTime: legacy[2] === '1' }
+        }
+      }
+      if (attrs && (attrs.value === null || typeof attrs.value === 'string')) {
+        flush()
+        nodes.push({ type: 'dateTimeBlock', attrs: {
+          value: attrs.value,
+          includeTime: attrs.includeTime !== false,
+          endDateEnabled: attrs.endDateEnabled === true,
+          endValue: typeof attrs.endValue === 'string' ? attrs.endValue : null,
+          use24Hour: attrs.use24Hour === true,
+          dateFormat: typeof attrs.dateFormat === 'string' ? attrs.dateFormat : 'relative',
+        } })
+        index += dateTimeMatch[0].length
+        continue
+      }
     }
 
     const code = /^`+/u.exec(text.slice(index))?.[0]
@@ -491,7 +543,7 @@ function customBlockKind(line: string): CustomBlockKind | null {
   if (trimmed === ':::') return null
   const name = /^:::([A-Za-z][\w-]*)(?:\s|$)/u.exec(trimmed)?.[1]
   if (!name) return null
-  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video' || name === 'audio' || name === 'image') return name
+  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video' || name === 'audio' || name === 'image' || name === 'date-time') return name
   return 'unknown'
 }
 
@@ -960,6 +1012,27 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       lineIndex = collected.index - 1
       const database = collected.closed ? parseStructuredDatabase(collected.lines.slice(1, -1)) : null
       content.push(database ?? rawParagraph(collected.lines))
+      continue
+    }
+    if (blockKind === 'date-time') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      try {
+        const parsed: unknown = JSON.parse(collected.lines.slice(1, -1).join('\n'))
+        if (collected.closed && isRecord(parsed) && (parsed.value === null || typeof parsed.value === 'string')) {
+          content.push({ type: 'dateTimeBlock', attrs: {
+            value: parsed.value,
+            includeTime: parsed.includeTime !== false,
+            endDateEnabled: parsed.endDateEnabled === true,
+            endValue: typeof parsed.endValue === 'string' ? parsed.endValue : null,
+            use24Hour: parsed.use24Hour === true,
+            dateFormat: typeof parsed.dateFormat === 'string' ? parsed.dateFormat : 'relative',
+          } })
+        } else content.push(rawParagraph(collected.lines))
+      } catch {
+        content.push(rawParagraph(collected.lines))
+      }
       continue
     }
     if (blockKind === 'toc') {

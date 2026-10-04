@@ -16,6 +16,7 @@ describe('SlashCommandMenu grouping', () => {
       'Lists',
       'Media',
       'Data',
+      'Mention',
       'Advanced',
     ])
     expect(groupSlashCommands(slashCommands)[0]?.commands.map((command) => command.id)).toEqual([

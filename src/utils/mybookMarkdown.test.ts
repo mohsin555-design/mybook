@@ -1472,4 +1472,111 @@ describe('MyBook Markdown round trips', () => {
   it('round trips a larger document without changing structure', () => {
     expectRoundTrip(doc(...Array.from({ length: 150 }, (_, index) => paragraph(text(`Paragraph ${index + 1}`)))))
   })
+
+  it('serializes and deserializes 2, 3, 4, and 5 columns', () => {
+    for (const count of [2, 3, 4, 5] as const) {
+      const columnsNode: JSONContent = {
+        type: 'columns',
+        attrs: { count },
+        content: Array.from({ length: count }, (_, i) => ({
+          type: 'column',
+          content: [paragraph(text(`Column ${i + 1} content`))],
+        })),
+      }
+
+      const markdown = documentToMyBookMarkdown(`Columns ${count}`, doc(columnsNode))
+      expect(markdown).toContain(`:::columns count=${count}`)
+      expect(markdown.match(/:::column\b/g)?.length).toBe(count)
+
+      const parsed = myBookMarkdownToDocument(markdown)
+      expect(parsed.content?.[0]?.type).toBe('columns')
+      expect(parsed.content?.[0]?.attrs?.count).toBe(count)
+      expect(parsed.content?.[0]?.content?.length).toBe(count)
+      expect(parsed.content?.[0]?.content?.[0]?.type).toBe('column')
+      expect(parsed.content?.[0]?.content?.[0]?.content?.[0]?.content?.[0]?.text).toBe('Column 1 content')
+    }
+  })
+
+  it('correctly handles nested custom ::: blocks inside columns without early termination', () => {
+    const rawMarkdown = [
+      ':::columns count=2',
+      ':::column',
+      '# Column 1 Header',
+      '',
+      'First column intro.',
+      '',
+      ':::callout type="info"',
+      'Note inside column 1',
+      ':::',
+      '',
+      'Trailing text after callout in col 1.',
+      ':::',
+      ':::column',
+      ':::toggle title="Collapsible in Col 2" open=true',
+      'Hidden content in toggle in col 2',
+      ':::',
+      '',
+      'Another paragraph in col 2.',
+      ':::',
+      ':::',
+    ].join('\n')
+
+    const parsed = myBookMarkdownToDocument(rawMarkdown)
+    const columnsBlock = parsed.content?.[0]
+    expect(columnsBlock?.type).toBe('columns')
+    expect(columnsBlock?.attrs?.count).toBe(2)
+    expect(columnsBlock?.content?.length).toBe(2)
+
+    // Check Column 1
+    const col1 = columnsBlock?.content?.[0]
+    expect(col1?.type).toBe('column')
+    expect(col1?.content?.length).toBe(4)
+    expect(col1?.content?.[0]?.type).toBe('heading')
+    expect(col1?.content?.[1]?.type).toBe('paragraph')
+    expect(col1?.content?.[2]?.type).toBe('callout')
+    expect(col1?.content?.[2]?.attrs?.kind).toBe('info')
+    expect(col1?.content?.[3]?.type).toBe('paragraph')
+
+    // Check Column 2
+    const col2 = columnsBlock?.content?.[1]
+    expect(col2?.type).toBe('column')
+    expect(col2?.content?.length).toBe(2)
+    expect(col2?.content?.[0]?.type).toBe('toggleBlock')
+    expect(col2?.content?.[0]?.attrs?.title).toBe('Collapsible in Col 2')
+    expect(col2?.content?.[1]?.type).toBe('paragraph')
+  })
+
+  it('round trips columns with nested blocks', () => {
+    const testDoc = doc({
+      type: 'columns',
+      attrs: { count: 2 },
+      content: [
+        {
+          type: 'column',
+          content: [
+            paragraph(text('Left text')),
+            {
+              type: 'callout',
+              attrs: { kind: 'warning' },
+              content: [paragraph(text('Warning note'))],
+            },
+          ],
+        },
+        {
+          type: 'column',
+          content: [
+            paragraph(text('Right text')),
+          ],
+        },
+      ],
+    })
+
+    const markdown = documentToMyBookMarkdown('Columns Roundtrip', testDoc)
+    const parsed = myBookMarkdownToDocument(markdown)
+    expect(parsed.content?.[0]?.type).toBe('columns')
+    expect(parsed.content?.[0]?.content?.[0]?.content?.[0]?.content?.[0]?.text).toBe('Left text')
+    expect(parsed.content?.[0]?.content?.[0]?.content?.[1]?.type).toBe('callout')
+    expect(parsed.content?.[0]?.content?.[0]?.content?.[1]?.attrs?.kind).toBe('warning')
+    expect(parsed.content?.[0]?.content?.[1]?.content?.[0]?.content?.[0]?.text).toBe('Right text')
+  })
 })

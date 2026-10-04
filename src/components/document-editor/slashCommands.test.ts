@@ -6,7 +6,8 @@ import { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 
 import { DateTimeBlock } from './extensions/DateTimeBlock'
-import { filterMentionCommands, filterSlashCommands, getMentionMenuState, groupSlashCommands, runSlashCommand, slashCommands } from './slashCommands'
+import { Columns, Column } from './extensions/Columns'
+import { filterMentionCommands, filterSlashCommands, getMentionMenuState, groupSlashCommands, isInsideColumns, runSlashCommand, slashCommands } from './slashCommands'
 
 describe('slashCommands', () => {
   it('keeps Date & Time in the Mention block category and exposes it for @ suggestions', () => {
@@ -200,5 +201,80 @@ describe('slashCommands', () => {
     expect(results.some((c) => c.id === 'toggle-h2')).toBe(true)
     expect(results.some((c) => c.id === 'toggle-h3')).toBe(true)
     expect(results.some((c) => c.id === 'toggle-h4')).toBe(true)
+  })
+
+  it('includes Columns 2, 3, 4, and 5 under Advanced category', () => {
+    const colIds = ['columns-2', 'columns-3', 'columns-4', 'columns-5']
+    for (const id of colIds) {
+      const cmd = slashCommands.find((c) => c.id === id)
+      expect(cmd).toBeDefined()
+      expect(cmd?.category).toBe('Advanced')
+    }
+
+    expect(slashCommands.find((c) => c.id === 'columns-2')?.title).toBe('Columns 2')
+    expect(slashCommands.find((c) => c.id === 'columns-3')?.title).toBe('Columns 3')
+    expect(slashCommands.find((c) => c.id === 'columns-4')?.title).toBe('Columns 4')
+    expect(slashCommands.find((c) => c.id === 'columns-5')?.title).toBe('Columns 5')
+  })
+
+  it('filters column options on query "columns" or "column"', () => {
+    const results = filterSlashCommands('column')
+    expect(results.some((c) => c.id === 'columns-2')).toBe(true)
+    expect(results.some((c) => c.id === 'columns-3')).toBe(true)
+    expect(results.some((c) => c.id === 'columns-4')).toBe(true)
+    expect(results.some((c) => c.id === 'columns-5')).toBe(true)
+  })
+
+  it('inserts columns using runSlashCommand', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [StarterKit, Columns, Column],
+      content: '<p></p>',
+    })
+
+    runSlashCommand(editor, 'columns-2', { from: 1, to: 1 })
+
+    const columnsNode = editor.state.doc.firstChild
+    expect(columnsNode?.type.name).toBe('columns')
+    expect(columnsNode?.attrs.count).toBe(2)
+    expect(columnsNode?.childCount).toBe(2)
+    expect(columnsNode?.child(0).type.name).toBe('column')
+    expect(columnsNode?.child(1).type.name).toBe('column')
+
+    editor.destroy()
+    element.remove()
+  })
+
+  it('detects isInsideColumns and filters/prevents nested columns', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [StarterKit, Columns, Column],
+      content: '<p></p>',
+    })
+
+    // Outside columns
+    expect(isInsideColumns(editor)).toBe(false)
+    expect(filterSlashCommands('columns', editor).some((c) => c.id === 'columns-2')).toBe(true)
+
+    // Insert columns
+    runSlashCommand(editor, 'columns-2', { from: 1, to: 1 })
+
+    // Move cursor inside column 1
+    editor.commands.setTextSelection(3)
+    expect(isInsideColumns(editor)).toBe(true)
+
+    // filterSlashCommands should exclude columns commands when inside columns
+    const insideResults = filterSlashCommands('columns', editor)
+    expect(insideResults.some((c) => c.id.startsWith('columns-'))).toBe(false)
+
+    // runSlashCommand should not insert nested columns
+    const initialChildCount = editor.state.doc.firstChild?.child(0).childCount
+    runSlashCommand(editor, 'columns-3', { from: 3, to: 3 })
+    expect(editor.state.doc.firstChild?.child(0).childCount).toBe(initialChildCount)
+
+    editor.destroy()
+    element.remove()
   })
 })

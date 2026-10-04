@@ -19,11 +19,30 @@ Tiptap JSON is the in-app document representation. The portable representation i
 | Embed | Supported URL embedding through `EmbedBlockNodeView.tsx`; remote provider restrictions still apply |
 | Document link | Reference to a local document ID, with link remapping during backup restore; `documentLinkModel.ts`, `DocumentLinkNodeView.tsx` |
 | Table of contents | Heading-based document navigation; `TableOfContentsNodeView.tsx` |
+| Date & Time mention | Inline atom with date, optional time and end date; see [Date & Time mention](#date--time-mention) |
 | Database-style block | Document-contained rows and typed columns, sort/filter state; `databaseModel.ts`, `DatabaseBlockNodeView.tsx` |
 
 Database columns support text, number, select, status, date and checkbox. The model carries version, IDs, title, columns, rows and optional view state. It is an embedded document block, not a separate multi-user database service.
 
 Contextual block controls support applicable move, duplicate and delete actions. Slash commands and insert menus expose block insertion; the exact options depend on selection and device layout.
+
+## Date & Time mention
+
+Inline atom node `dateTimeBlock` (`extensions/DateTimeBlock.ts`, `DateTimeBlockNodeView.tsx`, `DateTimePicker.tsx`). It is selectable and draggable, and sits inside paragraphs and headings.
+
+- **Insert:** `/` command "Date & Time", or `@` mention menu (`getMentionMenuState`, `filterMentionCommands` in `slashCommands.ts`; `@` followed by letters, digits, spaces or hyphens in a paragraph/heading). The mention menu is a popover on desktop and a bottom sheet on mobile. Inserting opens the picker once (`openPicker` attribute, never persisted).
+- **Attributes:** `value` (ISO string; date-only values omit time), `includeTime`, `endDateEnabled`, `endValue`, `use24Hour`, `dateFormat`.
+- **Formats:** `relative` (default), `full`, `short`, `month-day-year`, `day-month-year`, `year-month-day`; 12 or 24 hour time.
+- **Insertion adds only the atom.** No spacer or non-breaking space is inserted; ProseMirror places the caret after an inline atom.
+- **Backspace/Delete:** next to the mention, the first press selects it (`NodeSelection`) and the next removes it (`handleDateTimeBlockAdjacentDelete`, wired in `handleKeyDown`). Backspace from the start of a following empty paragraph also selects a mention that ends the previous paragraph. Deleting the last character beside a mention keeps the caret in the same paragraph.
+- **Caret anchor:** when a mention is the last node of a paragraph ProseMirror renders `img.ProseMirror-separator` after it. Tailwind's reset makes images `display: block`, which put the anchor, and the caret, on the next line. `globals.css` sets `.tiptap img.ProseMirror-separator { display: inline; }`. Do not remove it.
+- **Portable format:** inline as `{{datetime:<URL-encoded JSON of the attributes>}}`; block-form `:::date-time` JSON is also parsed (`mybookMarkdown.ts`). `openPicker` is not exported.
+
+Tests: `extensions/DateTimeBlock.test.ts` (keyboard and caret behavior), `DateTimePicker.test.tsx`, `slashCommands.test.ts`, `mybookMarkdown.test.ts`, and the Playwright test "date mention keeps the caret on its line while clearing adjacent text" in `e2e/mybook.spec.ts` (requires a Chromium browser; locally it can run against system Chrome). Remaining checks: real mobile keyboards, IME composition next to the mention, time zone display for stored ISO values.
+
+### Columns
+
+`extensions/Columns.ts` and `columnControls.ts` add a columns layout block. **Specification pending owner review:** behavior, Markdown form (`:::columns` / `:::column`) and limits are not yet documented here.
 
 ## Media limits and persistence
 

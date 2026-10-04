@@ -2,7 +2,7 @@
 
 ## Scope and module
 
-Google Drive provides remote copies and synchronization for the Google-connected workspace. This is not real-time collaborative editing. Implementation lives in `src/services/googleDrive.ts`, `src/hooks/useDriveBootstrap.ts`, `src/database/repositories.ts`, and the editor save/conflict flows.
+Google Drive provides remote copies and synchronization for the Google-connected workspace. This is not real-time collaborative editing; the version model that keeps it safe and prepares for collaboration is in [Collaboration-ready sync](./collaboration-ready-sync.md). Implementation lives in `src/services/googleDrive.ts`, `src/hooks/useDriveBootstrap.ts`, `src/database/repositories.ts`, and the editor save/conflict flows.
 
 The visible root folder is **Writin**, with its ID stored under `google-drive.mybook-folder-id`. Documents upload as `.md`; spreadsheets use XLSX conversion. App folders mirror into Drive folders. Authentication uses the narrow `drive.file` permission; see [authentication](./auth-and-drive-tokens.md).
 
@@ -36,6 +36,14 @@ Remote import walks the connected Writin Drive tree and matches files using Driv
 Unresolved local intent protects pending work from ordinary remote replacement. Remote disappearance can mark corresponding local records deleted when no unresolved operation exists. Editors also expose conflict-resolution paths for choosing local/remote content or downloading copies. Version records exist in the database/repository; this does not imply a complete user-facing history browser.
 
 These are changes from the earlier explicit-import-only design: Drive content can now be imported automatically on bootstrap/reconnection.
+
+### Live refresh of the open document
+
+While a Drive-backed document is open, `useDriveLiveSync` polls every 5 seconds and on tab focus/visibility (`refreshDriveFileToLocal`). It is skipped when offline, signed out, in a local vault, hidden, already running, or while the editor status is `editing`. It reads content only when Drive's `modifiedTime` is newer than the file's `lastSyncedAt`.
+
+### Reconciliation and conflicts
+
+Files store `baseContent` (last content known to match Drive) and `syncConflict`. Before a remote update is applied, `reconcileExternalUpdate` compares base, local and remote. Remote content is applied only when local is unchanged since the base and nothing is unsaved or queued for push. Otherwise local content is kept, the remote content is stored as a file version labelled "Remote version (not applied)", and the editor shows a conflict banner. Keep mine queues a push; Use other version first stores the local content as "Before using remote version". The same remote version never raises a second conflict. Pushing to Drive is not yet conditional on the remote version, and a full import does not raise conflicts. Details and roadmap: [Collaboration-ready sync](./collaboration-ready-sync.md).
 
 ## Save status
 

@@ -28,7 +28,7 @@ import { MobileBottomSheet } from '../common/MobileBottomSheet'
 import { calloutNode } from './extensions/Callout'
 import { toggleBlockNode } from './extensions/ToggleBlock'
 import { BlockCommandMenu } from './SlashCommandMenu'
-import { runSlashCommand, slashCommands } from './slashCommands'
+import { isInsideColumns, runSlashCommand, slashCommands } from './slashCommands'
 
 interface ToolButtonProps {
   label: string
@@ -235,7 +235,7 @@ function ToolbarControls({
               <div className="pb-[env(safe-area-inset-bottom)]">
                 <BlockCommandMenu
                   ariaLabel="Insert block options"
-                  commands={slashCommands}
+                  commands={isInsideColumns(editor) ? slashCommands.filter((command) => !command.id.startsWith('columns-')) : slashCommands}
                   selectedIndex={-1}
                   onSelectIndex={() => undefined}
                   onRun={(command) => {

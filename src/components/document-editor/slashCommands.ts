@@ -2,11 +2,21 @@ import type { Editor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
 
 import { calloutNode } from './extensions/Callout'
+import { columnsNode } from './extensions/Columns'
 import { databaseBlockNode } from './extensions/DatabaseBlock'
 import { dateTimeBlockNode } from './extensions/DateTimeBlock'
 import { tableOfContentsNode } from './extensions/TableOfContents'
 import { toggleBlockNode } from './extensions/ToggleBlock'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
+
+export function isInsideColumns(editor: Pick<Editor, 'state'>): boolean {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const typeName = $from.node(depth).type.name
+    if (typeName === 'columns' || typeName === 'column') return true
+  }
+  return false
+}
 
 export interface SlashCommand {
   id: string
@@ -103,6 +113,10 @@ export const allSlashCommands: SlashCommand[] = [
   { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data', hidden: !ENABLE_DATABASE_BLOCK },
   { id: 'date-time', title: 'Date & Time', description: 'Insert a date with optional time', keywords: ['date', 'time', 'calendar', 'datetime'], category: 'Mention' },
   { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'], category: 'Advanced' },
+  { id: 'columns-2', title: 'Columns 2', description: 'Split into 2 columns', keywords: ['columns', 'column', 'columns 2', '2 columns', 'split', 'grid', 'layout'], category: 'Advanced' },
+  { id: 'columns-3', title: 'Columns 3', description: 'Split into 3 columns', keywords: ['columns', 'column', 'columns 3', '3 columns', 'split', 'grid', 'layout'], category: 'Advanced' },
+  { id: 'columns-4', title: 'Columns 4', description: 'Split into 4 columns', keywords: ['columns', 'column', 'columns 4', '4 columns', 'split', 'grid', 'layout'], category: 'Advanced' },
+  { id: 'columns-5', title: 'Columns 5', description: 'Split into 5 columns', keywords: ['columns', 'column', 'columns 5', '5 columns', 'split', 'grid', 'layout'], category: 'Advanced' },
   { id: 'toc', title: 'Table of contents', description: 'Show document headings', keywords: ['toc', 'table of contents', 'contents', 'outline'], category: 'Advanced' },
   { id: 'code-block', title: 'Code block', description: 'Insert multiline code', keywords: ['code', 'pre', 'block'], category: 'Advanced', shortcut: '```' },
 ]
@@ -116,16 +130,19 @@ export function groupSlashCommands(commands: SlashCommand[]) {
     .filter((group) => group.commands.length > 0)
 }
 
-export function filterSlashCommands(query: string) {
+export function filterSlashCommands(query: string, editor?: Pick<Editor, 'state'>) {
   const normalized = query.trim().toLowerCase()
-  if (!normalized) return slashCommands
+  const source = editor && isInsideColumns(editor)
+    ? slashCommands.filter((command) => !command.id.startsWith('columns-'))
+    : slashCommands
+  if (!normalized) return source
 
-  const titleMatches = slashCommands.filter((command) =>
+  const titleMatches = source.filter((command) =>
     command.title.toLowerCase().startsWith(normalized),
   )
   if (titleMatches.length > 0) return titleMatches
 
-  return slashCommands.filter((command) => {
+  return source.filter((command) => {
     const haystack = [command.title, command.description, ...command.keywords].join(' ').toLowerCase()
     return haystack.includes(normalized)
   })
@@ -178,6 +195,18 @@ export function runSlashCommand(
   else if (commandId === 'numbered') chain.toggleOrderedList().run()
   else if (commandId === 'task') chain.toggleTaskList().run()
   else if (commandId === 'callout') chain.insertContent(calloutNode()).run()
+  else if (commandId === 'columns-2') {
+    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(2)).run()
+  }
+  else if (commandId === 'columns-3') {
+    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(3)).run()
+  }
+  else if (commandId === 'columns-4') {
+    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(4)).run()
+  }
+  else if (commandId === 'columns-5') {
+    if (!isInsideColumns(editor)) chain.insertContent(columnsNode(5)).run()
+  }
   else if (commandId === 'toggle') chain.insertContent(toggleBlockNode()).run()
   else if (commandId === 'toggle-h1') chain.insertContent(toggleBlockNode('Toggle', 1)).run()
   else if (commandId === 'toggle-h2') chain.insertContent(toggleBlockNode('Toggle', 2)).run()

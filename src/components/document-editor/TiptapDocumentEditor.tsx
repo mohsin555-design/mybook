@@ -23,6 +23,9 @@ import { appFileName, cleanName, fileRepository } from '../../database/repositor
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { useAutosave } from '../../hooks/useAutosave'
+import { applyRemoteVersion, keepLocalVersion } from '../../services/syncConflicts'
+import { SyncConflictBanner } from './SyncConflictBanner'
+import { registerUnsavedEditsProbe } from '../../services/localEditState'
 import { useDriveLiveSync } from '../../hooks/useDriveLiveSync'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
@@ -52,6 +55,7 @@ import { VideoBlock, videoBlockNode } from './extensions/VideoBlock'
 import { VideoBlockPicker } from './VideoBlockPicker'
 import { AudioBlock, audioBlockNode } from './extensions/AudioBlock'
 import { AudioBlockPicker } from './AudioBlockPicker'
+import { Columns, Column } from './extensions/Columns'
 import { TableOfContents } from './extensions/TableOfContents'
 import { ToggleBlock, toggleBlockNode } from './extensions/ToggleBlock'
 import { FixedTable } from './extensions/FixedTable'
@@ -432,6 +436,32 @@ const EmptyBlockPlaceholder = Extension.create({
               decorations.push(Decoration.node(pos, pos + node.nodeSize, {
                 class: emptyBlockPlaceholderClass,
               }))
+              return
+            }
+            if (parent?.type.name === 'column') {
+              const isFocusedInThisBlock = pos === activeTextblockPos
+              if (!isFocusedInThisBlock) {
+                // Determine column index (1-based)
+                // pos is inside parent (column), which is inside grandparent (columns)
+                const $pos = state.doc.resolve(pos)
+                let colIndex = 1
+                for (let d = $pos.depth; d > 0; d -= 1) {
+                  if ($pos.node(d).type.name === 'column') {
+                    const colNodePos = $pos.before(d)
+                    const $colPos = state.doc.resolve(colNodePos)
+                    if ($colPos.parent.type.name === 'columns') {
+                      colIndex = $colPos.index() + 1
+                    }
+                    break
+                  }
+                }
+                decorations.push(Decoration.node(pos, pos + node.nodeSize, {
+                  class: `${emptyBlockPlaceholderClass} mybook-column-placeholder`,
+                  'data-placeholder': `Column ${colIndex}`,
+                }))
+                return
+              }
+              // If focused in this block, allow the normal emptyBlockPlaceholder decoration below
               return
             }
             if (node.type.name === 'heading' || (node.type.name !== 'paragraph' && pos === activeTextblockPos)) {
@@ -920,7 +950,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const isMobile = useIsMobile()
   const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-    const { content, isHydrated, save, setContent, status } = useAutosave(file)
+    const { content, hasUnsavedChanges, isHydrated, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
   const [loadedId, setLoadedId] = useState<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
@@ -1001,6 +1031,10 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       document.removeEventListener('visibilitychange', handleFlush)
     }
   }, [flushContentSync])
+  useEffect(() => {
+    if (!file?.id) return
+    return registerUnsavedEditsProbe(file.id, () => contentSyncTimerRef.current !== null || hasUnsavedChanges())
+  }, [file?.id, hasUnsavedChanges])
   const restoreLastActiveSelection = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
@@ -1210,6 +1244,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       TableInteraction,
       Underline,
       Callout,
+      Columns,
+      Column,
       BookmarkBlock,
       EmbedBlock,
       FileAttachment,
@@ -2759,6 +2795,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   aria-label="Page title"
                 />
               </div>
+              {file.syncConflict && (
+                <SyncConflictBanner
+                  onKeepMine={() => { void (async () => { flushContentSync(); await save(); await keepLocalVersion(file.id) })() }}
+                  onUseRemote={() => { void (async () => { flushContentSync(); await save(); await applyRemoteVersion(file.id) })() }}
+                />
+              )}
               <EditorContent editor={editor} />
             </DocumentLinkProvider>
           </div>
@@ -2767,6 +2809,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       {slashMenu ? (
         isMobile ? (
           <MobileSlashCommandMenu
+            editor={editor}
             menu={slashMenu}
             selectedIndex={slashSelectedIndex}
             onSelectIndex={(index) => {
@@ -2777,6 +2820,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           />
         ) : (
           <SlashCommandMenu
+            editor={editor}
             menu={slashMenu}
             selectedIndex={slashSelectedIndex}
             onSelectIndex={(index) => {

@@ -195,6 +195,9 @@
     position: absolute;
     left: 0;
     top: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     display: block;
     color: var(--muted-foreground);
     content: "Type '/' to insert a block, or start typing";
@@ -213,6 +216,7 @@
   }
 
   .tiptap .mybook-heading-placeholder::before { content: attr(data-placeholder); font-weight: inherit; }
+  .tiptap .mybook-column-placeholder::before { content: attr(data-placeholder); font-weight: inherit; }
 
   .tiptap .mybook-empty-block-placeholder {
     position: relative;
@@ -368,6 +372,19 @@
   .tiptap .mybook-callout[data-kind="success"] { border-left-color: #16a34a; }
   .tiptap .mybook-callout[data-kind="warning"] { border-left-color: #d97706; }
   .tiptap .mybook-callout-content > * + * { margin-top: 0.75rem; }
+  .tiptap .mybook-columns { display: grid; gap: 1.25rem; width: 100%; margin-top: 0.75rem; margin-bottom: 0.75rem; align-items: start; }
+  .tiptap .mybook-columns-2, .tiptap .mybook-columns[data-columns="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tiptap .mybook-columns-3, .tiptap .mybook-columns[data-columns="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tiptap .mybook-columns-4, .tiptap .mybook-columns[data-columns="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tiptap .mybook-columns-5, .tiptap .mybook-columns[data-columns="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .tiptap .mybook-column { min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .tiptap .mybook-column > * + * { margin-top: 0.5rem; }
+  @media (max-width: 640px) {
+    .tiptap .mybook-columns-4, .tiptap .mybook-columns-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 480px) {
+    .tiptap .mybook-columns { grid-template-columns: 1fr; gap: 0.75rem; }
+  }
   .tiptap .mybook-toggle { background: transparent; }
   .tiptap .mybook-toggle-summary { display: flex; align-items: center; gap: 0.5rem; cursor: text; padding: 0; font-weight: 650; list-style: none; }
   .tiptap .mybook-toggle-summary::-webkit-details-marker { display: none; }

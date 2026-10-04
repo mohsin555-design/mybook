@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fileRepository } from '../database/repositories'
+import { recordRemoteConflict } from '../services/syncConflicts'
 import { isLocalWorkspace } from '../stores/useWorkspaceStore'
 import type { EditorSaveStatus, MyBookFile } from '../types/files'
 
@@ -16,6 +17,7 @@ export function useAutosave(file: MyBookFile | undefined) {
   const contentRef = useRef(content)
   const fileRef = useRef(file)
   const hydratedFileIdRef = useRef<string | null>(null)
+  const inFlightContentRef = useRef<string | null>(null)
 
   useEffect(() => { fileRef.current = file }, [file])
   useEffect(() => {
@@ -45,6 +47,10 @@ export function useAutosave(file: MyBookFile | undefined) {
         contentRef.current = next
         lastSaved.current = next
       }
+    } else if (next && next !== lastSaved.current && next !== inFlightContentRef.current && file.driveFileId) {
+      // The store changed under unsaved local edits. Keep the edits and keep the
+      // incoming version as a recoverable conflict instead of dropping it.
+      void recordRemoteConflict(file.id, next, file.lastSyncedAt ?? new Date().toISOString())
     }
     setIsHydrated(true)
   }, [file])
@@ -53,9 +59,11 @@ export function useAutosave(file: MyBookFile | undefined) {
     const currentFile = fileRef.current
     if (!currentFile || contentRef.current === lastSaved.current) return true
     setStatus('saving-locally')
+    inFlightContentRef.current = contentRef.current
     const result = await fileRepository.update(currentFile.id, { content: contentRef.current, syncStatus: isLocalWorkspace() ? 'local' : 'pending' })
-    if (!result.success) { setStatus('failed'); return false }
+    if (!result.success) { inFlightContentRef.current = null; setStatus('failed'); return false }
     lastSaved.current = contentRef.current
+    inFlightContentRef.current = null
     setStatus('saved-locally')
     window.setTimeout(() => setStatus(isLocalWorkspace() ? 'local' : (fileRef.current?.syncStatus ?? (navigator.onLine ? 'pending' : 'offline'))), 700)
     return true
@@ -90,5 +98,7 @@ export function useAutosave(file: MyBookFile | undefined) {
     setStatus(nextStatus)
   }
 
-  return { content, isHydrated, status, setContent: changeContent, replaceContent, save }
+  const hasUnsavedChanges = useCallback(() => contentRef.current !== lastSaved.current, [])
+
+  return { content, isHydrated, status, setContent: changeContent, replaceContent, save, hasUnsavedChanges }
 }

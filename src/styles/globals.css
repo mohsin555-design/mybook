@@ -382,6 +382,8 @@
   .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-caret { width: 1.75rem; height: 1.75rem; font-size: 1.5rem; }
   .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-caret { width: 1.5rem; height: 1.5rem; font-size: 1.35rem; }
   .tiptap .mybook-toggle[data-level="3"] .mybook-toggle-caret { width: 1.35rem; height: 1.35rem; font-size: 1.2rem; }
+  /* Preflight makes every img display:block, which pushes ProseMirror's caret-anchor separator (rendered after a trailing inline atom) onto its own line. */
+  .tiptap img.ProseMirror-separator { display: inline; }
   .tiptap .mybook-toggle-content { margin-left: 1.75rem; padding: 0; }
   .tiptap .mybook-toggle[data-level="1"] .mybook-toggle-content { margin-left: 2.25rem; }
   .tiptap .mybook-toggle[data-level="2"] .mybook-toggle-content { margin-left: 2rem; }
@@ -858,6 +860,21 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+.mybook-date-time-calendar > div > div > table > thead {
+  display: block;
+  width: 100%;
+}
+
+.mybook-date-time-calendar [data-today="true"] {
+  border-radius: 6px;
+  background: transparent;
+}
+
+.mybook-date-time-calendar [data-today="true"] > button:not([data-selected-single="true"]) {
+  border-radius: 6px;
+  background: var(--muted);
 }
 
 .dark {

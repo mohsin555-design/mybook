@@ -58,6 +58,13 @@ it('preserves date and time block values in Markdown', () => {
   expect(markdown).toContain(':::date-time')
   expect(myBookMarkdownToDocument(markdown).content?.[0]).toMatchObject(block)
 })
+it('round trips inline date and time mentions between paragraph text', () => {
+  const dateTime = { type: 'dateTimeBlock', attrs: { value: '2026-10-03T14:30:00.000Z', includeTime: true, endDateEnabled: true, endValue: '2026-10-03T15:30:00.000Z', use24Hour: false, dateFormat: 'relative' } }
+  const source = doc({ type: 'paragraph', content: [text('Meet on '), dateTime, text(' at the cafe.') ] })
+  const markdown = documentToMyBookMarkdown('Inline date', source)
+  const roundTrip = myBookMarkdownToDocument(markdown)
+  expect(roundTrip.content?.[0]?.content).toEqual(source.content?.[0]?.content)
+})
 const documentLinkBlock = (targetId = 'doc_b', label = 'Project Notes'): JSONContent => ({ type: 'documentLink', attrs: { targetId, label } })
 const bookmarkBlock = (): JSONContent => ({ type: 'bookmarkBlock', attrs: { href: 'https://example.com/docs/writin-links', title: 'Writin links', domain: 'example.com', description: '' } })
 it('preserves bookmark preview images and the original query in Markdown', () => {

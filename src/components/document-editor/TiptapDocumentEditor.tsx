@@ -4,6 +4,7 @@ import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Unlink02Icon } fro
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Dropdown } from '../ui/compat-dropdown'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../ui/sheet'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
@@ -40,7 +41,7 @@ import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
 import { Callout, calloutNode } from './extensions/Callout'
 import { CodeBlock } from './extensions/CodeBlock'
 import { DatabaseBlock } from './extensions/DatabaseBlock'
-import { DateTimeBlock } from './extensions/DateTimeBlock'
+import { DateTimeBlock, handleDateTimeBlockAdjacentDelete } from './extensions/DateTimeBlock'
 import { DocumentLink, documentLinkNode } from './extensions/DocumentLink'
 import { EmbedBlock, embedBlockNode } from './extensions/EmbedBlock'
 import { FileAttachment, fileAttachmentNode } from './extensions/FileAttachment'
@@ -64,7 +65,7 @@ import { documentLinkLocation, documentLinkTargets } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
 import { MobileSlashCommandMenu, SlashCommandMenu } from './SlashCommandMenu'
 import { analyzePastedUrl, type PasteUrlInfo } from './pasteUrlModel'
-import { filterSlashCommands, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
+import { filterMentionCommands, filterSlashCommands, getMentionMenuState, getSlashMenuState, runSlashCommand, type SlashMenuState } from './slashCommands'
 import { TableActionsMenu } from './TableActionsMenu'
 import { devLog } from '../../utils/safeLog'
 import { convertRtfToHtml, documentImportTitle, isSupportedDocumentImport, normalizeInlineFormatting, plainTextToHtml, takeDocumentImport } from '../../services/documentImport'
@@ -705,6 +706,30 @@ function DesktopMenu({ label, children }: { label: string; children: ReactNode }
   )
 }
 
+function MentionSuggestionMenu({ menu, isMobile, selectedIndex, onSelectedIndexChange, onSelect, onClose }: { menu: SlashMenuState; isMobile: boolean; selectedIndex: number; onSelectedIndexChange: (index: number) => void; onSelect: (commandId: string) => void; onClose: () => void }) {
+  const matches = filterMentionCommands(menu.query)
+  const options = matches.length ? matches.map((command, index) => <button key={command.id} type="button" role="option" aria-selected={index === selectedIndex} aria-label={command.title} onMouseEnter={() => onSelectedIndexChange(index)} onMouseDown={(event) => { event.preventDefault(); onSelect(command.id) }} className={`flex h-8 w-full items-center rounded-md px-2 text-left text-sm ${index === selectedIndex ? 'bg-[var(--app-subtle)]' : ''} hover:bg-[var(--app-subtle)]`}>{command.title}</button>) : <div className="px-2 py-2 text-sm text-muted-foreground">No matching mentions</div>
+
+  if (isMobile) {
+    return (
+      <Sheet open modal={false} onOpenChange={(open) => { if (!open) onClose() }}>
+        <SheetContent side="bottom" className="max-h-[40dvh] rounded-t-2xl px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">
+          <SheetHeader className="sr-only"><SheetTitle>Mention</SheetTitle></SheetHeader>
+          <div role="listbox" aria-label="Mention" data-mention-menu="true" className="mx-auto w-full max-w-md">
+            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
+            {options}
+          </div>
+        </SheetContent>
+      </Sheet>
+    )
+  }
+
+  return <div role="dialog" aria-label="Mention" data-mention-menu="true" className="fixed z-30 w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_12px_32px_rgba(0,0,0,0.14)]" style={{ top: Math.min(menu.rect.bottom + 4, window.innerHeight - 132), left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 232)) }}>
+    <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Mention</div>
+    {options}
+  </div>
+}
+
 function PasteAsMenu({
   menu,
   onChoose,
@@ -901,6 +926,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
   const [docxMessage, setDocxMessage] = useState('')
   const [slashMenu, setSlashMenu] = useState<SlashMenuState | null>(null)
+  const [mentionMenu, setMentionMenu] = useState<SlashMenuState | null>(null)
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
   const [isFullWidth, setIsFullWidth] = useState(() => window.localStorage.getItem(documentViewModeStorageKey) === 'full')
   const [zoom, setZoom] = useState(100)
@@ -929,6 +956,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const lastSavedTitleRef = useRef('')
   const loadedTitleFileIdRef = useRef<string | null>(null)
   const slashMenuRef = useRef<SlashMenuState | null>(null)
+  const mentionMenuRef = useRef<SlashMenuState | null>(null)
+  const mentionSelectedIndexRef = useRef(0)
   const slashMenuDismissedRef = useRef(false)
   const slashSelectedIndexRef = useRef(0)
   const documentLinkPickerRef = useRef<DocumentLinkPickerState | null>(null)
@@ -1057,6 +1086,16 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const nextIndex = Math.min(slashSelectedIndexRef.current, Math.max(0, commandCount - 1))
     slashSelectedIndexRef.current = nextIndex
     setSlashSelectedIndex(nextIndex)
+  }, [])
+  const updateMentionMenu = useCallback((currentEditor: NonNullable<ReturnType<typeof useEditor>>) => {
+    const next = getMentionMenuState(currentEditor)
+    const previous = mentionMenuRef.current
+    if (next && (!previous || next.query !== previous.query)) {
+      mentionSelectedIndexRef.current = 0
+      setMentionSelectedIndex(0)
+    }
+    mentionMenuRef.current = next
+    setMentionMenu(next)
   }, [])
   const closePasteAsMenu = useCallback(() => {
     pasteAsMenuRef.current = null
@@ -1426,6 +1465,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         },
       },
       handleKeyDown: (_view, event) => {
+        if (editorRef.current && handleDateTimeBlockAdjacentDelete(editorRef.current.view, event.key)) {
+          event.preventDefault()
+          return true
+        }
+
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && editorRef.current) {
           event.preventDefault()
           const currentEditor = editorRef.current
@@ -1555,6 +1599,33 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         }
 
         const menu = slashMenuRef.current
+        const mentionMenu = mentionMenuRef.current
+        if (mentionMenu) {
+          const commands = filterMentionCommands(mentionMenu.query)
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            const next = commands.length
+              ? (mentionSelectedIndexRef.current + (event.key === 'ArrowDown' ? 1 : -1) + commands.length) % commands.length
+              : 0
+            mentionSelectedIndexRef.current = next
+            setMentionSelectedIndex(next)
+            return true
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            mentionMenuRef.current = null
+            setMentionMenu(null)
+            return true
+          }
+          if ((event.key === 'Enter' || event.key === 'Tab') && commands.length && editorRef.current) {
+            event.preventDefault()
+            const selectedCommand = commands[mentionSelectedIndexRef.current] ?? commands[0]!
+            runSlashCommand(editorRef.current, selectedCommand.id, mentionMenu.range)
+            mentionMenuRef.current = null
+            setMentionMenu(null)
+            return true
+          }
+        }
         if (!menu) return false
         const commands = filterSlashCommands(menu.query)
         if (event.key === 'Escape') {
@@ -1592,6 +1663,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     onUpdate: ({ editor: currentEditor }) => {
       updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
+      updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
 
       if (contentSyncTimerRef.current !== null) {
@@ -1614,6 +1686,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
       updateDocumentLinkPicker(currentEditor)
       updateSlashMenu(currentEditor)
+      updateMentionMenu(currentEditor)
       updatePasteAsMenu(currentEditor)
     },
   })
@@ -2339,6 +2412,16 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       const targetPos = blockTarget.pos
       const isEmpty = targetNode.isTextblock && targetNode.content.size === 0
 
+      if (commandId === 'date-time' && targetNode.isTextblock) {
+        const insertPos = targetPos + targetNode.nodeSize - 1
+        // The menu click moves DOM focus away from ProseMirror. Focus first so
+        // the following selection dispatch becomes the editor's active caret.
+        editor.view.focus()
+        editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, insertPos)))
+        runSlashCommand(editor, commandId, { from: insertPos, to: insertPos })
+        return
+      }
+
       if (isEmpty) {
         const nodeEnd = targetPos + targetNode.nodeSize
         editor.chain().focus().deleteRange({ from: targetPos, to: nodeEnd }).run()
@@ -2704,6 +2787,17 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           />
         )
       ) : null}
+      {mentionMenu ? <MentionSuggestionMenu menu={mentionMenu} isMobile={isMobile} selectedIndex={mentionSelectedIndex} onSelectedIndexChange={(index) => {
+        mentionSelectedIndexRef.current = index
+        setMentionSelectedIndex(index)
+      }} onSelect={(commandId) => {
+        runSlashCommand(editor, commandId, mentionMenu.range)
+        mentionMenuRef.current = null
+        setMentionMenu(null)
+      }} onClose={() => {
+        mentionMenuRef.current = null
+        setMentionMenu(null)
+      }} /> : null}
       {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
       {inlineLinkToolbar ? <InlineLinkToolbar toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
       <EditorBlockControls editor={editor} onInsertBlock={insertBlock} />

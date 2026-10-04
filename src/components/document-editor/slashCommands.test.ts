@@ -1,11 +1,24 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
+import type { JSONContent } from '@tiptap/core'
+import { TextSelection } from '@tiptap/pm/state'
 import { Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 
-import { filterSlashCommands, groupSlashCommands, runSlashCommand, slashCommands } from './slashCommands'
+import { DateTimeBlock } from './extensions/DateTimeBlock'
+import { filterMentionCommands, filterSlashCommands, getMentionMenuState, groupSlashCommands, runSlashCommand, slashCommands } from './slashCommands'
 
 describe('slashCommands', () => {
+  it('keeps Date & Time in the Mention block category and exposes it for @ suggestions', () => {
+    expect(slashCommands.find((command) => command.id === 'date-time')?.category).toBe('Mention')
+    expect(filterMentionCommands('').map((command) => command.title)).toEqual(['Date & Time'])
+    expect(filterMentionCommands('time').map((command) => command.id)).toEqual(['date-time'])
+    const editor = new Editor({ content: '<p>@date</p>', extensions: [StarterKit, DateTimeBlock] })
+    editor.commands.setTextSelection(6)
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 10, right: 10, top: 20, bottom: 40 } as DOMRect)
+    expect(getMentionMenuState(editor)?.query).toBe('date')
+    editor.destroy()
+  })
   it('includes Video command under Media category', () => {
     const videoCmd = slashCommands.find((c) => c.id === 'video')
     expect(videoCmd).toBeDefined()
@@ -23,6 +36,61 @@ describe('slashCommands', () => {
     expect(audioCmd).toBeDefined()
     expect(audioCmd?.category).toBe('Media')
     expect(audioCmd?.title).toBe('Audio')
+  })
+
+  it('inserts a current date-time inline and allows typing after it', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [StarterKit, DateTimeBlock],
+      content: '<p>Meet </p>',
+    })
+    editor.commands.setTextSelection(6)
+
+    runSlashCommand(editor, 'date-time', { from: 6, to: 6 })
+
+    const paragraph = editor.getJSON().content?.[0] as JSONContent | undefined
+    const dateTime = paragraph?.content?.find((node) => node.type === 'dateTimeBlock')
+    expect(paragraph?.type).toBe('paragraph')
+    expect(dateTime?.attrs?.value).toEqual(expect.any(String))
+    expect(dateTime?.attrs?.includeTime).toBe(true)
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+    expect(editor.state.selection.$from.parentOffset).toBe(editor.state.selection.$from.parent.content.size)
+    editor.commands.insertContent('tomorrow')
+    const finalParagraph = editor.getJSON().content?.[0] as JSONContent | undefined
+    expect(finalParagraph?.type).toBe('paragraph')
+    expect(finalParagraph?.content?.some((node) => node.type === 'dateTimeBlock')).toBe(true)
+    expect(finalParagraph?.content?.at(-1)?.text).toBe('tomorrow')
+    const cursorAfterTyping = editor.state.selection.from
+    editor.commands.deleteRange({ from: cursorAfterTyping - 'tomorrow'.length, to: cursorAfterTyping })
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+    expect(editor.state.selection.$from.parentOffset).toBe(editor.state.selection.$from.parent.content.size)
+    expect((editor.getJSON().content?.[0] as JSONContent).content?.at(-1)?.type).toBe('dateTimeBlock')
+
+    editor.destroy()
+    element.remove()
+  })
+
+  it('keeps block-picker Date & Time insertion at the end of the selected line', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({ element, extensions: [StarterKit, DateTimeBlock], content: '<p></p><p>Next</p>' })
+    const insertPos = 1 // End of the selected empty paragraph.
+    editor.view.focus()
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, insertPos)))
+
+    runSlashCommand(editor, 'date-time', { from: insertPos, to: insertPos })
+    expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+    expect(editor.state.selection.$from.parentOffset).toBe(editor.state.selection.$from.parent.content.size)
+    editor.commands.insertContent('continue')
+
+    const paragraphs = editor.getJSON().content as JSONContent[] | undefined
+    expect(paragraphs?.[0]?.type).toBe('paragraph')
+    expect(paragraphs?.[0]?.content?.map((node) => node.type)).toEqual(['dateTimeBlock', 'text'])
+    expect(paragraphs?.[0]?.content?.at(-1)?.text).toBe('continue')
+    expect(paragraphs?.[1]?.content?.[0]?.text).toBe('Next')
+
+    editor.destroy()
+    element.remove()
   })
 
   it('filters video command on query "video" or "youtube"', () => {

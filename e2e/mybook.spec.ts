@@ -497,3 +497,33 @@ test('document table grips and menus are keyboard accessible', async ({ page }) 
   await page.getByRole('menuitemcheckbox', { name: 'Header row' }).press('Enter')
   await expect(table.locator('th')).toHaveCount(2)
 })
+
+test('date mention keeps the caret on its line while clearing adjacent text', async ({ page }) => {
+  await signInForTest(page)
+  await page.getByRole('button', { name: 'Add new' }).click()
+  await page.getByRole('menuitem', { name: 'Document', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Document content' }).click()
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.type('/date')
+  await page.getByRole('option', { name: 'Date & Time' }).click()
+  await expect(page.locator('[data-date-time-mention]')).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  const paragraph = page.locator('.ProseMirror p').first()
+  await paragraph.click({ position: { x: 600, y: 10 } })
+  await page.keyboard.type('ab')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
+
+  const singleLine = (await paragraph.boundingBox())!.height
+  expect(singleLine).toBeLessThan(40)
+  await expect(paragraph.locator('[data-date-time-mention]')).toHaveCount(1)
+  const mentionBox = (await paragraph.locator('[data-date-time-mention]').boundingBox())!
+  const anchorBox = (await paragraph.locator('img.ProseMirror-separator').boundingBox())!
+  expect(anchorBox.x).toBeGreaterThanOrEqual(mentionBox.x + mentionBox.width - 1)
+  expect(anchorBox.y).toBeLessThan(mentionBox.y + mentionBox.height)
+  await page.keyboard.press('Backspace')
+  await expect(paragraph.locator('.ProseMirror-selectednode')).toHaveCount(1)
+  await page.keyboard.press('Backspace')
+  await expect(paragraph.locator('[data-date-time-mention]')).toHaveCount(0)
+})

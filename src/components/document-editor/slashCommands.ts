@@ -13,7 +13,7 @@ export interface SlashCommand {
   title: string
   description: string
   keywords: string[]
-  category: 'Basic Blocks' | 'Lists' | 'Media' | 'Data' | 'Advanced'
+  category: 'Basic Blocks' | 'Lists' | 'Media' | 'Data' | 'Mention' | 'Advanced'
   shortcut?: string
   hidden?: boolean
 }
@@ -22,6 +22,24 @@ export interface SlashMenuState {
   query: string
   range: { from: number; to: number }
   rect: DOMRect
+}
+
+export function getMentionMenuState(editor: Pick<Editor, 'state' | 'view'>): SlashMenuState | null {
+  const { selection } = editor.state
+  if (!selection.empty || !['paragraph', 'heading'].includes(selection.$from.parent.type.name)) return null
+  const before = selection.$from.parent.textBetween(0, selection.$from.parentOffset, '\n', '\0')
+  const match = /(?:^|\s)@([a-zA-Z0-9 -]*)$/u.exec(before)
+  if (!match) return null
+  const token = match[0].trimStart()
+  const from = selection.$from.start() + before.length - token.length
+  const coords = editor.view.coordsAtPos(selection.from)
+  return { query: match[1] ?? '', range: { from, to: selection.from }, rect: new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top) }
+}
+
+export function filterMentionCommands(query: string) {
+  const normalized = query.trim().toLowerCase()
+  const dateTime = allSlashCommands.find((command) => command.id === 'date-time')!
+  return !normalized || 'date & time date time datetime'.includes(normalized) ? [dateTime] : []
 }
 
 export function commandMenuTop(rect: DOMRect, menuHeight: number, gap = 8, minTop = gap) {
@@ -83,7 +101,7 @@ export const allSlashCommands: SlashCommand[] = [
   { id: 'document-link', title: 'Link to Page', description: 'Link to another workspace item', keywords: ['document link', 'link to page', 'page link', 'internal link', 'document', 'database', 'spreadsheet'], category: 'Media', shortcut: '[[' },
   { id: 'table', title: 'Basic Table', description: 'Insert a basic table', keywords: ['table', 'basic table', 'grid'], category: 'Data' },
   { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data', hidden: !ENABLE_DATABASE_BLOCK },
-  { id: 'date-time', title: 'Date & Time', description: 'Insert a date with optional time', keywords: ['date', 'time', 'calendar', 'datetime'], category: 'Data' },
+  { id: 'date-time', title: 'Date & Time', description: 'Insert a date with optional time', keywords: ['date', 'time', 'calendar', 'datetime'], category: 'Mention' },
   { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'], category: 'Advanced' },
   { id: 'toc', title: 'Table of contents', description: 'Show document headings', keywords: ['toc', 'table of contents', 'contents', 'outline'], category: 'Advanced' },
   { id: 'code-block', title: 'Code block', description: 'Insert multiline code', keywords: ['code', 'pre', 'block'], category: 'Advanced', shortcut: '```' },
@@ -92,7 +110,7 @@ export const allSlashCommands: SlashCommand[] = [
 export const slashCommands: SlashCommand[] = allSlashCommands.filter((command) => !command.hidden)
 
 export function groupSlashCommands(commands: SlashCommand[]) {
-  const categoryOrder: SlashCommand['category'][] = ['Basic Blocks', 'Lists', 'Media', 'Data', 'Advanced']
+  const categoryOrder: SlashCommand['category'][] = ['Basic Blocks', 'Lists', 'Media', 'Data', 'Mention', 'Advanced']
   return categoryOrder
     .map((category) => ({ category, commands: commands.filter((command) => command.category === category) }))
     .filter((group) => group.commands.length > 0)
@@ -167,7 +185,12 @@ export function runSlashCommand(
   else if (commandId === 'toggle-h4') chain.insertContent(toggleBlockNode('Toggle', 4)).run()
   else if (commandId === 'toc') chain.insertContent([tableOfContentsNode(), { type: 'paragraph' }]).run()
   else if (commandId === 'database') chain.insertContent([databaseBlockNode(), { type: 'paragraph' }]).run()
-  else if (commandId === 'date-time') chain.insertContent(dateTimeBlockNode()).run()
+  else if (commandId === 'date-time') {
+    // Insert only the inline atom. ProseMirror already places the text cursor
+    // after inline atoms; a literal NBSP spacer becomes document content and
+    // leaves an unwanted character after the user clears adjacent text.
+    chain.insertContent(dateTimeBlockNode()).run()
+  }
   else if (commandId === 'document-link') {
     chain.run()
     window.dispatchEvent(new CustomEvent('mybook:insert-document-link'))

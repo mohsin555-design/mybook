@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from '../database/db'
 import { useAuthStore } from '../stores/useAuthStore'
+import { registerUnsavedEditsProbe } from './localEditState'
 import {
   backupDocumentToDrive,
   classifyDriveTrashMetadata,
@@ -1472,12 +1473,14 @@ describe('googleDrive helpers', () => {
     })
 
     it('refreshes document when drive file has newer content', async () => {
-      mockedFiles.get.mockResolvedValueOnce({
+      mockedFiles.get.mockResolvedValue({
         id: 'local-1',
         driveFileId: 'drive-1',
         name: 'Old Title',
         type: 'document',
         content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Old"}]}]}',
+        baseContent: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Old"}]}]}',
+        syncStatus: 'backed-up',
         lastSyncedAt: '2026-10-03T11:00:00.000Z',
       })
 
@@ -1512,7 +1515,7 @@ describe('googleDrive helpers', () => {
     })
 
     it('does not overwrite when local has pending sync status', async () => {
-      mockedFiles.get.mockResolvedValueOnce({
+      mockedFiles.get.mockResolvedValue({
         id: 'local-1',
         driveFileId: 'drive-1',
         name: 'Old Title',
@@ -1533,6 +1536,57 @@ describe('googleDrive helpers', () => {
 
       const result = await refreshDriveFileToLocal('local-1')
       expect(result.updated).toBe(false)
+      expect(mockedFiles.update).not.toHaveBeenCalled()
+    })
+
+    const remoteFetch = () => vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ id: 'drive-1', name: 'Doc.md', mimeType: 'text/markdown', modifiedTime: '2026-10-03T12:00:00.000Z', trashed: false }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: vi.fn().mockResolvedValue('# Doc\n\nRemote edit') })
+
+    it('keeps local edits and records the remote version when both sides changed', async () => {
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-1', driveFileId: 'drive-1', name: 'Doc', type: 'document', mimeType: 'application/x-mybook-document',
+        content: 'local edit', baseContent: 'base', syncStatus: 'pending', lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+      stubDriveFetch(remoteFetch())
+
+      const result = await refreshDriveFileToLocal('local-1')
+
+      expect(result.updated).toBe(false)
+      expect(db.fileVersions.add).toHaveBeenCalledWith(expect.objectContaining({ fileId: 'local-1', source: 'drive', label: 'Remote version (not applied)' }))
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', { syncConflict: expect.objectContaining({ remoteModifiedTime: '2026-10-03T12:00:00.000Z' }) })
+      expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', expect.objectContaining({ content: expect.anything() }))
+    })
+
+    it('treats keystrokes that are not saved yet as local changes', async () => {
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-1', driveFileId: 'drive-1', name: 'Doc', type: 'document', mimeType: 'application/x-mybook-document',
+        content: 'base', baseContent: 'base', syncStatus: 'backed-up', lastSyncedAt: '2026-10-03T11:00:00.000Z',
+      })
+      stubDriveFetch(remoteFetch())
+      const unregister = registerUnsavedEditsProbe('local-1', () => true)
+
+      const result = await refreshDriveFileToLocal('local-1')
+      unregister()
+
+      expect(result.updated).toBe(false)
+      expect(mockedFiles.update).toHaveBeenCalledWith('local-1', { syncConflict: expect.anything() })
+      expect(mockedFiles.update).not.toHaveBeenCalledWith('local-1', expect.objectContaining({ content: expect.anything() }))
+    })
+
+    it('does not raise the same conflict twice', async () => {
+      mockedFiles.get.mockResolvedValue({
+        id: 'local-1', driveFileId: 'drive-1', content: 'local edit', baseContent: 'base', syncStatus: 'pending',
+        lastSyncedAt: '2026-10-03T11:00:00.000Z',
+        syncConflict: { remoteModifiedTime: '2026-10-03T12:00:00.000Z', versionId: 'v1', detectedAt: '2026-10-03T12:00:01.000Z' },
+      })
+      stubDriveFetch(remoteFetch())
+
+      await refreshDriveFileToLocal('local-1')
+
       expect(mockedFiles.update).not.toHaveBeenCalled()
     })
   })

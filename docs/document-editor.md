@@ -2,7 +2,7 @@
 
 ## Purpose and implementation
 
-Documents open at `/document/:documentId`. `src/components/document-editor/TiptapDocumentEditor.tsx` configures Tiptap and coordinates toolbars, block controls, imports, local saving and Drive actions. Document content is serialized Tiptap JSON in IndexedDB; recovery drafts also use localStorage. `src/hooks/useAutosave.ts` debounces content saves by 500 ms and attempts to flush on page hide/visibility changes.
+Documents open at `/document/:documentId`. `src/components/document-editor/TiptapDocumentEditor.tsx` configures Tiptap and coordinates toolbars, block controls, imports, local saving and Drive actions. Document content is serialized Tiptap JSON in IndexedDB; recovery drafts also use localStorage. `src/hooks/useAutosave.ts` debounces content saves by 500 ms and attempts to flush on page hide/visibility changes. The open editor registers an unsaved-edits probe (`src/services/localEditState.ts`) so sync can tell whether keystrokes are not yet persisted. If the stored file changes underneath unsaved edits, `useAutosave` keeps the edits and records the incoming content as a conflict. A banner (`SyncConflictBanner.tsx`) offers Keep mine / Use other version. See [collaboration-ready sync](./collaboration-ready-sync.md).
 
 ## Formatting and editing
 
@@ -16,7 +16,7 @@ Desktop uses command menus and a top formatting toolbar, centered-page/full-widt
 
 ## Advanced content
 
-The editor registers callouts, toggles, image/video/audio blocks, file attachments, bookmarks, website mentions, embeds, document links, table of contents and database-style blocks. Their models, format rules and limits are documented in [advanced editor and Markdown](./advanced-editor-and-format-spec.md). Website mentions are not user mentions.
+The editor registers callouts, toggles, image/video/audio blocks, file attachments, bookmarks, website mentions, embeds, document links, table of contents and database-style blocks. Their models, format rules and limits are documented in [advanced editor and Markdown](./advanced-editor-and-format-spec.md). Website mentions are not user mentions. The Date & Time inline mention is documented in [advanced editor and Markdown](./advanced-editor-and-format-spec.md#date--time-mention).
 
 ## Import/export and sync
 
@@ -28,4 +28,4 @@ Local saves and cloud upload are different stages. Connected workspaces can impo
 
 Controls should have accessible names, visible focus and selected states. Slash commands support keyboard selection; heading commands create real headings. Mobile controls must keep the caret reachable when the keyboard opens.
 
-Relevant tests are alongside editor components, extensions and Markdown/DOCX utilities. Remaining acceptance checks include real mobile keyboards, desktop zoom, clean paste, all block round trips with media, error/recovery behavior and cloud status placement. AI summaries, user mentions and a citations workflow are not implemented editor features.
+Relevant tests are alongside editor components (plus Playwright specs in `e2e/`), extensions and Markdown/DOCX utilities. Remaining acceptance checks include real mobile keyboards, desktop zoom, clean paste, all block round trips with media, error/recovery behavior and cloud status placement. AI summaries, user mentions and a citations workflow are not implemented editor features.

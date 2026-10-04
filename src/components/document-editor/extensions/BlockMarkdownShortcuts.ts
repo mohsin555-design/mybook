@@ -1,5 +1,4 @@
 import { Extension, InputRule } from '@tiptap/core'
-import { convertSelectedBlocks } from '../blockConversion'
 
 export const BlockMarkdownShortcuts = Extension.create({
   name: 'blockMarkdownShortcuts',
@@ -9,81 +8,108 @@ export const BlockMarkdownShortcuts = Extension.create({
       // Bullet list: "- " or "* " or "+ "
       new InputRule({
         find: /^\s*([-*+])\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'bullet')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .wrapInList('bulletList')
+            .run()
         },
       }),
 
       // Numbered list: "1. "
       new InputRule({
         find: /^\s*(\d+)\.\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'numbered')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .wrapInList('orderedList')
+            .run()
         },
       }),
 
       // To-do list: "[] " or "[ ] "
       new InputRule({
         find: /^\s*(\[ ?\])\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'task')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .wrapInList('taskList')
+            .run()
         },
       }),
 
       // Heading 1: "# "
       new InputRule({
         find: /^#\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'h1')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .setHeading({ level: 1 })
+            .run()
         },
       }),
 
       // Heading 2: "## "
       new InputRule({
         find: /^##\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'h2')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .setHeading({ level: 2 })
+            .run()
         },
       }),
 
       // Heading 3: "### "
       new InputRule({
         find: /^###\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'h3')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .setHeading({ level: 3 })
+            .run()
         },
       }),
 
       // Heading 4: "#### "
       new InputRule({
         find: /^####\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'h4')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .setHeading({ level: 4 })
+            .run()
         },
       }),
 
       // Blockquote: "> "
       new InputRule({
         find: /^\s*>\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'quote')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .setBlockquote()
+            .run()
         },
       }),
 
       // Code block: "``` "
       new InputRule({
         find: /^```\s$/,
-        handler: ({ range }) => {
-          this.editor.chain().deleteRange(range).run()
-          convertSelectedBlocks(this.editor, 'code-block')
+        handler: ({ chain, range }) => {
+          chain()
+            .deleteRange(range)
+            .clearNodes()
+            .setCodeBlock()
+            .run()
         },
       }),
     ]

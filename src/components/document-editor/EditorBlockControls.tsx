@@ -1,4 +1,4 @@
-import { ClipboardDocumentIcon, DocumentDuplicateIcon, PlusIcon } from '@heroicons/react/24/outline'
+import { ArrowDownIcon, ClipboardDocumentIcon, DocumentDuplicateIcon, PlusIcon, ViewColumnsIcon } from '@heroicons/react/24/outline'
 import { Delete02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { Editor } from '@tiptap/react'
@@ -8,15 +8,16 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
-import { commandMenuTop, slashCommands, type SlashCommand } from './slashCommands'
+import { commandMenuTop, type SlashCommand } from './slashCommands'
 import { safeSelectionForBlock } from './blockConversion'
+import {
+  gutterBoundsForTarget,
+  insertBlockCommands,
+  type BlockTarget,
+  type ColumnContext,
+} from './columnControls'
 
-export interface BlockTarget {
-  node: ProseMirrorNode
-  pos: number
-  rect: DOMRect
-  controlRect: DOMRect
-}
+export type { BlockTarget, ColumnContext }
 
 const CENTERED_BLOCK_CONTROLS = new Set(['bookmarkBlock', 'documentLink', 'embedBlock', 'horizontalRule'])
 
@@ -28,7 +29,22 @@ function targetAtBlockPos(editor: Editor, node: ProseMirrorNode, pos: number): B
     ? blockElement.getBoundingClientRect()
     : new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top)
   const $from = editor.state.doc.resolve(Math.min(pos + 1, editor.state.doc.content.size))
-  const topPos = $from.depth > 0 ? $from.before(1) : pos
+
+  let columnDepth = -1
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === 'column') {
+      columnDepth = depth
+      break
+    }
+  }
+
+  let topPos = pos
+  if (columnDepth !== -1 && $from.depth > columnDepth) {
+    topPos = $from.before(columnDepth + 1)
+  } else if ($from.depth > 0) {
+    topPos = $from.before(1)
+  }
+
   const topElement = view.nodeDOM(topPos)
   const topCoords = view.coordsAtPos(topPos)
   const controlRect = topElement instanceof Element
@@ -49,32 +65,54 @@ function blockTargetAtResolvedPos(editor: Editor, pos: number): BlockTarget | nu
     return targetAtBlockPos(editor, node, tablePos)
   }
 
-  if ($from.depth > 0) {
-    const topPos = $from.before(1)
+  let columnDepth = -1
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === 'column') {
+      columnDepth = depth
+      break
+    }
+  }
+
+  if (columnDepth !== -1 && $from.depth > columnDepth) {
+    const topPos = $from.before(columnDepth + 1)
+    const topElement = view.nodeDOM(topPos)
     const topCoords = view.coordsAtPos(topPos)
-    topBlock = { pos: topPos, rect: new DOMRect(topCoords.left, topCoords.top, topCoords.right - topCoords.left, topCoords.bottom - topCoords.top) }
+    const rect = topElement instanceof Element
+      ? topElement.getBoundingClientRect()
+      : new DOMRect(topCoords.left, topCoords.top, topCoords.right - topCoords.left, topCoords.bottom - topCoords.top)
+    topBlock = { pos: topPos, rect }
+  } else if ($from.depth > 0) {
+    const topPos = $from.before(1)
+    const topElement = view.nodeDOM(topPos)
+    const topCoords = view.coordsAtPos(topPos)
+    const rect = topElement instanceof Element
+      ? topElement.getBoundingClientRect()
+      : new DOMRect(topCoords.left, topCoords.top, topCoords.right - topCoords.left, topCoords.bottom - topCoords.top)
+    topBlock = { pos: topPos, rect }
   }
 
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     const node = $from.node(depth)
     if (node.type.name !== 'taskItem') continue
-    const pos = $from.before(depth)
-    const coords = view.coordsAtPos(pos)
+    const taskPos = $from.before(depth)
+    const coords = view.coordsAtPos(taskPos)
     const rect = new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top)
-    return { node, pos, rect, controlRect: topBlock?.rect ?? rect }
+    return { node, pos: taskPos, rect, controlRect: topBlock?.rect ?? rect }
   }
 
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     const node = $from.node(depth)
+    if (node.type.name === 'column') continue
     if (node.isBlock) {
-      const pos = $from.before(depth)
-      const coords = view.coordsAtPos(pos)
+      const blockPos = $from.before(depth)
+      const coords = view.coordsAtPos(blockPos)
       const rect = new DOMRect(coords.left, coords.top, coords.right - coords.left, coords.bottom - coords.top)
-      return { node, pos, rect, controlRect: topBlock?.rect ?? rect }
+      return { node, pos: blockPos, rect, controlRect: topBlock?.rect ?? rect }
     }
   }
   return null
 }
+
 
 function findSelectionTarget(editor: Editor): BlockTarget | null {
   const { state, view } = editor
@@ -126,10 +164,11 @@ function findGutterTarget(editor: Editor, event: PointerEvent): BlockTarget | nu
   editor.state.doc.descendants((node, pos) => {
     if (!node.isBlock) return
     if (isInsideTable(editor, pos) && node.type.name !== 'table') return
-    if (['tableRow', 'tableCell', 'tableHeader'].includes(node.type.name)) return
+    if (['tableRow', 'tableCell', 'tableHeader', 'column'].includes(node.type.name)) return
     const target = targetAtBlockPos(editor, node, pos)
-    const gutterLeft = target.controlRect.left - 96
-    const gutterRight = target.controlRect.left + 4
+    const bounds = gutterBoundsForTarget(editor, target)
+    const gutterLeft = bounds.left
+    const gutterRight = bounds.left + bounds.width
     const isInRow = event.clientY >= target.rect.top - 8 && event.clientY <= target.rect.bottom + 8
     const isInGutter = event.clientX >= gutterLeft && event.clientX <= gutterRight
     if (isInRow && isInGutter) candidates.push(target)
@@ -142,7 +181,7 @@ function collectGutterTargets(editor: Editor): BlockTarget[] {
   editor.state.doc.descendants((node, pos) => {
     if (!node.isBlock) return
     if (isInsideTable(editor, pos) && node.type.name !== 'table') return
-    if (['tableRow', 'tableCell', 'tableHeader'].includes(node.type.name)) return
+    if (['tableRow', 'tableCell', 'tableHeader', 'column'].includes(node.type.name)) return
     const target = targetAtBlockPos(editor, node, pos)
     if (target.rect.width > 0 && target.rect.height > 0) targets.push(target)
   })
@@ -167,7 +206,43 @@ async function copyTarget(target: BlockTarget) {
   await navigator.clipboard?.writeText(clipboardText)
 }
 
+function findParentColumnsTarget(editor: Editor, target: BlockTarget): BlockTarget | null {
+  const $pos = editor.state.doc.resolve(target.pos)
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const node = $pos.node(depth)
+    if (node.type.name === 'columns') {
+      const pos = $pos.before(depth)
+      return targetAtBlockPos(editor, node, pos)
+    }
+  }
+  return null
+}
+
 function deleteTarget(editor: Editor, target: BlockTarget) {
+  const $pos = editor.state.doc.resolve(target.pos)
+  let parentColumn: { node: ProseMirrorNode; pos: number } | null = null
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if ($pos.node(depth).type.name === 'column') {
+      parentColumn = { node: $pos.node(depth), pos: $pos.before(depth) }
+      break
+    }
+  }
+
+  // Empty column safety: if this is the only block inside a column, replace it with an empty paragraph instead of leaving column empty
+  if (parentColumn && parentColumn.node.childCount <= 1) {
+    const paragraphType = editor.state.schema.nodes.paragraph
+    if (paragraphType) {
+      editor
+        .chain()
+        .focus()
+        .deleteRange({ from: target.pos, to: target.pos + target.node.nodeSize })
+        .insertContentAt(target.pos, paragraphType.createAndFill()!)
+        .setTextSelection(target.pos + 1)
+        .run()
+      return
+    }
+  }
+
   editor.chain().focus().deleteRange({ from: target.pos, to: target.pos + target.node.nodeSize }).run()
   editor.view.dom.blur()
 }
@@ -179,8 +254,42 @@ function blockControlsTop(target: BlockTarget | null) {
 }
 
 function moveTarget(editor: Editor, source: BlockTarget, drop: { pos: number; side: 'before' | 'after' }) {
+  if (source.node.type.name === 'column') return
   const targetInsertPos = drop.side === 'before' ? drop.pos : drop.pos + editor.state.doc.nodeAt(drop.pos)!.nodeSize
   if (targetInsertPos >= source.pos && targetInsertPos <= source.pos + source.node.nodeSize) return
+  if (source.node.type.name === 'columns') {
+    const resolved = editor.state.doc.resolve(targetInsertPos)
+    for (let depth = resolved.depth; depth > 0; depth -= 1) {
+      if (resolved.node(depth).type.name === 'column' || resolved.node(depth).type.name === 'columns') return
+    }
+  }
+
+  const $sourcePos = editor.state.doc.resolve(source.pos)
+  let sourceParentCol: { node: ProseMirrorNode; pos: number } | null = null
+  for (let depth = $sourcePos.depth; depth > 0; depth -= 1) {
+    if ($sourcePos.node(depth).type.name === 'column') {
+      sourceParentCol = { node: $sourcePos.node(depth), pos: $sourcePos.before(depth) }
+      break
+    }
+  }
+
+  const paragraphType = editor.state.schema.nodes.paragraph
+  if (sourceParentCol && sourceParentCol.node.childCount <= 1 && paragraphType) {
+    const emptyParagraph = paragraphType.createAndFill()!
+    const tr = editor.state.tr.replaceWith(source.pos, source.pos + source.node.nodeSize, emptyParagraph)
+    const adjustedTarget = targetInsertPos > source.pos
+      ? targetInsertPos - source.node.nodeSize + emptyParagraph.nodeSize
+      : targetInsertPos
+    tr.insert(adjustedTarget, source.node)
+    editor.view.dispatch(tr.scrollIntoView())
+    const selection = source.node.isTextblock && source.node.content.size
+      ? TextSelection.create(editor.state.doc, adjustedTarget + 1)
+      : NodeSelection.create(editor.state.doc, adjustedTarget)
+    editor.view.dispatch(editor.state.tr.setSelection(selection))
+    editor.view.focus()
+    return
+  }
+
   const insertPos = targetInsertPos > source.pos ? targetInsertPos - source.node.nodeSize : targetInsertPos
   const tr = editor.state.tr.delete(source.pos, source.pos + source.node.nodeSize).insert(insertPos, source.node)
   editor.view.dispatch(tr.scrollIntoView())
@@ -298,17 +407,17 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
       }
       if (event.key === 'ArrowDown') {
         event.preventDefault()
-        setSelectedInsertIndex((index) => (index + 1) % slashCommands.length)
+        setSelectedInsertIndex((index) => (index + 1) % insertBlockCommands.length)
         return
       }
       if (event.key === 'ArrowUp') {
         event.preventDefault()
-        setSelectedInsertIndex((index) => (index - 1 + slashCommands.length) % slashCommands.length)
+        setSelectedInsertIndex((index) => (index - 1 + insertBlockCommands.length) % insertBlockCommands.length)
         return
       }
       if (event.key === 'Enter') {
         event.preventDefault()
-        const command = slashCommands[selectedInsertIndex]
+        const command = insertBlockCommands[selectedInsertIndex]
         if (command) {
           onInsertBlock(command.id, target)
           setIsInsertOpen(false)
@@ -362,6 +471,8 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
   const bridgeHeight = Math.max(32, target?.rect.height ?? 32)
   const menuRect = new DOMRect(left, controlsTop, 56, 28)
   const insertMenuTop = commandMenuTop(menuRect, 352, 8, menuBoundary)
+  const insertMenuWidth = 320
+  const insertMenuLeft = Math.max(8, Math.min(left, window.innerWidth - insertMenuWidth - 8))
   const actionsMenuTop = commandMenuTop(menuRect, 128, 8, menuBoundary)
   const actionsMenuWidth = 176
   const gripLeft = left + 32
@@ -381,27 +492,30 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
 
   return (
     <>
-      {gutterTargets.map((gutterTarget) => (
-        <div
-          key={`${gutterTarget.pos}-${gutterTarget.node.type.name}`}
-          className="mybook-editor-block-gutter fixed z-10 bg-transparent"
-          style={{
-            top: Math.max(8, gutterTarget.rect.top - 8),
-            left: Math.max(0, gutterTarget.controlRect.left - 96),
-            width: 100,
-            height: Math.max(32, gutterTarget.rect.height + 16),
-          }}
-          aria-hidden="true"
-          onPointerEnter={() => setTarget(gutterTarget)}
-          onPointerMove={() => setTarget(gutterTarget)}
-          onPointerLeave={(event) => {
-            if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
-            const related = event.relatedTarget
-            if (related instanceof Node && (editor.view.dom.contains(related) || rootRef.current?.contains(related) || hoverBridgeRef.current?.contains(related))) return
-            setTarget(null)
-          }}
-        />
-      ))}
+      {gutterTargets.map((gutterTarget) => {
+        const bounds = gutterBoundsForTarget(editor, gutterTarget)
+        return (
+          <div
+            key={`${gutterTarget.pos}-${gutterTarget.node.type.name}`}
+            className="mybook-editor-block-gutter fixed z-10 bg-transparent"
+            style={{
+              top: Math.max(8, gutterTarget.rect.top - 8),
+              left: bounds.left,
+              width: bounds.width,
+              height: Math.max(32, gutterTarget.rect.height + 16),
+            }}
+            aria-hidden="true"
+            onPointerEnter={() => setTarget(gutterTarget)}
+            onPointerMove={() => setTarget(gutterTarget)}
+            onPointerLeave={(event) => {
+              if (isInsertOpen || isActionsOpen || dragState?.isDragging) return
+              const related = event.relatedTarget
+              if (related instanceof Node && (editor.view.dom.contains(related) || rootRef.current?.contains(related) || hoverBridgeRef.current?.contains(related))) return
+              setTarget(null)
+            }}
+          />
+        )
+      })}
       {target ? (
         <>
       <div
@@ -476,13 +590,84 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
       </div>
 
       {isInsertOpen ? (
-        <div ref={insertMenuRef} className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: insertMenuTop, left: Math.max(8, left) }} data-command-menu-scroller="true">
-          <BlockCommandMenu ariaLabel="Insert block options" commands={slashCommands} selectedIndex={selectedInsertIndex} onSelectIndex={setSelectedInsertIndex} onRun={runInsertCommand} />
+        <div ref={insertMenuRef} className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: insertMenuTop, left: insertMenuLeft }} data-command-menu-scroller="true">
+          <BlockCommandMenu
+            ariaLabel="Insert block options"
+            commands={insertBlockCommands}
+            selectedIndex={selectedInsertIndex}
+            onSelectIndex={setSelectedInsertIndex}
+            onRun={runInsertCommand}
+          />
         </div>
       ) : null}
 
       {isActionsOpen ? (
         <div ref={actionsMenuRef} className="fixed z-20 w-44 rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]" style={{ top: actionsMenuTop, left: actionsMenuLeft }} role="menu" aria-label="Block actions">
+          {(() => {
+            const parentColumnsTarget = findParentColumnsTarget(editor, target)
+            if (!parentColumnsTarget) return null
+            return (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    selectTarget(editor, parentColumnsTarget)
+                    setTarget(parentColumnsTarget)
+                    setIsActionsOpen(false)
+                  }}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"
+                >
+                  <ViewColumnsIcon aria-hidden="true" className="size-4" />
+                  Select columns
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const insertPos = parentColumnsTarget.pos + parentColumnsTarget.node.nodeSize
+                    const paragraphType = editor.state.schema.nodes.paragraph
+                    if (paragraphType) {
+                      editor
+                        .chain()
+                        .focus()
+                        .insertContentAt(insertPos, paragraphType.createAndFill()!)
+                        .setTextSelection(insertPos + 1)
+                        .run()
+                    }
+                    setIsActionsOpen(false)
+                  }}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"
+                >
+                  <ArrowDownIcon aria-hidden="true" className="size-4" />
+                  Insert below columns
+                </button>
+              </>
+            )
+          })()}
+          {target.node.type.name === 'columns' ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const insertPos = target.pos + target.node.nodeSize
+                const paragraphType = editor.state.schema.nodes.paragraph
+                if (paragraphType) {
+                  editor
+                    .chain()
+                    .focus()
+                    .insertContentAt(insertPos, paragraphType.createAndFill()!)
+                    .setTextSelection(insertPos + 1)
+                    .run()
+                }
+                setIsActionsOpen(false)
+              }}
+              className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"
+            >
+              <ArrowDownIcon aria-hidden="true" className="size-4" />
+              Insert below columns
+            </button>
+          ) : null}
           <button type="button" role="menuitem" onClick={() => { void copyTarget(target); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><ClipboardDocumentIcon aria-hidden="true" className="size-4" />Copy</button>
           <button type="button" role="menuitem" onClick={() => { duplicateTarget(editor, target); setIsActionsOpen(false) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm hover:bg-[var(--app-subtle)]"><DocumentDuplicateIcon aria-hidden="true" className="size-4" />Duplicate</button>
           <button type="button" role="menuitem" onClick={() => { deleteTarget(editor, target); setIsActionsOpen(false); setTarget(null); setDragState(null) }} className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm text-red-600 hover:bg-red-50"><HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />Delete</button>

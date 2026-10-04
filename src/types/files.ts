@@ -17,10 +17,21 @@ export interface MyBookFile {
   createdAt: string
   updatedAt: string
   lastSyncedAt: string | null
+  /** Last content known to match the remote copy; the common ancestor for reconciling local and remote edits. */
+  baseContent?: string | null
+  /** Set when a remote update could not be applied without discarding local edits. */
+  syncConflict?: SyncConflict | null
   syncError?: string | null
   syncStatus: SyncStatus
   isDeleted: boolean
   isFavorite?: boolean
+}
+
+export interface SyncConflict {
+  remoteModifiedTime: string
+  /** File version holding the remote content that was not applied. */
+  versionId: string
+  detectedAt: string
 }
 
 export type FileVersionSource = 'local' | 'drive'

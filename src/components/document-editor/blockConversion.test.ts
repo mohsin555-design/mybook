@@ -296,5 +296,166 @@ describe('blockConversion', () => {
 
       cleanup()
     })
+
+    it('converts existing paragraph to Heading 1 cleanly without orphan spaces and sets caret to start', () => {
+      const { editor, cleanup } = createTestEditor('<p>Heading One</p>')
+
+      let textPos = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Heading One') textPos = pos
+      })
+
+      // Type '# ' at the beginning
+      editor.commands.setTextSelection(textPos)
+      editor.view.dispatch(editor.state.tr.insertText('#', textPos))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      handleTextInput?.(editor.view, textPos + 1, textPos + 1, ' ')
+
+      expect(editor.getHTML()).toContain('<h1>Heading One</h1>')
+      expect(editor.state.doc.textContent).toBe('Heading One')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('converts existing paragraph to Heading 2 cleanly without orphan spaces and sets caret to start', () => {
+      const { editor, cleanup } = createTestEditor('<p>Heading Two</p>')
+
+      let textPos = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === 'Heading Two') textPos = pos
+      })
+
+      // Type '## ' at the beginning
+      editor.commands.setTextSelection(textPos)
+      editor.view.dispatch(editor.state.tr.insertText('##', textPos))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      handleTextInput?.(editor.view, textPos + 2, textPos + 2, ' ')
+
+      expect(editor.getHTML()).toContain('<h2>Heading Two</h2>')
+      expect(editor.state.doc.textContent).toBe('Heading Two')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('converts blank paragraph to Heading 2 cleanly and keeps caret inside heading', () => {
+      const { editor, cleanup } = createTestEditor('<p></p>')
+
+      editor.commands.setTextSelection(1)
+      editor.view.dispatch(editor.state.tr.insertText('##', 1))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, 3, 3, ' ')
+
+      expect(result).toBe(true)
+      expect(editor.getHTML()).toContain('<h2></h2>')
+      expect(editor.state.selection.$from.parent.type.name).toBe('heading')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('converts blank paragraph to Heading 1 cleanly and keeps caret inside heading', () => {
+      const { editor, cleanup } = createTestEditor('<p></p>')
+
+      editor.commands.setTextSelection(1)
+      editor.view.dispatch(editor.state.tr.insertText('#', 1))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, 2, 2, ' ')
+
+      expect(result).toBe(true)
+      expect(editor.getHTML()).toContain('<h1></h1>')
+      expect(editor.state.selection.$from.parent.type.name).toBe('heading')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('converts blank paragraph to bullet list cleanly and keeps caret inside item', () => {
+      const { editor, cleanup } = createTestEditor('<p></p>')
+
+      editor.commands.setTextSelection(1)
+      editor.view.dispatch(editor.state.tr.insertText('-', 1))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, 2, 2, ' ')
+
+      expect(result).toBe(true)
+      expect(editor.getHTML()).toContain('<ul><li><p></p></li></ul>')
+      expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('converts blank paragraph to numbered list cleanly and keeps caret inside item', () => {
+      const { editor, cleanup } = createTestEditor('<p></p>')
+
+      editor.commands.setTextSelection(1)
+      editor.view.dispatch(editor.state.tr.insertText('1.', 1))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, 3, 3, ' ')
+
+      expect(result).toBe(true)
+      expect(editor.getHTML()).toContain('<ol><li><p></p></li></ol>')
+      expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('converts blank paragraph to checklist cleanly and keeps caret inside item', () => {
+      const { editor, cleanup } = createTestEditor('<p></p>')
+
+      editor.commands.setTextSelection(1)
+      editor.view.dispatch(editor.state.tr.insertText('[]', 1))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, 3, 3, ' ')
+
+      expect(result).toBe(true)
+      expect(editor.getHTML()).toContain('data-type="taskList"')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('converts blank paragraph to blockquote cleanly and keeps caret inside quote', () => {
+      const { editor, cleanup } = createTestEditor('<p></p>')
+
+      editor.commands.setTextSelection(1)
+      editor.view.dispatch(editor.state.tr.insertText('>', 1))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, 2, 2, ' ')
+
+      expect(result).toBe(true)
+      expect(editor.getHTML()).toContain('<blockquote><p></p></blockquote>')
+      expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
   })
 })
+

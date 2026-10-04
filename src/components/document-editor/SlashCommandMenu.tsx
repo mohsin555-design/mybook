@@ -17,7 +17,9 @@ import {
   QueueListIcon,
   TableCellsIcon,
   VideoCameraIcon,
+  ViewColumnsIcon,
 } from '@heroicons/react/24/outline'
+import type { Editor } from '@tiptap/react'
 import { useEffect, useRef } from 'react'
 
 import { commandMenuTop, filterSlashCommands, groupSlashCommands, type SlashCommand, type SlashMenuState } from './slashCommands'
@@ -48,6 +50,10 @@ const commandIcons = {
   table: TableCellsIcon,
   database: CircleStackIcon,
   callout: ChatBubbleBottomCenterTextIcon,
+  'columns-2': ViewColumnsIcon,
+  'columns-3': ViewColumnsIcon,
+  'columns-4': ViewColumnsIcon,
+  'columns-5': ViewColumnsIcon,
   toc: QueueListIcon,
   'code-block': CommandLineIcon,
 } as const
@@ -68,6 +74,7 @@ function scrollOptionIntoMenuView(option: HTMLElement | null) {
 }
 
 interface SlashCommandMenuProps {
+  editor?: Editor
   menu: SlashMenuState
   selectedIndex: number
   onSelectIndex: (index: number) => void
@@ -132,8 +139,8 @@ export function BlockCommandMenu({
   )
 }
 
-export function SlashCommandMenu({ menu, selectedIndex, onSelectIndex, onRun }: SlashCommandMenuProps) {
-  const commands = filterSlashCommands(menu.query)
+export function SlashCommandMenu({ editor, menu, selectedIndex, onSelectIndex, onRun }: SlashCommandMenuProps) {
+  const commands = filterSlashCommands(menu.query, editor)
   const top = commandMenuTop(menu.rect, DESKTOP_MENU_HEIGHT, 0)
   const left = Math.min(menu.rect.left, window.innerWidth - 320)
 
@@ -149,8 +156,8 @@ export function SlashCommandMenu({ menu, selectedIndex, onSelectIndex, onRun }: 
   )
 }
 
-export function MobileSlashCommandMenu({ menu, selectedIndex, onSelectIndex, onRun }: SlashCommandMenuProps) {
-  const commands = filterSlashCommands(menu.query)
+export function MobileSlashCommandMenu({ editor, menu, selectedIndex, onSelectIndex, onRun }: SlashCommandMenuProps) {
+  const commands = filterSlashCommands(menu.query, editor)
   const selectedOptionRef = useRef<HTMLButtonElement>(null)
   const hasRunCommandRef = useRef(false)
   const top = commandMenuTop(menu.rect, MOBILE_MENU_HEIGHT, 0)

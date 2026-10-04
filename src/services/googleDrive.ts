@@ -3,6 +3,9 @@ import { db } from '../database/db'
 import type { JSONContent } from '@tiptap/core'
 import type { SyncEntityType, SyncQueueItem } from '../types/files'
 import { devLog } from '../utils/safeLog'
+import { hasUnsavedLocalEdits } from './localEditState'
+import { recordRemoteConflict } from './syncConflicts'
+import { reconcileExternalUpdate } from './syncReconciler'
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3'
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder'
@@ -874,6 +877,7 @@ export async function backupDocumentToDrive(input: {
         workspaceType: 'drive',
         mimeType: 'application/x-mybook-document',
         syncStatus: 'backed-up',
+        baseContent: content,
         lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString(),
       })
       return { success: true, folderId: driveParentId, folderName: WRITIN_FOLDER_NAME, created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
@@ -955,7 +959,7 @@ export async function backupSpreadsheetToDrive(input: {
       const changedDuringUpload = !current || current.content !== uploadedContent || current.name !== uploadedTitle || current.folderId !== (latest?.folderId ?? file.folderId) || current.isDeleted
       await db.files.update(file.id, changedDuringUpload
         ? { driveFileId: result.id, workspaceType: 'drive', syncStatus: current?.syncStatus === 'failed' ? 'failed' : 'pending' }
-        : { driveFileId: result.id, workspaceType: 'drive', syncStatus: 'backed-up', lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
+        : { driveFileId: result.id, workspaceType: 'drive', syncStatus: 'backed-up', baseContent: uploadedContent, lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString() })
       return { success: true, folderId: driveParentId, folderName: WRITIN_FOLDER_NAME, created: !(latest?.driveFileId ?? file.driveFileId), modifiedTime: result.modifiedTime }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not back up the spreadsheet to Google Drive.'
@@ -1538,6 +1542,7 @@ export async function importDriveFilesToLocal(
           type,
           mimeType,
           content: nextContent,
+          baseContent: nextContent,
           updatedAt: userVisibleChanged ? driveModifiedTime : existing.updatedAt,
           lastSyncedAt: driveModifiedTime,
           syncStatus: 'backed-up' as const,
@@ -1557,6 +1562,7 @@ export async function importDriveFilesToLocal(
           type: fileType,
           folderId: parentLocalId,
           content,
+          baseContent: content,
           mimeType: driveFile.mimeType,
           createdAt: now,
           updatedAt: driveModifiedTime,
@@ -1620,11 +1626,8 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
         return { updated: false, modifiedTime: driveModifiedTime }
       }
 
-      // Skip if local has pending unpushed sync changes
-      const unresolved = await unresolvedSyncIndex()
-      if (unresolved.has('file', local.id) || local.syncStatus === 'pending') {
-        return { updated: false, modifiedTime: driveModifiedTime }
-      }
+      // Already surfaced as a conflict; wait for the user to resolve it.
+      if (local.syncConflict?.remoteModifiedTime === driveModifiedTime) return { updated: false, modifiedTime: driveModifiedTime }
 
       const fileType = local.type ?? inferFileType(status.name ?? local.name, status.mimeType ?? '')
       const driveFile: DriveFile = {
@@ -1638,13 +1641,40 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
       const imported = await readDriveFileAsLocalContent(driveFile, local.id)
       const content = imported.content
       const cleanTitle = status.name ? localFileName(status.name, fileType) : local.name
-      const contentChanged = Boolean(content && content !== local.content)
-      const titleChanged = Boolean(cleanTitle && cleanTitle !== local.name)
+      // Re-read right before deciding: the user may have typed during the fetch.
+      const latest = await db.files.get(local.id)
+      if (!latest) return { updated: false }
+      const unresolved = await unresolvedSyncIndex()
+      const hasPendingPush = unresolved.has('file', latest.id) || latest.syncStatus === 'pending'
+      const unsavedEdits = hasUnsavedLocalEdits(latest.id)
+      const decision = content
+        ? reconcileExternalUpdate({
+          baseContent: latest.baseContent,
+          localContent: latest.content,
+          syncStatus: latest.syncStatus,
+          hasUnsavedLocalEdits: unsavedEdits,
+          hasPendingPush,
+          remoteChanged: true,
+          remoteContent: content,
+        })
+        : { action: 'noop' as const }
+
+      if (decision.action === 'conflict') {
+        await recordRemoteConflict(latest.id, content, driveModifiedTime)
+        return { updated: false, modifiedTime: driveModifiedTime }
+      }
+
+      // Unpushed local work (including renames) is never overwritten by remote metadata.
+      if (hasPendingPush || unsavedEdits) return { updated: false, modifiedTime: driveModifiedTime }
+
+      const contentChanged = decision.action === 'apply-remote'
+      const titleChanged = Boolean(cleanTitle && cleanTitle !== latest.name)
 
       if (!contentChanged && !titleChanged) {
-        await db.files.update(local.id, {
+        await db.files.update(latest.id, {
           workspaceType: 'drive',
           lastSyncedAt: driveModifiedTime,
+          baseContent: latest.content,
           syncStatus: 'backed-up',
           syncError: null,
         })
@@ -1652,11 +1682,11 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
       }
 
       if (contentChanged) {
-        await saveVersionBeforeDriveUpdate(local.id, driveModifiedTime)
+        await saveVersionBeforeDriveUpdate(latest.id, driveModifiedTime)
       }
 
-      await db.files.update(local.id, {
-        ...(contentChanged ? { content } : {}),
+      await db.files.update(latest.id, {
+        ...(contentChanged ? { content, baseContent: content } : { baseContent: latest.content }),
         ...(titleChanged ? { name: cleanTitle } : {}),
         workspaceType: 'drive',
         lastSyncedAt: driveModifiedTime,

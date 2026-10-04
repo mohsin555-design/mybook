@@ -93,6 +93,22 @@ function blockMarkdown(node: JSONContent, depth = 0): string {
     const body = (node.content ?? []).map((child) => blockMarkdown(child, depth)).filter(Boolean).join('\n\n')
     return [`:::callout type="${kind}"`, body, ':::'].filter(Boolean).join('\n')
   }
+  if (node.type === 'columns') {
+    const rawCount = Number(node.attrs?.count) || (Array.isArray(node.content) ? node.content.length : 2)
+    const count = rawCount >= 2 && rawCount <= 5 ? rawCount : 2
+    const columnsMarkdown = (node.content ?? [])
+      .map((col) => blockMarkdown(col, depth))
+      .filter(Boolean)
+      .join('\n')
+    return [`:::columns count=${count}`, columnsMarkdown, ':::'].filter(Boolean).join('\n')
+  }
+  if (node.type === 'column') {
+    const body = (node.content ?? [])
+      .map((child) => blockMarkdown(child, depth))
+      .filter(Boolean)
+      .join('\n\n')
+    return [':::column', body, ':::'].filter(Boolean).join('\n')
+  }
   if (node.type === 'toggleBlock') {
     const title = typeof node.attrs?.title === 'string' ? node.attrs.title : 'Toggle'
     const open = node.attrs?.open === false ? 'false' : 'true'
@@ -207,8 +223,8 @@ export function isMarkdownText(text: string): boolean {
   // Horizontal rule: --- or *** or ___
   if (/^(?:---|\*\*\*|___)\s*$/m.test(trimmed)) return true
 
-  // Custom blocks: :::callout, :::toggle, :::file, :::table, :::video, :::audio, :::image
-  if (/^:::(?:callout|toggle|file|table|video|audio|image|toc|bookmark|embed|database|date-time)/m.test(trimmed)) return true
+  // Custom blocks: :::columns, :::column, :::callout, :::toggle, :::file, :::table, :::video, :::audio, :::image
+  if (/^:::(?:columns|column|callout|toggle|file|table|video|audio|image|toc|bookmark|embed|database|date-time)/m.test(trimmed)) return true
 
   // Inline formatting spanning multiple words with links or formatting combinations
   if (/(\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~)\s*(?:and|or|,\s*|\[[^\]]+\]\([^)]+\)|\*)/.test(trimmed)) return true
@@ -241,7 +257,7 @@ export function documentToMyBookMarkdown(
 }
 
 type InlineMark = NonNullable<JSONContent['marks']>[number]
-type CustomBlockKind = 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'audio' | 'image' | 'date-time' | 'unknown'
+type CustomBlockKind = 'columns' | 'column' | 'callout' | 'toggle' | 'file' | 'table' | 'database' | 'toc' | 'document-link' | 'bookmark' | 'embed' | 'video' | 'audio' | 'image' | 'date-time' | 'unknown'
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 function findUnescaped(value: string, needle: string, start: number) {
@@ -543,19 +559,66 @@ function customBlockKind(line: string): CustomBlockKind | null {
   if (trimmed === ':::') return null
   const name = /^:::([A-Za-z][\w-]*)(?:\s|$)/u.exec(trimmed)?.[1]
   if (!name) return null
-  if (name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video' || name === 'audio' || name === 'image' || name === 'date-time') return name
+  if (name === 'columns' || name === 'column' || name === 'callout' || name === 'toggle' || name === 'file' || name === 'table' || name === 'database' || name === 'toc' || name === 'document-link' || name === 'bookmark' || name === 'embed' || name === 'video' || name === 'audio' || name === 'image' || name === 'date-time') return name
   return 'unknown'
+}
+
+function isContainerBlockKind(kind: CustomBlockKind | null): boolean {
+  return kind === 'columns' || kind === 'column' || kind === 'callout' || kind === 'toggle'
 }
 
 function collectCustomBlock(lines: string[], startIndex: number) {
   const blockLines = [lines[startIndex] ?? '']
+  const initialKind = customBlockKind(lines[startIndex] ?? '')
+  const allowNesting = isContainerBlockKind(initialKind)
   let index = startIndex + 1
+  let depth = 1
+  let inCodeBlock = false
+  let codeFenceLength = 0
+
   while (index < lines.length) {
     const next = lines[index] ?? ''
     blockLines.push(next)
     index += 1
-    if (next.trim() === ':::') return { closed: true, index, lines: blockLines }
+
+    if (!allowNesting) {
+      if (next.trim() === ':::') return { closed: true, index, lines: blockLines }
+      continue
+    }
+
+    const trimmed = next.trim()
+
+    // Track code block fences so ::: inside code blocks are ignored
+    const codeFenceMatch = /^(`{3,}|~{3,})/u.exec(trimmed)
+    if (codeFenceMatch) {
+      const fence = codeFenceMatch[1]!
+      if (!inCodeBlock) {
+        inCodeBlock = true
+        codeFenceLength = fence.length
+      } else if (fence.length >= codeFenceLength) {
+        inCodeBlock = false
+        codeFenceLength = 0
+      }
+      continue
+    }
+
+    if (inCodeBlock) continue
+
+    // If another custom block directive opens, increment depth
+    if (customBlockKind(trimmed) !== null) {
+      depth += 1
+      continue
+    }
+
+    // If a closing directive line is encountered, decrement depth
+    if (trimmed === ':::') {
+      depth -= 1
+      if (depth === 0) {
+        return { closed: true, index, lines: blockLines }
+      }
+    }
   }
+
   return { closed: false, index, lines: blockLines }
 }
 
@@ -958,11 +1021,11 @@ function parseFrontmatter(markdown: string) {
   return { body: trimmed.slice(end + FRONTMATTER_BOUNDARY.length + 2).trimStart(), metadata }
 }
 
-export function myBookMarkdownToDocument(markdown: string): JSONContent {
-  return parseMyBookMarkdown(markdown).document
+export function myBookMarkdownToDocument(markdown: string, isRoot = true): JSONContent {
+  return parseMyBookMarkdown(markdown, isRoot).document
 }
 
-export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult {
+export function parseMyBookMarkdown(markdown: string, isRoot = true): MyBookMarkdownParseResult {
   const parsedFrontmatter = parseFrontmatter(markdown)
   const lines = parsedFrontmatter.body.replace(/\r\n/g, '\n').split('\n')
   const content: JSONContent[] = []
@@ -1117,6 +1180,55 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
       })
       continue
     }
+    if (blockKind === 'columns') {
+      flushParagraph()
+      const opener = line.trim()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      if (!collected.closed) {
+        content.push(rawParagraph(collected.lines))
+        continue
+      }
+      const countMatch = /\bcount=(?:"([^"]*)"|'([^']*)'|(\d+))/iu.exec(opener)
+      const rawCount = countMatch ? Number(countMatch[1] ?? countMatch[2] ?? countMatch[3]) : undefined
+      const innerMarkdown = collected.lines.slice(1, -1).join('\n')
+      const parsed = myBookMarkdownToDocument(innerMarkdown, false)
+      const columnChildren = (parsed.content ?? []).filter((child) => child.type === 'column')
+
+      if (columnChildren.length === 0) {
+        const looseChildren = parsed.content?.length ? parsed.content : [{ type: 'paragraph' }]
+        columnChildren.push({ type: 'column', content: looseChildren })
+      }
+      while (columnChildren.length < 2) {
+        columnChildren.push({ type: 'column', content: [{ type: 'paragraph' }] })
+      }
+      const finalCount = rawCount && rawCount >= 2 && rawCount <= 5
+        ? (rawCount as 2 | 3 | 4 | 5)
+        : (Math.min(5, Math.max(2, columnChildren.length)) as 2 | 3 | 4 | 5)
+
+      content.push({
+        type: 'columns',
+        attrs: { count: finalCount },
+        content: columnChildren.slice(0, finalCount),
+      })
+      continue
+    }
+    if (blockKind === 'column') {
+      flushParagraph()
+      const collected = collectCustomBlock(lines, lineIndex)
+      lineIndex = collected.index - 1
+      if (!collected.closed) {
+        content.push(rawParagraph(collected.lines))
+        continue
+      }
+      const innerMarkdown = collected.lines.slice(1, -1).join('\n')
+      const parsed = myBookMarkdownToDocument(innerMarkdown, false)
+      content.push({
+        type: 'column',
+        content: parsed.content?.length ? parsed.content : [{ type: 'paragraph' }],
+      })
+      continue
+    }
     if (blockKind === 'callout' || blockKind === 'toggle') {
       flushParagraph()
       const opener = line.trim()
@@ -1239,8 +1351,33 @@ export function parseMyBookMarkdown(markdown: string): MyBookMarkdownParseResult
     paragraphLines.push(line)
   }
   flushParagraph()
+  const finalContent: JSONContent[] = []
+  if (isRoot) {
+    for (let i = 0; i < content.length; i += 1) {
+      const item = content[i]!
+      if (item.type === 'column') {
+        const cols = [item]
+        while (i + 1 < content.length && content[i + 1]!.type === 'column' && cols.length < 5) {
+          i += 1
+          cols.push(content[i]!)
+        }
+        while (cols.length < 2) {
+          cols.push({ type: 'column', content: [{ type: 'paragraph' }] })
+        }
+        finalContent.push({
+          type: 'columns',
+          attrs: { count: cols.length as 2 | 3 | 4 | 5 },
+          content: cols,
+        })
+      } else {
+        finalContent.push(item)
+      }
+    }
+  } else {
+    finalContent.push(...content)
+  }
   return {
-    document: { type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] },
+    document: { type: 'doc', content: finalContent.length ? finalContent : [{ type: 'paragraph' }] },
     metadata: parsedFrontmatter.metadata,
   }
 }

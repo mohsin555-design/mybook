@@ -10,6 +10,8 @@ Users can create, open, rename, duplicate, move, favorite, move to Trash, restor
 
 Local files start with `syncStatus: local`; Google workspace files start pending. Lists are filtered to the active workspace and normal views exclude deleted files. Duplicates receive a new ID and lose the source Drive link and favorite flag. Local file reads can hydrate content from disk.
 
+Sync fields on a file: `driveFileId`, `lastSyncedAt` (remote version the file was last reconciled with), `baseContent` (last content known to match the remote copy; may be absent on older files), `syncConflict` (set while a remote version was kept aside rather than applied), `syncStatus` and `syncError`. Remote versions that were not applied, and local content replaced by a remote one, are kept in `fileVersions` (labels "Remote version (not applied)" and "Before using remote version"). See [Collaboration-ready sync](./collaboration-ready-sync.md).
+
 ## Folders
 
 Folders support creation, nesting, browsing, rename, favorites, Trash, restore and permanent deletion. App-created nesting is limited to three levels. Deleting a folder marks its descendants deleted; restore handles the subtree. Local disk folder creation and file writes use the folder hierarchy. Do not assume disk renames/moves are atomic or fully reconciled; see [local vaults](./local-vaults.md).

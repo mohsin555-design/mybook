@@ -3,7 +3,7 @@ import { pastedBookmark } from './bookmarkClipboard'
 import { ArrowReloadHorizontalIcon, CopyLinkIcon, Edit02Icon, Unlink02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Dropdown } from '../ui/compat-dropdown'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '../ui/dropdown-menu'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../ui/sheet'
 import { TableKit } from '@tiptap/extension-table'
 import TaskItem from '@tiptap/extension-task-item'
@@ -38,6 +38,7 @@ import { DeleteFileDialog } from '../files/DeleteFileDialog'
 import { getFolderPath } from '../files/FolderBreadcrumb'
 import { ChecklistActionsMenu } from './ChecklistActionsMenu'
 import { DocumentToolbar } from './DocumentToolbar'
+import { SelectionFormattingToolbar } from './SelectionFormattingToolbar'
 import { EditorBlockControls, type BlockTarget } from './EditorBlockControls'
 import { EditorStatus } from './EditorStatus'
 import { BookmarkBlock, bookmarkBlockNode } from './extensions/BookmarkBlock'
@@ -61,6 +62,7 @@ import { ToggleBlock, toggleBlockNode } from './extensions/ToggleBlock'
 import { FixedTable } from './extensions/FixedTable'
 import { TableInteraction } from './extensions/TableInteraction'
 import { StyledTableCell, StyledTableHeader } from './extensions/TableCellStyles'
+import { InlineHighlight, InlineTextColor } from './extensions/InlineTextColor'
 import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
@@ -77,6 +79,8 @@ import { deletedToast } from '../../utils/deleteToast'
 import { toast } from '../ui/toast'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { FindReplaceDialog } from './FindReplaceDialog'
+import { ArrowPathIcon } from '@heroicons/react/24/outline'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
 const documentViewModeStorageKey = 'mybook-document-view-mode'
 const emptyBlockPlaceholderClass = 'mybook-empty-block-placeholder'
@@ -962,6 +966,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [isFullWidth, setIsFullWidth] = useState(() => window.localStorage.getItem(documentViewModeStorageKey) === 'full')
   const [zoom, setZoom] = useState(100)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false)
   const [documentLinkPicker, setDocumentLinkPicker] = useState<DocumentLinkPickerState | null>(null)
   const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState<number>(0)
   const [imagePicker, setImagePicker] = useState<ImagePickerState | null>(null)
@@ -1243,6 +1248,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       StyledTableHeader,
       TableInteraction,
       Underline,
+      InlineTextColor,
+      InlineHighlight,
       Callout,
       Columns,
       Column,
@@ -1731,6 +1738,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     editorRef.current = editor
   }, [editor])
 
+  const isPageLocked = Boolean(file?.isLocked)
+  useEffect(() => {
+    if (!editor) return
+    editor.setEditable(!isPageLocked)
+  }, [editor, isPageLocked])
+
   useEffect(() => {
     filesRef.current = files
   }, [files])
@@ -2130,6 +2143,45 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (result.data) navigate(`/document/${result.data.id}`)
   }
 
+  const setPageLocked = async (locked: boolean) => {
+    const result = await fileRepository.update(file.id, { isLocked: locked })
+    if (!result.success) {
+      toast.add({ title: 'Could not update page lock', description: result.error, type: 'error', priority: 'low' })
+      return
+    }
+    editor.setEditable(!locked)
+    toast.add({ title: locked ? 'Page locked' : 'Page unlocked', type: 'success', priority: 'low' })
+  }
+
+  const copyDocumentContent = async () => {
+    try {
+      const container = document.createElement('div')
+      container.append(DOMSerializer.fromSchema(editor.schema).serializeFragment(editor.state.doc.content))
+      const text = editor.getText({ blockSeparator: '\n\n' })
+      if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([container.innerHTML], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        })])
+      } else {
+        await navigator.clipboard.writeText(text)
+      }
+      toast.add({ title: 'Document content copied', type: 'success', priority: 'low' })
+    } catch (error) {
+      devLog('error', 'Could not copy document content.', error)
+      toast.add({ title: 'Could not copy document content', description: 'Clipboard access is unavailable.', type: 'error', priority: 'low' })
+    }
+  }
+
+  const moveDocument = async (folderId: string | null) => {
+    const result = await fileRepository.update(file.id, { folderId })
+    if (!result.success) {
+      toast.add({ title: 'Could not move document', description: result.error, type: 'error', priority: 'low' })
+      return
+    }
+    toast.add({ title: 'Document moved', type: 'success', priority: 'low' })
+  }
+
   const insertDocumentLink = (target: { id: string; name: string }) => {
     const picker = documentLinkPickerRef.current
     const insertRange = picker ? documentLinkInsertionRange(editor, picker.range) : undefined
@@ -2522,62 +2574,45 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         moreMenuClassName="min-w-64"
         moreContent={
           <>
-            <DropdownMenuItem onClick={() => void saveAll()}>Save now</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void backupNow()}>Sync now</DropdownMenuItem>
+            <DropdownMenuCheckboxItem checked={Boolean(file.isLocked)} onCheckedChange={(checked) => void setPageLocked(checked)}>Lock page</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem checked={isFullWidth} onCheckedChange={setDocumentViewMode}>Full width</DropdownMenuCheckboxItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Zoom</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {[75, 100, 125, 150].map((level) => <DropdownMenuCheckboxItem key={level} checked={zoom === level} onCheckedChange={() => setZoom(level)}>{level}%</DropdownMenuCheckboxItem>)}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>Find and replace</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={!file.driveFileId} onClick={() => (file.driveFileId ? openDriveFileInBrowser(file.driveFileId) : undefined)}>
-              Open backup in Drive
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={!file.driveFileId} onClick={() => void copyDriveLink()}>
-              Copy backup link
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void duplicateDocument()}>Duplicate</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {file.folderId ? <DropdownMenuItem onClick={() => void moveDocument(null)}>Writin root</DropdownMenuItem> : null}
+                {folders.filter((folder) => folder.id !== file.folderId).map((folder) => <DropdownMenuItem key={folder.id} onClick={() => void moveDocument(folder.id)}>{folder.name}</DropdownMenuItem>)}
+                {!folders.some((folder) => folder.id !== file.folderId) && !file.folderId ? <DropdownMenuItem disabled>No other folders</DropdownMenuItem> : null}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setDocumentViewMode(false)}>Page width</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setDocumentViewMode(true)}>Full width</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setZoom(75)}>Zoom 75%</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setZoom(100)}>Zoom 100%</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setZoom(125)}>Zoom 125%</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setZoom(150)}>Zoom 150%</DropdownMenuItem>
+            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().undo().run()} onClick={() => editor.chain().focus().undo().run()}>Undo</DropdownMenuItem>
+            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}>Redo</DropdownMenuItem>
+            <DropdownMenuItem disabled={isPageLocked} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
+            <DropdownMenuItem disabled={isPageLocked} onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Export to</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Markdown (.md)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void exportDocx(true)}>Word (.docx)</DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => editor.chain().focus().undo().run()}>Undo</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().redo().run()}>Redo</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={setEditorLink}>Link</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(calloutNode()).run()}>Callout</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().insertContent(toggleBlockNode()).run()}>Toggle</DropdownMenuItem>
-            <DropdownMenuItem onClick={openImagePicker}>Image</DropdownMenuItem>
-            <DropdownMenuItem onClick={openFilePicker}>File attachment</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run()}>Basic Table</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().insertContent({ type: 'paragraph' }).run()}>Horizontal rule</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>Paragraph</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 1 }).run()}>Heading 1</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 2 }).run()}>Heading 2</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().setHeading({ level: 3 }).run()}>Heading 3</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().toggleBold().run()}>Bold</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().toggleItalic().run()}>Italic</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().toggleUnderline().run()}>Underline</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => editor.chain().focus().toggleStrike().run()}>Strikethrough</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void exportMarkdown(true)}>Download Markdown (.md)</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void exportDocx(true)}>Download DOCX</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void exportDocx(false)}>Prepare DOCX</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Move to Trash</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void close()}>Close document</DropdownMenuItem>
-            {!isLocalWorkspace ? (
-              <>
-                <DropdownMenuSeparator />
-                <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
-                  <span>Cloud sync</span>
-                  <span className="font-medium text-foreground">
-                    {editorStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced' : 'Saved locally'}
-                  </span>
-                </div>
-              </>
-            ) : null}
+            {!isLocalWorkspace ? <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>Cloud sync</span><span className="font-medium text-foreground">{editorStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced' : 'Saved locally'}</span></div> : null}
+            <div className="flex items-center justify-between px-2 pb-1.5 text-xs text-muted-foreground">
+              <span>Created {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(file.createdAt))}</span>
+              {!isLocalWorkspace ? <button type="button" aria-label="Sync now" title="Sync now" disabled={editorStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${editorStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button> : null}
+            </div>
           </>
         }
       />
@@ -2843,10 +2878,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         setMentionMenu(null)
       }} /> : null}
       {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
+      <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
       {inlineLinkToolbar ? <InlineLinkToolbar toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
-      <EditorBlockControls editor={editor} onInsertBlock={insertBlock} />
-      <TableActionsMenu editor={editor} />
-      <ChecklistActionsMenu editor={editor} />
+      {!isPageLocked ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} /> : null}
+      {!isPageLocked ? <EditorBlockControls editor={editor} onInsertBlock={insertBlock} /> : null}
+      {!isPageLocked ? <TableActionsMenu editor={editor} /> : null}
+      {!isPageLocked ? <ChecklistActionsMenu editor={editor} /> : null}
       {documentLinkPicker ? (
         <DocumentLinkPicker
           currentFileId={file.id}
@@ -2891,7 +2928,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           onInsert={handleInsertFile}
         />
       ) : null}
-      <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="mobile" />
+      {!isPageLocked ? <DocumentToolbar editor={editor} onInsertFile={openFilePicker} onInsertImage={openImagePicker} onInsertBlock={insertBlock} variant="mobile" /> : null}
       <DeleteFileDialog
         isOpen={isDeleteDialogOpen}
         fileName={documentTitle}

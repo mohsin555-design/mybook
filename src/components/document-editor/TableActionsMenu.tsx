@@ -18,6 +18,7 @@ import { CellSelection, deleteCellSelection, findTable, moveTableColumn, moveTab
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type SVGProps } from 'react'
 
 import { getTableInteractionState, setTableInteraction } from './extensions/TableInteraction'
+import { tableColors } from './extensions/TableCellStyles'
 import { resetHeaderCellBackgrounds } from './tableHeaderBackground'
 import { tableElementsFromNodeDom } from './tableDom'
 import { tableMenuTop } from './tableMenuPosition'
@@ -75,17 +76,6 @@ interface TableInteractionState {
   menuOpen: boolean
   drag: DragState | null
 }
-
-const tableColors = [
-  { name: 'White', value: '#ffffff' },
-  { name: 'Gray', value: '#f3f4f6' },
-  { name: 'Blue', value: '#dbeafe' },
-  { name: 'Green', value: '#dcfce7' },
-  { name: 'Yellow', value: '#fef9c3' },
-  { name: 'Orange', value: '#ffedd5' },
-  { name: 'Pink', value: '#fce7f3' },
-  { name: 'Purple', value: '#f3e8ff' },
-] as const
 
 const tableAlignments = ['left', 'center', 'right'] as const
 

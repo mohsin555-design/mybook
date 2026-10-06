@@ -23,9 +23,9 @@ import { appFileName, cleanName, fileRepository } from '../../database/repositor
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { useAutosave } from '../../hooks/useAutosave'
-import { applyRemoteVersion, keepLocalVersion } from '../../services/syncConflicts'
-import { SyncConflictBanner } from './SyncConflictBanner'
 import { registerUnsavedEditsProbe } from '../../services/localEditState'
+import { broadcastDocUpdate, subscribeToTabDocUpdates } from '../../services/tabSyncChannel'
+import { mergeDocuments } from '../../utils/documentMerge'
 import { useDriveLiveSync } from '../../hooks/useDriveLiveSync'
 import { useLibraryData } from '../../hooks/useLibraryData'
 import { useIsMobile } from '../../hooks/use-mobile'
@@ -954,7 +954,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const isMobile = useIsMobile()
   const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
-    const { content, hasUnsavedChanges, isHydrated, save, setContent, status } = useAutosave(file)
+  const { content, hasUnsavedChanges, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
   const [title, setTitle] = useState('')
   const [loadedId, setLoadedId] = useState<string | null>(null)
   const [docxBlob, setDocxBlob] = useState<Blob | null>(null)
@@ -982,6 +982,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const pageTitleRef = useRef<HTMLTextAreaElement>(null)
   const cloudTimerRef = useRef<number | null>(null)
+  const cloudFirstPendingTimeRef = useRef<number | null>(null)
   const cloudFlightRef = useRef(false)
   const lastBackedUpContentRef = useRef<string | null>(null)
   const lastBackedUpTitleRef = useRef<string | null>(null)
@@ -1020,8 +1021,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (editorContentRef.current !== next) {
       editorContentRef.current = next
       setContent(next)
+      if (file?.id) {
+        broadcastDocUpdate(file.id, next, titleRef.current)
+      }
     }
-  }, [setContent])
+  }, [file?.id, setContent])
 
   useEffect(() => {
     const handleFlush = () => flushContentSync()
@@ -1040,6 +1044,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!file?.id) return
     return registerUnsavedEditsProbe(file.id, () => contentSyncTimerRef.current !== null || hasUnsavedChanges())
   }, [file?.id, hasUnsavedChanges])
+
   const restoreLastActiveSelection = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
@@ -1054,6 +1059,26 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     titleRef.current = nextTitle
     setTitle(nextTitle)
   }, [])
+
+  useEffect(() => {
+    if (!file?.id) return
+    return subscribeToTabDocUpdates((msg) => {
+      if (msg.fileId !== file.id) return
+      if (hasUnsavedChanges()) {
+        const merged = mergeDocuments(lastBackedUpContentRef.current, editorContentRef.current, msg.content)
+        if (merged.success) {
+          editorContentRef.current = merged.content
+          replaceContent(merged.content, 'saved-locally')
+        }
+      } else {
+        editorContentRef.current = msg.content
+        replaceContent(msg.content, 'saved-locally')
+      }
+      if (msg.title && msg.title !== titleRef.current) {
+        updateTitle(msg.title)
+      }
+    })
+  }, [file?.id, hasUnsavedChanges, replaceContent, updateTitle])
 
   const duplicateTitleFile = useMemo(() => {
     if (!file) return null
@@ -1715,7 +1740,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       contentSyncTimerRef.current = window.setTimeout(() => {
         contentSyncTimerRef.current = null
         flushContentSync(currentEditor)
-      }, 250)
+      }, 100)
     },
     onSelectionUpdate: ({ editor: currentEditor }) => {
       if (!currentEditor.state.selection.empty) {
@@ -1974,7 +1999,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   }, [file, updateTitle])
   useEffect(() => {
     if (!editor || !file || !isHydrated) return
-    if (loadedId === file.id && (content === editorContentRef.current || (editor.isFocused && status === 'editing'))) return
+    if (loadedId === file.id && (content === editorContentRef.current || (editor.isFocused && (status === 'editing' || hasUnsavedChanges())))) return
     const isFocused = editor.isFocused
     const { from, to } = editor.state.selection
     editor.commands.setContent(parseContent(content), { emitUpdate: false })
@@ -1989,7 +2014,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         })
       }
     }
-  }, [content, editor, file, isHydrated, loadedId, status])
+  }, [content, editor, file, hasUnsavedChanges, isHydrated, loadedId, status])
 
   useEffect(() => {
     if (!editor || !file || !isHydrated || loadedId !== file.id || handledPendingImportRef.current === file.id) return
@@ -2026,8 +2051,8 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
 
   useDriveLiveSync(file?.id, file?.driveFileId, {
     enabled: Boolean(file && !file.isDeleted && !isLocalWorkspace()),
-    intervalMs: 5000,
-    isEditing: status === 'editing',
+    intervalMs: 2500,
+    isEditing: status === 'editing' || status === 'saving-locally' || hasUnsavedChanges(),
   })
   const saveTitle = useCallback(async () => {
     const nextTitle = titleRef.current.trim()
@@ -2058,9 +2083,20 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       content !== (lastBackedUpContentRef.current ?? '') ||
       trimmedTitle !== (lastBackedUpTitleRef.current ?? '')
 
-    if (!hasUnsyncedChanges || file.syncStatus === 'backed-up') return
+    if (!hasUnsyncedChanges || file.syncStatus === 'backed-up') {
+      cloudFirstPendingTimeRef.current = null
+      return
+    }
+
+    const now = Date.now()
+    if (cloudFirstPendingTimeRef.current === null) {
+      cloudFirstPendingTimeRef.current = now
+    }
+    const elapsed = now - cloudFirstPendingTimeRef.current
+    const delay = Math.max(200, Math.min(1200, 2500 - elapsed))
 
     cloudTimerRef.current = window.setTimeout(() => {
+      cloudFirstPendingTimeRef.current = null
       if (cloudFlightRef.current || !file || file.isDeleted || file.type !== 'document') return
       cloudFlightRef.current = true
       void (async () => {
@@ -2081,7 +2117,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           cloudFlightRef.current = false
         }
       })()
-    }, 3000)
+    }, delay)
     return () => {
       if (cloudTimerRef.current !== null) window.clearTimeout(cloudTimerRef.current)
       cloudTimerRef.current = null
@@ -2830,12 +2866,6 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                   aria-label="Page title"
                 />
               </div>
-              {file.syncConflict && (
-                <SyncConflictBanner
-                  onKeepMine={() => { void (async () => { flushContentSync(); await save(); await keepLocalVersion(file.id) })() }}
-                  onUseRemote={() => { void (async () => { flushContentSync(); await save(); await applyRemoteVersion(file.id) })() }}
-                />
-              )}
               <EditorContent editor={editor} />
             </DocumentLinkProvider>
           </div>

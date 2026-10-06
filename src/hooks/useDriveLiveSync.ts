@@ -15,7 +15,7 @@ export function useDriveLiveSync(
   driveFileId: string | null | undefined,
   options: UseDriveLiveSyncOptions = {}
 ) {
-  const { enabled = true, intervalMs = 5000, isEditing = false } = options
+  const { enabled = true, intervalMs = 2500, isEditing = false } = options
   const isSyncingRef = useRef(false)
   const isEditingRef = useRef(isEditing)
   isEditingRef.current = isEditing

@@ -1,4 +1,5 @@
 import type { SyncStatus } from '../types/files'
+import { mergeDocuments } from '../utils/documentMerge'
 
 export interface ReconcileInput {
   /** Last content known to match the remote copy. `undefined` for files created before base tracking existed. */
@@ -19,6 +20,7 @@ export type ReconcileDecision =
   | { action: 'noop' }
   | { action: 'keep-local' }
   | { action: 'apply-remote' }
+  | { action: 'merge'; mergedContent: string }
   | { action: 'conflict' }
 
 export function hasLocalChanges(input: Pick<ReconcileInput, 'baseContent' | 'localContent' | 'syncStatus' | 'hasUnsavedLocalEdits' | 'hasPendingPush'>) {
@@ -34,5 +36,19 @@ export function reconcileExternalUpdate(input: ReconcileInput): ReconcileDecisio
   if (!input.remoteChanged) return { action: 'noop' }
   if (!input.hasUnsavedLocalEdits && input.remoteContent === input.localContent) return { action: 'noop' }
   if (!hasLocalChanges(input)) return { action: 'apply-remote' }
+
+  // If remote did not change content compared to base, keep local edits
+  if (input.baseContent !== undefined && input.baseContent !== null && input.remoteContent === input.baseContent) {
+    return { action: 'keep-local' }
+  }
+
+  // Attempt smart merge when there are no unsaved in-flight keystrokes or queued pushes
+  if (!input.hasUnsavedLocalEdits && !input.hasPendingPush) {
+    const mergeResult = mergeDocuments(input.baseContent, input.localContent, input.remoteContent)
+    if (mergeResult.success && !mergeResult.hasConflict) {
+      return { action: 'merge', mergedContent: mergeResult.content }
+    }
+  }
+
   return { action: 'conflict' }
 }

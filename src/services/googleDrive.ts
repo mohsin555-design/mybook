@@ -872,6 +872,8 @@ export async function backupDocumentToDrive(input: {
         workspaceType: 'drive',
         mimeType: 'application/x-mybook-document',
         syncStatus: current?.syncStatus === 'failed' ? 'failed' : 'pending',
+        baseContent: content,
+        lastSyncedAt: result.modifiedTime ?? latest?.lastSyncedAt ?? file.lastSyncedAt ?? new Date().toISOString(),
       } : {
         driveFileId: result.id,
         workspaceType: 'drive',
@@ -1658,6 +1660,20 @@ export async function refreshDriveFileToLocal(fileId: string): Promise<{ updated
           remoteContent: content,
         })
         : { action: 'noop' as const }
+
+      if (decision.action === 'merge') {
+        await saveVersionBeforeDriveUpdate(latest.id, driveModifiedTime)
+        await db.files.update(latest.id, {
+          content: decision.mergedContent,
+          baseContent: content,
+          workspaceType: 'drive',
+          lastSyncedAt: driveModifiedTime,
+          syncStatus: 'pending',
+          syncError: null,
+          updatedAt: new Date().toISOString(),
+        })
+        return { updated: true, modifiedTime: driveModifiedTime }
+      }
 
       if (decision.action === 'conflict') {
         await recordRemoteConflict(latest.id, content, driveModifiedTime)

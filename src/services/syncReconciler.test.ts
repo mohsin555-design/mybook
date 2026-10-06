@@ -21,7 +21,7 @@ describe('reconcileExternalUpdate', () => {
     expect(reconcileExternalUpdate(input())).toEqual({ action: 'apply-remote' })
   })
 
-  it('flags a conflict when both sides changed', () => {
+  it('flags a conflict when both sides changed in conflicting ways', () => {
     expect(reconcileExternalUpdate(input({ localContent: 'mine' }))).toEqual({ action: 'conflict' })
   })
 
@@ -39,6 +39,24 @@ describe('reconcileExternalUpdate', () => {
 
   it('still reports a conflict for identical content while edits are unsaved', () => {
     expect(reconcileExternalUpdate(input({ localContent: 'same', remoteContent: 'same', hasUnsavedLocalEdits: true }))).toEqual({ action: 'conflict' })
+  })
+
+  it('keeps local when remote content matches the base content', () => {
+    expect(reconcileExternalUpdate(input({ baseContent: 'base', localContent: 'edited local', remoteContent: 'base' }))).toEqual({ action: 'keep-local' })
+  })
+
+  it('merges non-overlapping block edits cleanly', () => {
+    const base = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'P1' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'P2' }] }] })
+    const local = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'P1 edited' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'P2' }] }] })
+    const remote = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'P1' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'P2 edited' }] }] })
+
+    const decision = reconcileExternalUpdate(input({ baseContent: base, localContent: local, remoteContent: remote }))
+    expect(decision.action).toBe('merge')
+    if (decision.action === 'merge') {
+      const parsed = JSON.parse(decision.mergedContent)
+      expect(parsed.content[0].content[0].text).toBe('P1 edited')
+      expect(parsed.content[1].content[0].text).toBe('P2 edited')
+    }
   })
 
   describe('files created before base tracking', () => {

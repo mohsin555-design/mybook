@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fileRepository } from '../database/repositories'
-import { recordRemoteConflict } from '../services/syncConflicts'
 import { isLocalWorkspace } from '../stores/useWorkspaceStore'
 import type { EditorSaveStatus, MyBookFile } from '../types/files'
 
-const SAVE_DELAY = 500
+const SAVE_DELAY = 250
 
 export function useAutosave(file: MyBookFile | undefined) {
   const [content, setContent] = useState('')
@@ -47,11 +46,9 @@ export function useAutosave(file: MyBookFile | undefined) {
         contentRef.current = next
         lastSaved.current = next
       }
-    } else if (next && next !== lastSaved.current && next !== inFlightContentRef.current && file.driveFileId) {
-      // The store changed under unsaved local edits. Keep the edits and keep the
-      // incoming version as a recoverable conflict instead of dropping it.
-      void recordRemoteConflict(file.id, next, file.lastSyncedAt ?? new Date().toISOString())
     }
+    // Under active unsaved typing (contentRef.current !== lastSaved.current),
+    // preserve the editor buffer without clobbering or raising false alarms.
     setIsHydrated(true)
   }, [file])
 

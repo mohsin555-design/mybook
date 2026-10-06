@@ -527,8 +527,8 @@ describe('IndexedDB repositories', () => {
     await fileRepository.update(source.id, { name: 'Notes' })
     const first = await fileRepository.duplicate(source.id)
     const second = await fileRepository.duplicate(source.id)
-    expect(first.data?.name).toBe('Notes copy')
-    expect(second.data?.name).toBe('Notes copy 2')
+    expect(first.data?.name).toBe('Notes 2')
+    expect(second.data?.name).toBe('Notes 3')
   })
 
   it('favorites and unfavorites files without changing recency or queueing sync', async () => {
@@ -919,5 +919,4 @@ describe('IndexedDB repositories', () => {
     expect(folders.map((f) => f.name)).not.toContain('Meeting Notes_attachments')
   })
 })
-
 

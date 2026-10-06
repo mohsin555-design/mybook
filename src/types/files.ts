@@ -25,6 +25,7 @@ export interface MyBookFile {
   syncStatus: SyncStatus
   isDeleted: boolean
   isFavorite?: boolean
+  isLocked?: boolean
 }
 
 export interface SyncConflict {

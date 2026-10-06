@@ -537,9 +537,9 @@ export const fileRepository = {
       if (!source) return { success: false, error: 'File could not be found.' }
       if (!fileBelongsToActiveWorkspace(source)) return { success: false, error: 'File could not be found in this workspace.' }
       const now = new Date().toISOString()
-      let copyName = `${source.name} copy`
       let suffix = 2
-      while (!(await uniqueFileName(copyName, source.folderId))) copyName = `${source.name} copy ${suffix++}`
+      let copyName = `${source.name} ${suffix}`
+      while (!(await uniqueFileName(copyName, source.folderId))) copyName = `${source.name} ${++suffix}`
       const copy = { ...source, id: crypto.randomUUID(), driveFileId: null, workspaceType: activeWorkspaceType(), name: copyName, createdAt: now, updatedAt: now, lastSyncedAt: null, syncStatus: initialSyncStatus(), isDeleted: false, isFavorite: false }
       await db.files.add(copy)
       await persistLocalFile(copy)
@@ -834,4 +834,3 @@ export async function clearAccountDriveCache() {
     }
   })
 }
-

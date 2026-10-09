@@ -82,6 +82,7 @@ import { Input } from '../ui/input'
 import { FindReplaceDialog } from './FindReplaceDialog'
 import { ArrowPathIcon } from '@heroicons/react/24/outline'
 const emptyDocument = { type: 'doc', content: [{ type: 'paragraph' }] }
+const emptyDocumentJson = JSON.stringify(emptyDocument)
 const documentViewModeStorageKey = 'mybook-document-view-mode'
 const emptyBlockPlaceholderClass = 'mybook-empty-block-placeholder'
 const quoteEmptyPlaceholderClass = 'mybook-quote-empty-placeholder'
@@ -977,6 +978,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [inlineLinkToolbar, setInlineLinkToolbar] = useState<InlineLinkToolbarState | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const handledPendingImportRef = useRef<string | null>(null)
+  const isImportingRef = useRef(false)
   const importDocumentFileRef = useRef<((selectedFile: File) => Promise<void>) | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -1998,8 +2000,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     }
   }, [file, updateTitle])
   useEffect(() => {
-    if (!editor || !file || !isHydrated) return
+    if (!editor || !file || !isHydrated || isImportingRef.current) return
     if (loadedId === file.id && (content === editorContentRef.current || (editor.isFocused && (status === 'editing' || hasUnsavedChanges())))) return
+    if (loadedId === file.id && (!content || content === emptyDocumentJson) && editorContentRef.current && editorContentRef.current !== emptyDocumentJson) return
     const isFocused = editor.isFocused
     const { from, to } = editor.state.selection
     editor.commands.setContent(parseContent(content), { emitUpdate: false })
@@ -2375,6 +2378,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       setDocxMessage('Choose a supported Markdown, text, Word, HTML, or Rich Text file.')
       return
     }
+    isImportingRef.current = true
     try {
       let statusMessage = ''
       if (/\.(?:md|markdown)$/i.test(selectedFile.name)) {
@@ -2393,22 +2397,56 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         statusMessage = 'Rich Text file imported.'
       } else {
         const mammoth = (await import('mammoth')).default
-        const result = await mammoth.convertToHtml({ arrayBuffer: await selectedFile.arrayBuffer() })
+        const result = await mammoth.convertToHtml(
+          { arrayBuffer: await selectedFile.arrayBuffer() },
+          {
+            convertImage: mammoth.images.imgElement(async (image: { contentType: string; read: (format: string) => Promise<string> }) => {
+              const isWebCompatible = /^(?:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml|avif|bmp))$/i.test(image.contentType)
+              if (!isWebCompatible) {
+                return {
+                  src: '',
+                  alt: `[Unsupported format: ${image.contentType.replace('image/', '')}]`,
+                }
+              }
+              const base64 = await image.read('base64')
+              return {
+                src: `data:${image.contentType};base64,${base64}`,
+              }
+            }),
+          }
+        )
         editor.commands.setContent(cleanPastedHtml(normalizeInlineFormatting(result.value)))
         statusMessage = result.messages.length ? 'Word document imported with some formatting simplified.' : 'Word document imported.'
       }
+
+      if (contentSyncTimerRef.current !== null) {
+        window.clearTimeout(contentSyncTimerRef.current)
+        contentSyncTimerRef.current = null
+      }
+
+      const nextJson = JSON.stringify(editor.getJSON())
+      editorContentRef.current = nextJson
+      replaceContent(nextJson, 'saved-locally')
+
       const importedTitle = documentImportTitle(selectedFile.name)
-      const updateResult = await fileRepository.update(file.id, { name: importedTitle })
+      const updateResult = await fileRepository.update(file.id, {
+        name: importedTitle,
+        content: nextJson,
+        syncStatus: isLocalWorkspace() ? 'local' : 'pending',
+      })
       if (updateResult.success) {
         lastSavedTitleRef.current = importedTitle
         updateTitle(importedTitle)
+        broadcastDocUpdate(file.id, nextJson, importedTitle)
       } else {
-        statusMessage = 'Content imported, but the document title could not be updated.'
+        statusMessage = 'Content imported, but the document could not be saved to library.'
       }
       setDocxMessage(statusMessage)
     } catch (error) {
       devLog('error', 'Could not import document.', error)
       setDocxMessage('Document import failed.')
+    } finally {
+      isImportingRef.current = false
     }
   }
   importDocumentFileRef.current = importDocumentFile

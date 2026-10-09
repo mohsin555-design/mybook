@@ -1303,7 +1303,48 @@ function blockJson(node: Node): JSONContent[] {
   if (node.nodeType !== Node.ELEMENT_NODE) return []
   const element = node as Element
   const tag = element.tagName.toLowerCase()
-  if (tag === 'p') return [paragraphJson(element)]
+  if (tag === 'p') {
+    const img = element.querySelector('img')
+    if (img && !element.textContent?.trim()) {
+      const src = img.getAttribute('src')
+      if (src) {
+        return [{
+          type: 'imageBlock',
+          attrs: {
+            src,
+            alt: img.getAttribute('alt') || '',
+          },
+        }]
+      }
+    }
+    return [paragraphJson(element)]
+  }
+  if (tag === 'img') {
+    const src = element.getAttribute('src')
+    if (src) {
+      return [{
+        type: 'imageBlock',
+        attrs: {
+          src,
+          alt: element.getAttribute('alt') || '',
+        },
+      }]
+    }
+    return []
+  }
+  if (tag === 'figure') {
+    const img = element.querySelector('img')
+    if (img?.getAttribute('src')) {
+      return [{
+        type: 'imageBlock',
+        attrs: {
+          src: img.getAttribute('src') || '',
+          alt: img.getAttribute('alt') || element.querySelector('figcaption')?.textContent || '',
+          caption: element.querySelector('figcaption')?.textContent || '',
+        },
+      }]
+    }
+  }
   if (/^h[1-6]$/.test(tag)) return [{ type: 'heading', attrs: { level: Math.min(Number(tag.slice(1)), 3) }, content: inlineJson(element) }]
   if (tag === 'ul') return [listJson(element, false)]
   if (tag === 'ol') return [listJson(element, true)]
@@ -1342,14 +1383,39 @@ async function hydrateDriveAttachments(
   parentDriveId: string | null,
   docJson: JSONContent
 ): Promise<JSONContent> {
-  if (!parentDriveId || !hasRelativeAttachmentRefs(docJson)) return docJson
+  if (!hasRelativeAttachmentRefs(docJson)) return docJson
   try {
+    let resolvedParentDriveId = parentDriveId
+    if (!resolvedParentDriveId) {
+      const bootstrap = await ensureMyBookDriveFolder()
+      if (bootstrap.success) resolvedParentDriveId = bootstrap.folderId
+    }
+    if (!resolvedParentDriveId) return docJson
+
     const { sanitizeFileName, isAttachmentDirectoryName, uint8ArrayToDataUrl } = await import('./localWorkspace')
-    const safeDocName = sanitizeFileName(docName)
-    const attachmentFolders = await listVisibleFoldersByName(`${safeDocName}_attachments`, parentDriveId)
-    if (attachmentFolders.length === 0) return docJson
-    const attachmentFolder = attachmentFolders[0]
+    const cleanDocName = docName
+      .replace(/\.mybook\.md$/i, '')
+      .replace(/\.md$/i, '')
+      .replace(/\.docx$/i, '')
+      .trim()
+    const safeDocName = sanitizeFileName(cleanDocName)
+    const candidateFolders = [
+      `${safeDocName}_attachments`,
+      `${safeDocName}-attachments`,
+      `${safeDocName}.attachments`,
+      `${sanitizeFileName(docName)}_attachments`,
+    ]
+
+    let attachmentFolder: DriveFile | null = null
+    for (const candidate of candidateFolders) {
+      const existing = await listVisibleFoldersByName(candidate, resolvedParentDriveId)
+      if (existing.length > 0 && existing[0]) {
+        attachmentFolder = existing[0]
+        break
+      }
+    }
     if (!attachmentFolder) return docJson
+
     const driveFiles = await listChildFiles(attachmentFolder.id)
     if (driveFiles.length === 0) return docJson
 
@@ -1399,7 +1465,12 @@ async function readDriveFileAsLocalContent(file: DriveFile, localFileId: string)
     const { parseMyBookMarkdown } = await import('../utils/mybookMarkdown')
     const parsed = parseMyBookMarkdown(await getDriveFileContent(file.id))
     const parentDriveId = file.parents?.[0] ?? null
-    const hydratedDoc = await hydrateDriveAttachments(file.name, parentDriveId, parsed.document)
+    const cleanDocTitle = file.name
+      .replace(/\.mybook\.md$/i, '')
+      .replace(/\.md$/i, '')
+      .replace(/\.docx$/i, '')
+      .trim()
+    const hydratedDoc = await hydrateDriveAttachments(cleanDocTitle, parentDriveId, parsed.document)
     return { content: JSON.stringify(hydratedDoc), documentId: parsed.metadata.documentId }
   }
   if (file.mimeType === GOOGLE_DOC_MIME || file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)) {

@@ -1389,6 +1389,59 @@ describe('googleDrive helpers', () => {
     }))
   })
 
+  it('hydrates relative attachment references into data URLs when importing markdown documents from Drive', async () => {
+    stubDriveFetch(vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [{ id: 'root-folder', name: 'Writin', mimeType: 'application/vnd.google-apps.folder' }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [
+            { id: 'doc-1', name: 'Notes.md', mimeType: 'text/markdown', modifiedTime: '2026-08-29T10:00:00.000Z', parents: ['root-folder'] },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: vi.fn().mockResolvedValue('---\ntitle: "Notes"\n---\n\n![Diagram](./Notes_attachments/media_1.png)'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [
+            { id: 'att-folder-1', name: 'Notes_attachments', mimeType: 'application/vnd.google-apps.folder' },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          files: [
+            { id: 'img-file-1', name: 'media_1.png', mimeType: 'image/png' },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' })),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ files: [] }),
+      }))
+
+    await importDriveFilesToLocal()
+
+    expect(mockedFiles.add).toHaveBeenCalledTimes(1)
+    const addedFile = mockedFiles.add.mock.calls[0]?.[0] as { content: string }
+    expect(addedFile.content).toContain('data:image/png;base64,')
+    expect(addedFile.content).not.toContain('./Notes_attachments/media_1.png')
+  })
+
   it('imports all files and folders across multiple pages using nextPageToken', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce({

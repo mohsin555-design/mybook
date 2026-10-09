@@ -89,9 +89,11 @@ export function ImageBlockNodeView({
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   const [isEditingCaption, setIsEditingCaption] = useState(false)
 
+  const isUnsupportedDataUri = (url: string) => /^data:image\/(?:x-emf|x-wmf|x-pict|tiff);/i.test(url)
+
   const [imageStatus, setImageStatus] = useState<'loading' | 'loaded' | 'error'>(() => {
     if (!src) return 'error'
-    if (src.startsWith('data:')) return 'loaded'
+    if (src.startsWith('data:')) return isUnsupportedDataUri(src) ? 'error' : 'loaded'
     return 'loading'
   })
   const [retryKey, setRetryKey] = useState(0)
@@ -102,6 +104,10 @@ export function ImageBlockNodeView({
       return
     }
     if (src.startsWith('data:')) {
+      if (isUnsupportedDataUri(src)) {
+        setImageStatus('error')
+        return
+      }
       setImageStatus('loaded')
       return
     }
@@ -685,8 +691,11 @@ export function ImageBlockNodeView({
               </div>
               <div className="max-w-xs space-y-0.5">
                 <p className="font-medium text-foreground">Unable to load image</p>
-                <p className="truncate text-[11px] text-muted-foreground" title={src}>
-                  {src}
+                <p
+                  className="truncate text-[11px] text-muted-foreground"
+                  title={src.startsWith('data:') ? 'Embedded image' : src}
+                >
+                  {src.startsWith('data:') ? 'Embedded image could not be loaded' : src}
                 </p>
               </div>
               <div className="flex items-center gap-2 pt-1">

@@ -335,4 +335,19 @@ describe('ImageBlockNodeView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /retry/i }))
   })
+
+  it('immediately surfaces error fallback with friendly text for unsupported data uri formats', () => {
+    const emfNode = {
+      ...mockNode,
+      attrs: {
+        ...mockNode.attrs,
+        src: 'data:image/x-emf;base64,AQID',
+      },
+    }
+    render(<ImageBlockNodeView {...createProps(emfNode)} />)
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText('Unable to load image')).toBeInTheDocument()
+    expect(screen.getByText('Embedded image could not be loaded')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^replace$/i })).toBeInTheDocument()
+  })
 })

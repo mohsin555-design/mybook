@@ -19,7 +19,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { appFileName, cleanName, fileRepository } from '../../database/repositories'
+import { appFileName, cleanName, fileRepository, nextFileName, uniqueFileName } from '../../database/repositories'
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { useAutosave } from '../../hooks/useAutosave'
@@ -2425,21 +2425,35 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
 
       const nextJson = JSON.stringify(editor.getJSON())
-      editorContentRef.current = nextJson
-      replaceContent(nextJson, 'saved-locally')
-
+      const targetId = file?.id ?? fileId
       const importedTitle = documentImportTitle(selectedFile.name)
-      const updateResult = await fileRepository.update(file.id, {
-        name: importedTitle,
+      const folderId = file?.folderId ?? null
+      const isUnique = await uniqueFileName(importedTitle, folderId, targetId)
+      const finalTitle = isUnique ? importedTitle : await nextFileName(importedTitle, folderId)
+
+      let updateResult = await fileRepository.update(targetId, {
+        name: finalTitle,
         content: nextJson,
         syncStatus: isLocalWorkspace() ? 'local' : 'pending',
       })
+
+      if (!updateResult.success) {
+        updateResult = await fileRepository.update(targetId, {
+          content: nextJson,
+          syncStatus: isLocalWorkspace() ? 'local' : 'pending',
+        })
+      }
+
       if (updateResult.success) {
-        lastSavedTitleRef.current = importedTitle
-        updateTitle(importedTitle)
-        broadcastDocUpdate(file.id, nextJson, importedTitle)
+        editorContentRef.current = nextJson
+        replaceContent(nextJson, 'saved-locally')
+        lastSavedTitleRef.current = finalTitle
+        updateTitle(finalTitle)
+        broadcastDocUpdate(targetId, nextJson, finalTitle)
       } else {
-        statusMessage = 'Content imported, but the document could not be saved to library.'
+        setContent(nextJson)
+        devLog('error', 'Could not save imported content to repository:', updateResult.error)
+        statusMessage = `Content imported, but could not be saved to library: ${updateResult.error ?? 'Unknown error'}`
       }
       setDocxMessage(statusMessage)
     } catch (error) {

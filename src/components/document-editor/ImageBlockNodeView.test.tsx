@@ -349,5 +349,42 @@ describe('ImageBlockNodeView', () => {
     expect(screen.getByText('Unable to load image')).toBeInTheDocument()
     expect(screen.getByText('Embedded image could not be loaded')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^replace$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a friendly placeholder with Replace button and no Retry button when src is empty', () => {
+    const emptySrcNode = {
+      ...mockNode,
+      attrs: {
+        ...mockNode.attrs,
+        src: '',
+        alt: 'Missing graphic',
+      },
+    }
+    render(<ImageBlockNodeView {...createProps(emptySrcNode)} />)
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText('Missing graphic')).toBeInTheDocument()
+    expect(screen.getByText('Click Replace to select or upload an image')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^replace$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
+  })
+
+  it('renders a local file notice with Replace button and no Retry button for relative file paths', () => {
+    const relativeNode = {
+      ...mockNode,
+      attrs: {
+        ...mockNode.attrs,
+        src: './attachments/photo.png',
+      },
+    }
+    render(<ImageBlockNodeView {...createProps(relativeNode)} />)
+    const img = screen.getByRole('img', { name: /test diagram/i, hidden: true })
+    fireEvent.error(img)
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByText('Unable to load image')).toBeInTheDocument()
+    expect(screen.getByText('./attachments/photo.png (not accessible from browser — click Replace to upload)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^replace$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
   })
 })

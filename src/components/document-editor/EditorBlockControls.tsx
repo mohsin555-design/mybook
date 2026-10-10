@@ -10,6 +10,7 @@ import { Button } from '../ui/button'
 import { BlockCommandMenu } from './SlashCommandMenu'
 import { commandMenuTop, type SlashCommand } from './slashCommands'
 import { safeSelectionForBlock } from './blockConversion'
+import { deleteColumnAt } from './extensions/Columns'
 import {
   gutterBoundsForTarget,
   insertBlockCommands,
@@ -641,6 +642,19 @@ export function EditorBlockControls({ editor, onInsertBlock }: { editor: Editor;
                 >
                   <ArrowDownIcon aria-hidden="true" className="size-4" />
                   Insert below columns
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    deleteColumnAt(editor, target.pos)
+                    setIsActionsOpen(false)
+                    setTarget(null)
+                  }}
+                  className="flex min-h-10 w-full items-center gap-2 rounded-[7px] px-3 text-left text-sm text-red-600 hover:bg-red-50"
+                >
+                  <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4" />
+                  Delete column
                 </button>
               </>
             )

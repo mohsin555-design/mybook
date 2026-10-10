@@ -485,6 +485,22 @@
   .tiptap .mybook-mention-block:focus-within .mybook-link-card-action-slot,
   .tiptap .mybook-mention-block.ProseMirror-selectednode .mybook-link-card-action-slot,
   .tiptap .mybook-mention-block[data-menu-open="true"] .mybook-link-card-action-slot { opacity: 1; pointer-events: auto; }
+  .tiptap .mybook-file-block.mybook-file-pdf-preview,
+  .tiptap .mybook-file-block:has(.mybook-file-pdf-header) { display: flex !important; flex-direction: column !important; width: 100%; background: var(--app-surface); }
+  .tiptap .mybook-file-pdf-header { display: flex !important; flex-direction: row !important; align-items: center; justify-content: space-between; min-height: 2.75rem; padding: 0.5rem 0.75rem !important; gap: 0.5rem; background: var(--app-surface); border-bottom: 1px solid var(--app-border); }
+  .tiptap .mybook-file-pdf-meta { display: flex; align-items: center; gap: 0.625rem; min-width: 0; flex: 1 1 auto; border: 0; background: transparent; padding: 0; cursor: pointer; text-align: left; }
+  .tiptap .mybook-file-pdf-icon { display: flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; flex-shrink: 0; border-radius: 6px; background: color-mix(in srgb, var(--app-surface) 90%, var(--app-subtle)); border: 1px solid var(--app-border); }
+  .tiptap .mybook-file-pdf-info { display: flex; flex-direction: column; min-width: 0; gap: 0.125rem; }
+  .tiptap .mybook-file-pdf-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; font-weight: 600; line-height: 1.25; color: var(--foreground); }
+  .tiptap .mybook-file-pdf-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.6875rem; line-height: 1.2; color: var(--muted-foreground); }
+  .tiptap .mybook-file-pdf-actions { display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+  .tiptap .mybook-file-block:hover .mybook-file-pdf-actions,
+  .tiptap .mybook-file-block:focus-within .mybook-file-pdf-actions,
+  .tiptap .mybook-file-block.ProseMirror-selectednode .mybook-file-pdf-actions,
+  .tiptap .mybook-file-block[data-menu-open="true"] .mybook-file-pdf-actions { opacity: 1; pointer-events: auto; }
+  @media (hover: none) {
+    .tiptap .mybook-file-pdf-actions { opacity: 1 !important; pointer-events: auto !important; }
+  }
   .mybook-link-card-actions { display: flex; width: 2rem; height: 2rem; align-items: center; justify-content: center; border-radius: 6px; color: var(--muted-foreground); }
   .mybook-link-card-actions:hover,
   .mybook-link-card-actions:focus-visible { background: var(--app-subtle); color: var(--foreground); outline: 2px solid transparent; }
@@ -575,7 +591,7 @@
   .tiptap ul[data-type="taskList"] li[data-checked] > div > .mybook-empty-block-placeholder::before { content: "To-do"; color: var(--muted-foreground); font-size: 1rem; opacity: 0.6; pointer-events: none; }
   .tiptap ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--muted-foreground); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--muted-foreground) 75%, transparent); }
   .tiptap ul[data-type="taskList"] li[data-checked]:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-  .tiptap .tableWrapper { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-bottom: 3rem; padding-bottom: 2.5rem; overflow-x: auto; }
+  .tiptap .tableWrapper { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-bottom: 1.25rem; padding-bottom: 0.5rem; overflow-x: auto; }
   .tiptap .tableWrapper[data-fixed-rows="true"] {
     max-height: calc(attr(data-fixed-row-count type(<number>), 5) * 40px + 2px);
     overflow-y: auto;
@@ -697,6 +713,39 @@
   .mybook-table-add-corner:focus-visible {
     background: color-mix(in srgb, var(--primary) 12%, var(--app-subtle));
     opacity: 1;
+  }
+  body:has([data-slash-command-menu="true"]) .mybook-table-add-column,
+  body:has([data-slash-command-menu="true"]) .mybook-table-add-row,
+  body:has([data-slash-command-menu="true"]) .mybook-table-add-corner,
+  body:has([data-slash-command-menu="true"]) .mybook-table-column-grip,
+  body:has([data-slash-command-menu="true"]) .mybook-table-row-grip,
+  body:has([data-image-picker="true"]) .mybook-table-add-column,
+  body:has([data-image-picker="true"]) .mybook-table-add-row,
+  body:has([data-image-picker="true"]) .mybook-table-add-corner,
+  body:has([data-image-picker="true"]) .mybook-table-column-grip,
+  body:has([data-image-picker="true"]) .mybook-table-row-grip,
+  body:has([data-video-picker="true"]) .mybook-table-add-column,
+  body:has([data-video-picker="true"]) .mybook-table-add-row,
+  body:has([data-video-picker="true"]) .mybook-table-add-corner,
+  body:has([data-video-picker="true"]) .mybook-table-column-grip,
+  body:has([data-video-picker="true"]) .mybook-table-row-grip,
+  body:has([data-audio-picker="true"]) .mybook-table-add-column,
+  body:has([data-audio-picker="true"]) .mybook-table-add-row,
+  body:has([data-audio-picker="true"]) .mybook-table-add-corner,
+  body:has([data-audio-picker="true"]) .mybook-table-column-grip,
+  body:has([data-audio-picker="true"]) .mybook-table-row-grip,
+  body:has([data-file-picker="true"]) .mybook-table-add-column,
+  body:has([data-file-picker="true"]) .mybook-table-add-row,
+  body:has([data-file-picker="true"]) .mybook-table-add-corner,
+  body:has([data-file-picker="true"]) .mybook-table-column-grip,
+  body:has([data-file-picker="true"]) .mybook-table-row-grip,
+  body:has([data-document-link-picker="true"]) .mybook-table-add-column,
+  body:has([data-document-link-picker="true"]) .mybook-table-add-row,
+  body:has([data-document-link-picker="true"]) .mybook-table-add-corner,
+  body:has([data-document-link-picker="true"]) .mybook-table-column-grip,
+  body:has([data-document-link-picker="true"]) .mybook-table-row-grip {
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
   .mybook-table-resize-handle {
     position: fixed;

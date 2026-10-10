@@ -98,10 +98,23 @@ export function BlockCommandMenu({
   className?: string
 }) {
   const selectedOptionRef = useRef<HTMLButtonElement>(null)
+  const lastMouseCoordsRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     scrollOptionIntoMenuView(selectedOptionRef.current)
   }, [selectedIndex])
+
+  const handleOptionMouseMove = (event: React.MouseEvent, index: number) => {
+    if (
+      lastMouseCoordsRef.current &&
+      lastMouseCoordsRef.current.x === event.clientX &&
+      lastMouseCoordsRef.current.y === event.clientY
+    ) {
+      return
+    }
+    lastMouseCoordsRef.current = { x: event.clientX, y: event.clientY }
+    onSelectIndex(index)
+  }
 
   return (
     <div role="listbox" aria-label={ariaLabel} className={className}>
@@ -119,7 +132,7 @@ export function BlockCommandMenu({
                 tabIndex={-1}
                 role="option"
                 aria-selected={isSelected}
-                onMouseEnter={() => onSelectIndex(index)}
+                onMouseMove={(event) => handleOptionMouseMove(event, index)}
                 onMouseDown={(event) => {
                   event.preventDefault()
                   onRun(command)
@@ -142,15 +155,16 @@ export function BlockCommandMenu({
 
 export function SlashCommandMenu({ editor, menu, selectedIndex, onSelectIndex, onRun }: SlashCommandMenuProps) {
   const commands = filterSlashCommands(menu.query, editor)
-  const top = commandMenuTop(menu.rect, DESKTOP_MENU_HEIGHT, 0)
-  const left = Math.min(menu.rect.left, window.innerWidth - 320)
+  const estimatedHeight = Math.min(DESKTOP_MENU_HEIGHT, Math.max(72, commands.length * 36 + 24))
+  const top = commandMenuTop(menu.rect, estimatedHeight, 8)
+  const left = Math.max(8, Math.min(menu.rect.left, window.innerWidth - 320 - 8))
 
   return (
     <div
-      className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
+      className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.14)]"
       data-slash-command-menu="true"
       data-command-menu-scroller="true"
-      style={{ top: Math.max(8, top), left: Math.max(8, left) }}
+      style={{ top: Math.max(8, top), left }}
     >
       <BlockCommandMenu ariaLabel="Slash command options" commands={commands} selectedIndex={selectedIndex} onSelectIndex={onSelectIndex} onRun={onRun} />
     </div>
@@ -161,7 +175,9 @@ export function MobileSlashCommandMenu({ editor, menu, selectedIndex, onSelectIn
   const commands = filterSlashCommands(menu.query, editor)
   const selectedOptionRef = useRef<HTMLButtonElement>(null)
   const hasRunCommandRef = useRef(false)
-  const top = commandMenuTop(menu.rect, MOBILE_MENU_HEIGHT, 0)
+  const lastMouseCoordsRef = useRef<{ x: number; y: number } | null>(null)
+  const estimatedHeight = Math.min(MOBILE_MENU_HEIGHT, Math.max(72, commands.length * 44 + 40))
+  const top = commandMenuTop(menu.rect, estimatedHeight, 8)
 
   useEffect(() => {
     scrollOptionIntoMenuView(selectedOptionRef.current)
@@ -171,12 +187,24 @@ export function MobileSlashCommandMenu({ editor, menu, selectedIndex, onSelectIn
     hasRunCommandRef.current = false
   }, [menu.range.from, menu.range.to, menu.query])
 
+  const handleOptionMouseMove = (event: React.MouseEvent, index: number) => {
+    if (
+      lastMouseCoordsRef.current &&
+      lastMouseCoordsRef.current.x === event.clientX &&
+      lastMouseCoordsRef.current.y === event.clientY
+    ) {
+      return
+    }
+    lastMouseCoordsRef.current = { x: event.clientX, y: event.clientY }
+    onSelectIndex(index)
+  }
+
   return (
     <div
-      className="fixed z-20 w-[min(22rem,calc(100vw-1rem))] rounded-[10px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.18)] md:hidden"
+      className="fixed z-50 w-[min(22rem,calc(100vw-1rem))] rounded-[10px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.18)] md:hidden"
       data-slash-command-menu="true"
       style={{
-        top,
+        top: Math.max(8, top),
         left: Math.max(8, Math.min(menu.rect.left, window.innerWidth - 360)),
       }}
       role="presentation"
@@ -204,7 +232,7 @@ export function MobileSlashCommandMenu({ editor, menu, selectedIndex, onSelectIn
                   tabIndex={-1}
                   role="option"
                   aria-selected={isSelected}
-                  onMouseEnter={() => onSelectIndex(index)}
+                  onMouseMove={(event) => handleOptionMouseMove(event, index)}
                   onPointerDownCapture={(event) => { event.preventDefault(); runCommand() }}
                   onPointerDown={(event) => { event.preventDefault(); runCommand() }}
                   onMouseDownCapture={(event) => { event.preventDefault(); runCommand() }}

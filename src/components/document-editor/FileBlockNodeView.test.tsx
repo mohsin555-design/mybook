@@ -186,6 +186,11 @@ describe('FileBlockNodeView', () => {
     uploadedPdfNode.attrs = { ...uploadedPdfNode.attrs, pdfPreview: true }
     rerender(<FileBlockNodeView {...props} />)
     expect(screen.getByTitle('PDF preview: report.pdf')).toHaveAttribute('src', uploadedPdfNode.attrs.src)
+    expect(screen.getByRole('button', { name: 'Replace file' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy block' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Duplicate' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More file options' })).toBeInTheDocument()
+    expect(screen.queryByText(/If the preview does not load/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'More file options' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Show as file card' }))

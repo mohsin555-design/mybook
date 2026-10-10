@@ -89,6 +89,7 @@ describe('SlashCommandMenu database command', () => {
     ]))
     expect(filterSlashCommands('toc').map((command) => command.id)).toContain('toc')
     expect(filterSlashCommands('table').map((command) => command.id)).toContain('toc')
+    expect(filterSlashCommands('table').map((command) => command.id)).toContain('table')
     expect(filterSlashCommands('contents').map((command) => command.id)).toContain('toc')
   })
 

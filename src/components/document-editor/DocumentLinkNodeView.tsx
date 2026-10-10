@@ -54,9 +54,31 @@ export function DocumentLinkNodeView({
   }
 
   const handleCopy = async () => {
+    const targetLabel = attrs?.label || title
+    const element = document.createElement('a')
+    element.setAttribute('data-type', 'document-link')
+    if (attrs?.targetId) element.setAttribute('data-target-id', attrs.targetId)
+    element.setAttribute('data-label', targetLabel)
+    element.textContent = targetLabel
+
     try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(title)
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([element.outerHTML], { type: 'text/html' }),
+            'text/plain': new Blob([targetLabel], { type: 'text/plain' }),
+          }),
+        ])
+        setCopied(true)
+        return
+      }
+    } catch {
+      // Fallback below
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(element.outerHTML)
       }
     } catch {
       // ignore

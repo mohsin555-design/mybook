@@ -49,6 +49,58 @@ export const EditorKeyboardShortcuts = Extension.create({
       'Mod-Alt-c': () => this.editor.commands.toggleCodeBlock(),
       'Mod-Alt-C': () => this.editor.commands.toggleCodeBlock(),
 
+      // Step out of inline mark (like inline code) at the boundary
+      ArrowRight: () => {
+        const { state, view } = this.editor
+        const { selection } = state
+        if (!selection.empty) return false
+
+        const $pos = selection.$from
+        const codeType = state.schema.marks.code
+        if (!codeType) return false
+
+        const hasCodeBefore = Boolean($pos.nodeBefore?.marks.some((m) => m.type === codeType))
+        const hasCodeAfter = Boolean($pos.nodeAfter?.marks.some((m) => m.type === codeType))
+
+        // When cursor is at the trailing edge of inline code (code before, no code after)
+        if (hasCodeBefore && !hasCodeAfter) {
+          // If storedMarks already does not include code, let default navigation proceed
+          const storedMarks = state.storedMarks ?? $pos.marks()
+          const hasCodeInStored = storedMarks.some((m) => m.type === codeType)
+          if (hasCodeInStored) {
+            const nextMarks = storedMarks.filter((m) => m.type !== codeType)
+            view.dispatch(state.tr.setStoredMarks(nextMarks))
+            return true
+          }
+        }
+        return false
+      },
+
+      ArrowLeft: () => {
+        const { state, view } = this.editor
+        const { selection } = state
+        if (!selection.empty) return false
+
+        const $pos = selection.$from
+        const codeType = state.schema.marks.code
+        if (!codeType) return false
+
+        const hasCodeBefore = Boolean($pos.nodeBefore?.marks.some((m) => m.type === codeType))
+        const hasCodeAfter = Boolean($pos.nodeAfter?.marks.some((m) => m.type === codeType))
+
+        // When cursor is at the leading edge of inline code (no code before, code after)
+        if (!hasCodeBefore && hasCodeAfter) {
+          const storedMarks = state.storedMarks ?? $pos.marks()
+          const hasCodeInStored = storedMarks.some((m) => m.type === codeType)
+          if (hasCodeInStored) {
+            const nextMarks = storedMarks.filter((m) => m.type !== codeType)
+            view.dispatch(state.tr.setStoredMarks(nextMarks))
+            return true
+          }
+        }
+        return false
+      },
+
       // Indent (Tab) & Outdent (Shift+Tab)
       Tab: () => {
         if (this.editor.can().sinkListItem('listItem')) {

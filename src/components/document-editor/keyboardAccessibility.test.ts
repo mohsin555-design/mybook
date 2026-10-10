@@ -159,4 +159,31 @@ describe('Editor Keyboard Accessibility & Shortcuts', () => {
 
     cleanup()
   })
+
+  it('steps out of inline code on ArrowRight and ArrowLeft at boundaries', () => {
+    const { editor, cleanup } = createEditor('<p><code>test</code></p>')
+    // Pos 1 is start of 'test', pos 5 is end of 'test'
+    editor.commands.setTextSelection(5)
+    expect(editor.isActive('code')).toBe(true)
+
+    const shortcuts = EditorKeyboardShortcuts.config.addKeyboardShortcuts?.call({ editor } as never)
+    const rightHandler = shortcuts?.ArrowRight as (() => boolean) | undefined
+    expect(rightHandler).toBeDefined()
+
+    // Trigger ArrowRight at trailing boundary of inline code
+    const steppedOut = rightHandler?.()
+    expect(steppedOut).toBe(true)
+    // Stored marks should now not include 'code'
+    const storedMarks = editor.state.storedMarks ?? []
+    expect(storedMarks.some((m) => m.type.name === 'code')).toBe(false)
+
+    // Leading edge test
+    editor.commands.setTextSelection(1)
+    const leftHandler = shortcuts?.ArrowLeft as (() => boolean) | undefined
+    expect(leftHandler).toBeDefined()
+    const steppedOutLeft = leftHandler?.()
+    expect(steppedOutLeft).toBe(true)
+
+    cleanup()
+  })
 })

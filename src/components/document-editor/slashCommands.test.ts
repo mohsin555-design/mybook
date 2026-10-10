@@ -174,7 +174,21 @@ describe('slashCommands', () => {
     runSlashCommand(editor, 'code-block', { from: 1, to: 6 })
 
     expect(editor.isActive('codeBlock')).toBe(true)
-    expect(editor.state.selection.from).toBe(1)
+    expect(editor.state.selection.from).toBe(2)
+    editor.destroy()
+    element.remove()
+  })
+
+  it('adds inline code to insertion commands and toggles the inline code mark', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({ element, extensions: [StarterKit], content: '<p>hello world</p>' })
+    editor.commands.setTextSelection({ from: 7, to: 12 })
+
+    const inlineCode = slashCommands.find((command) => command.id === 'inline-code')
+    expect(inlineCode).toMatchObject({ title: 'Inline code', shortcut: '`code`' })
+    runSlashCommand(editor, 'inline-code', { from: 7, to: 12 })
+
+    expect(editor.state.doc.firstChild?.firstChild?.marks.map((mark) => mark.type.name)).toContain('code')
     editor.destroy()
     element.remove()
   })

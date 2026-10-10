@@ -112,6 +112,7 @@ export const allSlashCommands: SlashCommand[] = [
   { id: 'table', title: 'Basic Table', description: 'Insert a basic table', keywords: ['table', 'basic table', 'grid'], category: 'Data' },
   { id: 'database', title: 'Database', description: 'Typed rows and properties', keywords: ['database', 'data', 'properties', 'status'], category: 'Data', hidden: !ENABLE_DATABASE_BLOCK },
   { id: 'date-time', title: 'Date & Time', description: 'Insert a date with optional time', keywords: ['date', 'time', 'calendar', 'datetime'], category: 'Mention' },
+  { id: 'inline-code', title: 'Inline code', description: 'Format text as inline code', keywords: ['inline code', 'code', 'monospace'], category: 'Advanced', shortcut: '`code`' },
   { id: 'callout', title: 'Callout', description: 'Add a highlighted note', keywords: ['callout', 'note', 'info', 'warning'], category: 'Advanced' },
   { id: 'columns-2', title: 'Columns 2', description: 'Split into 2 columns', keywords: ['columns', 'column', 'columns 2', '2 columns', 'split', 'grid', 'layout'], category: 'Advanced' },
   { id: 'columns-3', title: 'Columns 3', description: 'Split into 3 columns', keywords: ['columns', 'column', 'columns 3', '3 columns', 'split', 'grid', 'layout'], category: 'Advanced' },
@@ -162,12 +163,20 @@ function insertQuoteBlock(editor: Editor, range: SlashMenuState['range']) {
 }
 
 function insertCodeBlock(editor: Editor, range: SlashMenuState['range']) {
+  const insertionPos = range.from
   editor
     .chain()
     .focus()
     .deleteRange(range)
+    .setTextSelection(insertionPos)
     .setCodeBlock()
     .run()
+
+  const codeBlock = editor.state.doc.nodeAt(insertionPos)
+  if (codeBlock?.type.name === 'codeBlock') {
+    const cursorPos = insertionPos + 1 + codeBlock.content.size
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, cursorPos)))
+  }
 }
 
 export function runSlashCommand(
@@ -178,6 +187,11 @@ export function runSlashCommand(
 ) {
   if (isConversion && isFormatCommand(commandId)) {
     convertSelectedBlocks(editor, commandId)
+    return
+  }
+
+  if (commandId === 'inline-code') {
+    editor.chain().focus().toggleCode().run()
     return
   }
 

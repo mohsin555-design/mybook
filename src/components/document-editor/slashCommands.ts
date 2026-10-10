@@ -163,20 +163,12 @@ function insertQuoteBlock(editor: Editor, range: SlashMenuState['range']) {
 }
 
 function insertCodeBlock(editor: Editor, range: SlashMenuState['range']) {
-  const insertionPos = range.from
   editor
     .chain()
     .focus()
     .deleteRange(range)
-    .setTextSelection(insertionPos)
     .setCodeBlock()
     .run()
-
-  const codeBlock = editor.state.doc.nodeAt(insertionPos)
-  if (codeBlock?.type.name === 'codeBlock') {
-    const cursorPos = insertionPos + 1 + codeBlock.content.size
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, cursorPos)))
-  }
 }
 
 export function runSlashCommand(
@@ -191,7 +183,11 @@ export function runSlashCommand(
   }
 
   if (commandId === 'inline-code') {
-    editor.chain().focus().toggleCode().run()
+    const selectedText = editor.state.doc.textBetween(range.from, range.to)
+    const isSlashQuery = /^\/[a-zA-Z0-9-]*$/u.test(selectedText)
+    const chain = editor.chain().focus()
+    if (!isConversion && isSlashQuery) chain.deleteRange(range)
+    chain.toggleCode().run()
     return
   }
 

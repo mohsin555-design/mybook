@@ -174,7 +174,7 @@ describe('slashCommands', () => {
     runSlashCommand(editor, 'code-block', { from: 1, to: 6 })
 
     expect(editor.isActive('codeBlock')).toBe(true)
-    expect(editor.state.selection.from).toBe(2)
+    expect(editor.state.selection.from).toBe(1)
     editor.destroy()
     element.remove()
   })
@@ -188,7 +188,20 @@ describe('slashCommands', () => {
     expect(inlineCode).toMatchObject({ title: 'Inline code', shortcut: '`code`' })
     runSlashCommand(editor, 'inline-code', { from: 7, to: 12 })
 
-    expect(editor.state.doc.firstChild?.firstChild?.marks.map((mark) => mark.type.name)).toContain('code')
+    expect(editor.state.doc.rangeHasMark(7, 12, editor.schema.marks.code!)).toBe(true)
+    editor.destroy()
+    element.remove()
+  })
+
+  it('removes the slash query and turns on inline code for typing', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({ element, extensions: [StarterKit], content: '<p>/inline-code</p>' })
+    editor.commands.setTextSelection(13)
+
+    runSlashCommand(editor, 'inline-code', { from: 1, to: 13 })
+
+    expect(editor.state.doc.textContent).toBe('')
+    expect(editor.isActive('code')).toBe(true)
     editor.destroy()
     element.remove()
   })

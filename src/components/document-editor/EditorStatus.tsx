@@ -6,17 +6,22 @@ import type { EditorSaveStatus } from '../../types/files'
 
 type EditorStatusWorkspace = 'local' | 'drive'
 
-function editorStatusLabel(status: EditorSaveStatus, workspace: EditorStatusWorkspace) {
-  if (status === 'editing' || status === 'saving-locally') return 'Saving…'
-  if (workspace === 'local') {
-    if (status === 'failed') return "Couldn't save"
+function editorStatusLabel(status: EditorSaveStatus, workspace: EditorStatusWorkspace, simplified: boolean) {
+  if (!simplified) {
+    if (status === 'editing' || status === 'saving-locally') return 'Saving…'
+    if (workspace === 'local') {
+      if (status === 'failed') return "Couldn't save"
+      return 'Saved'
+    }
+    if (status === 'saved-locally' || status === 'pending') return 'Saved locally'
+    if (status === 'backing-up') return 'Syncing…'
+    if (status === 'backed-up') return 'Synced'
+    if (status === 'failed') return 'Saved locally · Sync failed'
+    if (status === 'offline') return 'Saved locally · Offline'
     return 'Saved'
   }
-  if (status === 'saved-locally' || status === 'pending') return 'Saved locally'
-  if (status === 'backing-up') return 'Syncing…'
-  if (status === 'backed-up') return 'Synced'
-  if (status === 'failed') return 'Saved locally · Sync failed'
-  if (status === 'offline') return 'Saved locally · Offline'
+  if (status === 'editing' || status === 'saving-locally' || status === 'backing-up') return 'Saving…'
+  if (workspace === 'local' && status === 'failed') return "Couldn't save"
   return 'Saved'
 }
 
@@ -24,12 +29,14 @@ export function EditorStatus({
   status,
   workspace = 'drive',
   onRetry,
+  simplified = false,
 }: {
   status: EditorSaveStatus
   workspace?: EditorStatusWorkspace
   onRetry?: () => void
+  simplified?: boolean
 }) {
-  const label = editorStatusLabel(status, workspace)
+  const label = editorStatusLabel(status, workspace, simplified)
   const isSaving = status === 'editing' || status === 'saving-locally' || status === 'backing-up'
 
   if (status === 'failed' && onRetry) {

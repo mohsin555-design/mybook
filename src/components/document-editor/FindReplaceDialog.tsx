@@ -1,10 +1,10 @@
 import type { Editor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
-import { useState } from 'react'
+import { useState, type RefObject } from 'react'
 
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
 import { Input } from '../ui/input'
+import { Popover, PopoverContent } from '../ui/popover'
 
 function findMatches(editor: Editor, query: string) {
   const needle = query.toLocaleLowerCase()
@@ -24,7 +24,7 @@ function findMatches(editor: Editor, query: string) {
   return matches
 }
 
-export function FindReplaceDialog({ editor, open, onOpenChange }: { editor: Editor; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function FindReplaceDialog({ editor, open, onOpenChange, anchorRef }: { editor: Editor; open: boolean; onOpenChange: (open: boolean) => void; anchorRef: RefObject<HTMLElement | null> }) {
   const [query, setQuery] = useState('')
   const [replacement, setReplacement] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -66,22 +66,16 @@ export function FindReplaceDialog({ editor, open, onOpenChange }: { editor: Edit
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Find and replace</DialogTitle>
-          <DialogDescription>Search this document and replace matching text.</DialogDescription>
-        </DialogHeader>
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverContent anchor={anchorRef} side="left" align="start" className="w-[min(360px,calc(100vw-1rem))] gap-3 rounded-xl p-3 shadow-lg" aria-label="Find and replace">
+        <h2 className="text-sm font-semibold">Find and replace</h2>
         <div className="space-y-3">
           <label className="block space-y-1.5 text-sm font-medium">Find<Input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setActiveIndex(0) }} /></label>
           <label className="block space-y-1.5 text-sm font-medium">Replace with<Input value={replacement} onChange={(event) => setReplacement(event.target.value)} /></label>
           <div className="flex items-center justify-between text-xs text-muted-foreground"><span>{matches.length ? `${activeIndex + 1} of ${matches.length} matches` : 'No matches'}</span><div className="flex gap-1"><Button type="button" variant="outline" size="sm" disabled={!matches.length} onClick={() => findNext(-1)}>Previous</Button><Button type="button" variant="outline" size="sm" disabled={!matches.length} onClick={() => findNext(1)}>Next</Button></div></div>
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" disabled={!matches.length} onClick={replaceCurrent}>Replace</Button>
-          <Button type="button" disabled={!matches.length} onClick={replaceAll}>Replace all</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="flex justify-end gap-2"><Button type="button" variant="outline" size="sm" disabled={!matches.length} onClick={replaceCurrent}>Replace</Button><Button type="button" size="sm" disabled={!matches.length} onClick={replaceAll}>Replace all</Button></div>
+      </PopoverContent>
+    </Popover>
   )
 }

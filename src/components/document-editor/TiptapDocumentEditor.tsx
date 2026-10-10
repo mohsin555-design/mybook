@@ -2594,6 +2594,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const { selection } = editor.state
     const hasSelection = !selection.empty
 
+    if (commandId === 'inline-code') {
+      editor.chain().focus().toggleCode().run()
+      return
+    }
+
     if (isFormatCommand(commandId)) {
       if (hasSelection) {
         convertSelectedBlocks(editor, commandId)

@@ -179,6 +179,33 @@ describe('slashCommands', () => {
     element.remove()
   })
 
+  it('adds inline code to insertion commands and toggles the inline code mark', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({ element, extensions: [StarterKit], content: '<p>hello world</p>' })
+    editor.commands.setTextSelection({ from: 7, to: 12 })
+
+    const inlineCode = slashCommands.find((command) => command.id === 'inline-code')
+    expect(inlineCode).toMatchObject({ title: 'Inline code', shortcut: '`code`' })
+    runSlashCommand(editor, 'inline-code', { from: 7, to: 12 })
+
+    expect(editor.state.doc.rangeHasMark(7, 12, editor.schema.marks.code!)).toBe(true)
+    editor.destroy()
+    element.remove()
+  })
+
+  it('removes the slash query and turns on inline code for typing', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({ element, extensions: [StarterKit], content: '<p>/inline-code</p>' })
+    editor.commands.setTextSelection(13)
+
+    runSlashCommand(editor, 'inline-code', { from: 1, to: 13 })
+
+    expect(editor.state.doc.textContent).toBe('')
+    expect(editor.isActive('code')).toBe(true)
+    editor.destroy()
+    element.remove()
+  })
+
   it('includes 5 Toggle insertion options under Lists category', () => {
     const toggleOptions = ['toggle', 'toggle-h1', 'toggle-h2', 'toggle-h3', 'toggle-h4']
     for (const id of toggleOptions) {

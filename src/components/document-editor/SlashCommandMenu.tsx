@@ -56,6 +56,7 @@ const commandIcons = {
   'columns-5': ViewColumnsIcon,
   toc: QueueListIcon,
   'code-block': CommandLineIcon,
+  'inline-code': CommandLineIcon,
 } as const
 
 function CommandIcon({ command, className }: { command: SlashCommand; className: string }) {

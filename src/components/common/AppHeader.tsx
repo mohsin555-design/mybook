@@ -74,6 +74,7 @@ export interface AppHeaderProps {
   onFavorite?: () => void
   /** Dropdown menu items rendered by the More action. */
   moreContent?: ReactNode
+  moreTriggerRef?: RefObject<HTMLButtonElement | null>
   /** Custom className for the More dropdown menu content. */
   moreMenuClassName?: string
   /** Dropdown menu items rendered inside the Add New (+) dropdown. Defaults to a single "Document" item. */
@@ -180,6 +181,7 @@ export function AppHeader({
   isFavorite = false,
   onFavorite,
   moreContent,
+  moreTriggerRef,
   moreMenuClassName,
   addNewContent,
   trailingActionsSlot,
@@ -459,6 +461,7 @@ export function AppHeader({
                 {moreAction ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger
+                      ref={moreTriggerRef}
                       render={<Button type="button" variant="ghost" size="icon-sm" className="rounded-lg" />}
                       aria-label="More actions"
                       title="More actions"

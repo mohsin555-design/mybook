@@ -22,6 +22,8 @@ import { useNavigate } from 'react-router-dom'
 import { appFileName, cleanName, fileRepository, nextFileName, uniqueFileName } from '../../database/repositories'
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
+import { Switch } from '../ui/switch'
+import { Popover, PopoverContent } from '../ui/popover'
 import { useAutosave } from '../../hooks/useAutosave'
 import { registerUnsavedEditsProbe } from '../../services/localEditState'
 import { broadcastDocUpdate, subscribeToTabDocUpdates } from '../../services/tabSyncChannel'
@@ -962,6 +964,11 @@ function InlineLinkToolbar({
 export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const isMacPlatform = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/u.test(navigator.platform)
+  const duplicateShortcut = isMacPlatform ? '⌃⌥D' : 'Ctrl+Alt+D'
+  const moveShortcut = isMacPlatform ? '⌃⌥M' : 'Ctrl+Alt+M'
+  const undoShortcut = isMacPlatform ? '⌘Z' : 'Ctrl+Z'
+  const redoShortcut = isMacPlatform ? '⌘⇧Z' : 'Ctrl+Shift+Z'
   const { files, folders } = useLibraryData(true)
   const file = useLiveQuery(async () => (await fileRepository.get(fileId)).data, [fileId])
   const { content, hasUnsavedChanges, isHydrated, replaceContent, save, setContent, status } = useAutosave(file)
@@ -977,6 +984,9 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const [zoom, setZoom] = useState(100)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false)
+  const [isMoveToOpen, setIsMoveToOpen] = useState(false)
+  const moreTriggerRef = useRef<HTMLButtonElement>(null)
+  const duplicateDocumentRef = useRef<() => Promise<void>>(async () => undefined)
   const [documentLinkPicker, setDocumentLinkPicker] = useState<DocumentLinkPickerState | null>(null)
   const [documentLinkSelectedIndex, setDocumentLinkSelectedIndex] = useState<number>(0)
   const [imagePicker, setImagePicker] = useState<ImagePickerState | null>(null)
@@ -1020,6 +1030,24 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const editorRef = useRef<NonNullable<ReturnType<typeof useEditor>> | null>(null)
   const blankOverlayRef = useRef<HTMLDivElement | null>(null)
   const blankSelectionRangeRef = useRef<{ from: number; to: number } | null>(null)
+  useEffect(() => {
+    const handleEditorMenuShortcuts = (event: KeyboardEvent) => {
+      if (!((event.ctrlKey || event.metaKey) && event.altKey) || event.shiftKey) return
+      const target = event.target
+      if (target instanceof HTMLElement && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || (target.isContentEditable && !target.closest('.tiptap')))) return
+      if (event.key.toLowerCase() === 'd') {
+        event.preventDefault()
+        event.stopPropagation()
+        void duplicateDocumentRef.current()
+      } else if (event.key.toLowerCase() === 'm') {
+        event.preventDefault()
+        event.stopPropagation()
+        setIsMoveToOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleEditorMenuShortcuts, true)
+    return () => window.removeEventListener('keydown', handleEditorMenuShortcuts, true)
+  }, [])
   const lastActiveSelectionRef = useRef({ from: 1, to: 1 })
   const contentSyncTimerRef = useRef<number | null>(null)
   const flushContentSync = useCallback((currentEditor?: NonNullable<ReturnType<typeof useEditor>> | null) => {
@@ -2193,6 +2221,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const result = await fileRepository.duplicate(file.id)
     if (result.data) navigate(`/document/${result.data.id}`)
   }
+  duplicateDocumentRef.current = duplicateDocument
 
   const setPageLocked = async (locked: boolean) => {
     const result = await fileRepository.update(file.id, { isLocked: locked })
@@ -2682,18 +2711,23 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         titleRef={pageTitleRef}
         onRename={true}
         onBreadcrumbRename={updateTitle}
-        status={<EditorStatus status={editorStatus} workspace={editorStatusWorkspace} onRetry={() => void backupNow()} />}
+        status={<EditorStatus status={editorStatus} workspace={editorStatusWorkspace} simplified />}
         addNewAction={false}
         shareAction={false}
         favoriteAction={true}
         isFavorite={file.isFavorite}
         onFavorite={() => void toggleDocumentFavorite()}
         moreAction={true}
+        moreTriggerRef={moreTriggerRef}
         moreMenuClassName="min-w-64"
         moreContent={
           <>
-            <DropdownMenuCheckboxItem checked={Boolean(file.isLocked)} onCheckedChange={(checked) => void setPageLocked(checked)}>Lock page</DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem checked={isFullWidth} onCheckedChange={setDocumentViewMode}>Full width</DropdownMenuCheckboxItem>
+            <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="justify-between">
+              <span>Lock page</span><Switch aria-label="Lock page" checked={Boolean(file.isLocked)} onCheckedChange={(checked) => void setPageLocked(checked)} />
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="justify-between">
+              <span>Full width</span><Switch aria-label="Full width" checked={isFullWidth} onCheckedChange={setDocumentViewMode} />
+            </DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Zoom</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -2702,21 +2736,21 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             </DropdownMenuSub>
             <DropdownMenuItem disabled={isPageLocked} onClick={() => setIsFindReplaceOpen(true)}>Find and replace</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => void duplicateDocument()}>Duplicate</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto text-xs text-muted-foreground">{duplicateShortcut}</kbd></DropdownMenuItem>
             <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger><span>Move to</span><kbd className="ml-auto pr-2 text-xs text-muted-foreground">{moveShortcut}</kbd></DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {file.folderId ? <DropdownMenuItem onClick={() => void moveDocument(null)}>Writin root</DropdownMenuItem> : null}
                 {folders.filter((folder) => folder.id !== file.folderId).map((folder) => <DropdownMenuItem key={folder.id} onClick={() => void moveDocument(folder.id)}>{folder.name}</DropdownMenuItem>)}
                 {!folders.some((folder) => folder.id !== file.folderId) && !file.folderId ? <DropdownMenuItem disabled>No other folders</DropdownMenuItem> : null}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().undo().run()} onClick={() => editor.chain().focus().undo().run()}>Undo</DropdownMenuItem>
-            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}>Redo</DropdownMenuItem>
+            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().undo().run()} onClick={() => editor.chain().focus().undo().run()}><span>Undo</span><kbd className="ml-auto text-xs text-muted-foreground">{undoShortcut}</kbd></DropdownMenuItem>
+            <DropdownMenuItem disabled={isPageLocked || !editor.can().chain().focus().redo().run()} onClick={() => editor.chain().focus().redo().run()}><span>Redo</span><kbd className="ml-auto text-xs text-muted-foreground">{redoShortcut}</kbd></DropdownMenuItem>
             <DropdownMenuItem disabled={isPageLocked} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>Clear formatting</DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem disabled={isPageLocked} onClick={() => importInputRef.current?.click()}>Import document</DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Export to</DropdownMenuSubTrigger>
@@ -2725,12 +2759,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 <DropdownMenuItem onClick={() => void exportDocx(true)}>Word (.docx)</DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuSeparator />
-            {!isLocalWorkspace ? <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>Cloud sync</span><span className="font-medium text-foreground">{editorStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced' : 'Saved locally'}</span></div> : null}
-            <div className="flex items-center justify-between px-2 pb-1.5 text-xs text-muted-foreground">
+            {file.workspaceType === 'local' || file.syncStatus === 'local' ? <div className="px-2 py-1.5 text-xs text-muted-foreground">Local</div> : <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>{file.syncStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced with cloud' : file.syncStatus === 'failed' ? 'Sync failed' : file.syncStatus === 'offline' ? 'Offline · saved locally' : 'Waiting to sync'}</span><button type="button" aria-label="Sync now" title="Sync now" disabled={file.syncStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${file.syncStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button></div>}
+            <div className="px-2 pb-1.5 text-xs text-muted-foreground">
               <span>Created {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(file.createdAt))}</span>
-              {!isLocalWorkspace ? <button type="button" aria-label="Sync now" title="Sync now" disabled={editorStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${editorStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button> : null}
             </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete</DropdownMenuItem>
           </>
         }
       />
@@ -2990,7 +3024,15 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         setMentionMenu(null)
       }} /> : null}
       {pasteAsMenu ? <PasteAsMenu menu={pasteAsMenu} onChoose={choosePasteAs} onClose={closePasteAsMenu} /> : null}
-      <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} />
+      <FindReplaceDialog editor={editor} open={isFindReplaceOpen} onOpenChange={setIsFindReplaceOpen} anchorRef={moreTriggerRef} />
+      <Popover open={isMoveToOpen} onOpenChange={setIsMoveToOpen}>
+        <PopoverContent anchor={moreTriggerRef} side="left" align="start" className="w-64 gap-1 rounded-xl p-2" aria-label="Move document to folder">
+          <h2 className="px-2 py-1 text-sm font-semibold">Move to</h2>
+          {file.folderId ? <button type="button" onClick={() => { void moveDocument(null); setIsMoveToOpen(false) }} className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">Writin root</button> : null}
+          {folders.filter((folder) => folder.id !== file.folderId).map((folder) => <button key={folder.id} type="button" onClick={() => { void moveDocument(folder.id); setIsMoveToOpen(false) }} className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent">{folder.name}</button>)}
+          {!folders.some((folder) => folder.id !== file.folderId) && !file.folderId ? <p className="px-2 py-1.5 text-sm text-muted-foreground">No other folders</p> : null}
+        </PopoverContent>
+      </Popover>
       {inlineLinkToolbar ? <InlineLinkToolbar toolbar={inlineLinkToolbar} onAction={runInlineLinkAction} onClose={closeInlineLinkToolbar} /> : null}
       {!isPageLocked ? <SelectionFormattingToolbar editor={editor} onInsertBlock={(commandId) => insertBlock(commandId)} /> : null}
       {!isPageLocked ? <EditorBlockControls editor={editor} onInsertBlock={insertBlock} /> : null}

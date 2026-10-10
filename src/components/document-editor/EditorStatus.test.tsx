@@ -8,16 +8,16 @@ import { EditorStatus } from './EditorStatus'
 describe('EditorStatus', () => {
   afterEach(() => cleanup())
 
-  it('shows pending Drive sync as saved locally instead of synced', () => {
-    render(<EditorStatus status="pending" />)
+  it('keeps pending Drive sync out of the header status', () => {
+    render(<EditorStatus status="pending" simplified />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('Saved locally')
+    expect(screen.getByRole('status')).toHaveTextContent('Saved')
     expect(screen.queryByText('Saving…')).not.toBeInTheDocument()
     expect(screen.queryByText('Synced')).not.toBeInTheDocument()
   })
 
   it('keeps local workspace status free of Drive terminology', () => {
-    render(<EditorStatus status="saved-locally" workspace="local" />)
+    render(<EditorStatus status="saved-locally" workspace="local" simplified />)
 
     expect(screen.getByRole('status')).toHaveTextContent('Saved')
     expect(screen.queryByText(/Drive|Sync/i)).not.toBeInTheDocument()
@@ -26,19 +26,26 @@ describe('EditorStatus', () => {
   it.each([
     ['editing', 'Saving…'],
     ['saving-locally', 'Saving…'],
-    ['saved-locally', 'Saved locally'],
-    ['pending', 'Saved locally'],
-    ['backing-up', 'Syncing…'],
-    ['backed-up', 'Synced'],
-    ['offline', 'Saved locally · Offline'],
-    ['failed', 'Saved locally · Sync failed'],
+    ['saved-locally', 'Saved'],
+    ['pending', 'Saved'],
+    ['backing-up', 'Saving…'],
+    ['backed-up', 'Saved'],
+    ['offline', 'Saved'],
+    ['failed', 'Saved'],
   ] as const)('maps Google workspace %s to %s', (status, label) => {
-    render(<EditorStatus status={status} workspace="drive" />)
+    render(<EditorStatus status={status} workspace="drive" simplified />)
 
     expect(screen.getByRole('status')).toHaveTextContent(label)
   })
 
-  it('shows retry for failed sync', () => {
+  it('keeps cloud sync retry actions out of the simplified header', () => {
+    render(<EditorStatus status="failed" simplified />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Saved')
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('preserves the retry action for other editor status uses', () => {
     const retry = vi.fn()
     render(<EditorStatus status="failed" onRetry={retry} />)
 

@@ -19,7 +19,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useCallback, useEffect, useMemo, useRef, useState, type Key, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { appFileName, cleanName, fileRepository } from '../../database/repositories'
+import { appFileName, cleanName, fileRepository, nextFileName, uniqueFileName } from '../../database/repositories'
 import { ExclamationCircleIcon } from '@heroicons/react/20/solid'
 import { isLocalWorkspace } from '../../stores/useWorkspaceStore'
 import { useAutosave } from '../../hooks/useAutosave'
@@ -515,6 +515,15 @@ function cleanPastedHtml(html: string) {
   // Remove unwanted elements
   doc.body.querySelectorAll('meta, style, script, link, xml, noscript').forEach((element) => element.remove())
 
+  // Remove empty ghost images that have neither src nor alt
+  doc.body.querySelectorAll('img').forEach((img) => {
+    const src = img.getAttribute('src')?.trim()
+    const alt = img.getAttribute('alt')?.trim()
+    if (!src && !alt) {
+      img.remove()
+    }
+  })
+
   // Normalize checklists / task items from Notion, GitHub, Google Docs, Apple Notes
   doc.body.querySelectorAll('li').forEach((li) => {
     const checkbox = li.querySelector('input[type="checkbox"]')
@@ -979,6 +988,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
   const importInputRef = useRef<HTMLInputElement>(null)
   const handledPendingImportRef = useRef<string | null>(null)
   const isImportingRef = useRef(false)
+  const lastImportedContentRef = useRef<string | null>(null)
   const importDocumentFileRef = useRef<((selectedFile: File) => Promise<void>) | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -2003,10 +2013,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     if (!editor || !file || !isHydrated || isImportingRef.current) return
     if (loadedId === file.id && (content === editorContentRef.current || (editor.isFocused && (status === 'editing' || hasUnsavedChanges())))) return
     if (loadedId === file.id && (!content || content === emptyDocumentJson) && editorContentRef.current && editorContentRef.current !== emptyDocumentJson) return
+    if (loadedId === file.id && lastImportedContentRef.current && editorContentRef.current === lastImportedContentRef.current && content !== editorContentRef.current) return
     const isFocused = editor.isFocused
     const { from, to } = editor.state.selection
     editor.commands.setContent(parseContent(content), { emitUpdate: false })
     editorContentRef.current = content
+    lastImportedContentRef.current = null
     setLoadedId(file.id)
     if (isFocused) {
       const maxPos = editor.state.doc.content.size
@@ -2401,16 +2413,24 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           { arrayBuffer: await selectedFile.arrayBuffer() },
           {
             convertImage: mammoth.images.imgElement(async (image: { contentType: string; read: (format: string) => Promise<string> }) => {
-              const isWebCompatible = /^(?:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml|avif|bmp))$/i.test(image.contentType)
+              const cleanType = ((image.contentType || '').trim().toLowerCase().split(';')[0] || '').trim()
+              const isWebCompatible = Boolean(cleanType && /^(?:image\/(?:png|x-png|jpeg|pjpeg|jpg|gif|webp|svg\+xml|avif|bmp|ico|vnd\.microsoft\.icon))$/i.test(cleanType))
               if (!isWebCompatible) {
                 return {
                   src: '',
-                  alt: `[Unsupported format: ${image.contentType.replace('image/', '')}]`,
+                  alt: `[Unsupported format: ${cleanType.replace('image/', '') || 'vector drawing'}]`,
                 }
               }
-              const base64 = await image.read('base64')
-              return {
-                src: `data:${image.contentType};base64,${base64}`,
+              try {
+                const base64 = await image.read('base64')
+                return {
+                  src: `data:${cleanType};base64,${base64}`,
+                }
+              } catch {
+                return {
+                  src: '',
+                  alt: '[Could not read embedded image]',
+                }
               }
             }),
           }
@@ -2425,21 +2445,40 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       }
 
       const nextJson = JSON.stringify(editor.getJSON())
-      editorContentRef.current = nextJson
-      replaceContent(nextJson, 'saved-locally')
-
+      const targetId = file?.id ?? fileId
       const importedTitle = documentImportTitle(selectedFile.name)
-      const updateResult = await fileRepository.update(file.id, {
-        name: importedTitle,
+      const folderId = file?.folderId ?? null
+      const isUnique = await uniqueFileName(importedTitle, folderId, targetId)
+      const finalTitle = isUnique ? importedTitle : await nextFileName(importedTitle, folderId)
+
+      let savedTitle = finalTitle
+      let updateResult = await fileRepository.update(targetId, {
+        name: finalTitle,
         content: nextJson,
         syncStatus: isLocalWorkspace() ? 'local' : 'pending',
       })
+
+      if (!updateResult.success) {
+        updateResult = await fileRepository.update(targetId, {
+          content: nextJson,
+          syncStatus: isLocalWorkspace() ? 'local' : 'pending',
+        })
+        if (updateResult.success) {
+          savedTitle = file?.name ?? title
+        }
+      }
+
       if (updateResult.success) {
-        lastSavedTitleRef.current = importedTitle
-        updateTitle(importedTitle)
-        broadcastDocUpdate(file.id, nextJson, importedTitle)
+        editorContentRef.current = nextJson
+        lastImportedContentRef.current = nextJson
+        replaceContent(nextJson, 'saved-locally')
+        lastSavedTitleRef.current = savedTitle
+        updateTitle(savedTitle)
+        broadcastDocUpdate(targetId, nextJson, savedTitle)
       } else {
-        statusMessage = 'Content imported, but the document could not be saved to library.'
+        setContent(nextJson)
+        devLog('error', 'Could not save imported content to repository:', updateResult.error)
+        statusMessage = `Content imported, but could not be saved to library: ${updateResult.error ?? 'Unknown error'}`
       }
       setDocxMessage(statusMessage)
     } catch (error) {

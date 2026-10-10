@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { db } from './db'
-import { clearAccountDriveCache, fileRepository, folderRepository, onClearAccountDriveCache, processPendingDriveFolderSync, queueLocalItemsForDriveBackup } from './repositories'
+import { clearAccountDriveCache, fileRepository, folderRepository, nextFileName, onClearAccountDriveCache, processPendingDriveFolderSync, queueLocalItemsForDriveBackup, uniqueFileName } from './repositories'
 import { ensureMyBookDriveFolder, ensureVisibleFolderInParent, permanentlyDeleteDriveFile, restoreDriveFolder, trashDriveFolder } from '../services/googleDrive'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 
@@ -73,6 +73,18 @@ describe('IndexedDB repositories', () => {
     const updateResult = await fileRepository.update(second.data!.id, { name: 'Quarterly Report' })
     expect(updateResult.success).toBe(false)
     expect(updateResult.error).toBe('A file with this name already exists here.')
+  })
+
+  it('generates unique file names using uniqueFileName and nextFileName', async () => {
+    const first = await fileRepository.create('document')
+    await fileRepository.update(first.data!.id, { name: 'Imported Doc' })
+
+    expect(await uniqueFileName('Imported Doc', null)).toBe(false)
+    expect(await uniqueFileName('Imported Doc', null, first.data!.id)).toBe(true)
+    expect(await uniqueFileName('Unique Doc', null)).toBe(true)
+
+    expect(await nextFileName('Imported Doc', null)).toBe('Imported Doc 2')
+    expect(await nextFileName('Unique Doc', null)).toBe('Unique Doc')
   })
 
   it('creates nested folders and queues offline Drive work', async () => {

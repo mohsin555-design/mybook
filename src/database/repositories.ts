@@ -344,12 +344,12 @@ export async function queueLocalItemsForDriveBackup() {
   }))
 }
 
-async function uniqueFileName(name: string, folderId: string | null, excludedId?: string) {
+export async function uniqueFileName(name: string, folderId: string | null, excludedId?: string) {
   const files = await db.files.filter((file) => file.folderId === folderId && fileBelongsToActiveWorkspace(file)).toArray()
   return !files.some((file) => file.id !== excludedId && !file.isDeleted && file.folderId === folderId && appFileName(file.name, file.type).toLocaleLowerCase() === name.toLocaleLowerCase())
 }
 
-async function nextFileName(baseName: string, folderId: string | null) {
+export async function nextFileName(baseName: string, folderId: string | null) {
   if (await uniqueFileName(baseName, folderId)) return baseName
   let suffix = 2
   let name = `${baseName} ${suffix}`

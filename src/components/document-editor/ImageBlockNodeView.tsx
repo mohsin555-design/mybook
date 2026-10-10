@@ -89,7 +89,14 @@ export function ImageBlockNodeView({
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   const [isEditingCaption, setIsEditingCaption] = useState(false)
 
-  const isUnsupportedDataUri = (url: string) => /^data:image\/(?:x-emf|x-wmf|x-pict|tiff);/i.test(url)
+  const isUnsupportedDataUri = (url?: string | null) =>
+    Boolean(url && /^data:image\/(?:x-emf|x-wmf|x-pict|tiff);/i.test(url))
+
+  const isRelativePath = (url?: string | null) =>
+    Boolean(url && !url.startsWith('data:') && !url.startsWith('blob:') && !/^https?:\/\//i.test(url))
+
+  const canRetryImage = (url?: string | null) =>
+    Boolean(url && !isUnsupportedDataUri(url) && !isRelativePath(url))
 
   const [imageStatus, setImageStatus] = useState<'loading' | 'loaded' | 'error'>(() => {
     if (!src) return 'error'
@@ -644,27 +651,29 @@ export function ImageBlockNodeView({
           </div>
 
           {/* Actual Image */}
-          <img
-            key={`${src}-${retryKey}`}
-            ref={imageRef}
-            src={src}
-            alt={alt}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            draggable={false}
-            onLoad={() => setImageStatus('loaded')}
-            onError={() => setImageStatus('error')}
-            onClick={handleImageClick}
-            title={href ? (href.startsWith('doc:') ? 'Linked page' : `Linked to: ${href}`) : undefined}
-            className={`mybook-image block w-full rounded-lg object-contain transition-shadow duration-150 ${
-              imageStatus === 'loaded' ? 'block' : 'hidden'
-            } ${
-              href ? 'cursor-pointer' : ''
-            } ${
-              selected ? 'ring-2 ring-primary ring-offset-2' : ''
-            }`}
-          />
+          {Boolean(src) && (
+            <img
+              key={`${src}-${retryKey}`}
+              ref={imageRef}
+              src={src}
+              alt={alt}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              draggable={false}
+              onLoad={() => setImageStatus('loaded')}
+              onError={() => setImageStatus('error')}
+              onClick={handleImageClick}
+              title={href ? (href.startsWith('doc:') ? 'Linked page' : `Linked to: ${href}`) : undefined}
+              className={`mybook-image block w-full rounded-lg object-contain transition-shadow duration-150 ${
+                imageStatus === 'loaded' ? 'block' : 'hidden'
+              } ${
+                href ? 'cursor-pointer' : ''
+              } ${
+                selected ? 'ring-2 ring-primary ring-offset-2' : ''
+              }`}
+            />
+          )}
 
           {/* Loading Placeholder */}
           {imageStatus === 'loading' ? (
@@ -690,25 +699,41 @@ export function ImageBlockNodeView({
                 <PhotoIcon className="size-5" />
               </div>
               <div className="max-w-xs space-y-0.5">
-                <p className="font-medium text-foreground">Unable to load image</p>
+                <p className="font-medium text-foreground">
+                  {!src ? (alt || 'Image source missing') : 'Unable to load image'}
+                </p>
                 <p
                   className="truncate text-[11px] text-muted-foreground"
-                  title={src.startsWith('data:') ? 'Embedded image' : src}
+                  title={
+                    !src
+                      ? 'No image URL provided'
+                      : src.startsWith('data:')
+                      ? 'Embedded image could not be loaded'
+                      : src
+                  }
                 >
-                  {src.startsWith('data:') ? 'Embedded image could not be loaded' : src}
+                  {!src
+                    ? 'Click Replace to select or upload an image'
+                    : src.startsWith('data:')
+                    ? 'Embedded image could not be loaded'
+                    : isRelativePath(src)
+                    ? `${src} (not accessible from browser — click Replace to upload)`
+                    : src}
                 </p>
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRetryKey((k) => k + 1)}
-                  className="h-7 rounded-lg text-xs"
-                >
-                  <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="mr-1 size-3.5" />
-                  Retry
-                </Button>
+                {canRetryImage(src) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRetryKey((k) => k + 1)}
+                    className="h-7 rounded-lg text-xs"
+                  >
+                    <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="mr-1 size-3.5" />
+                    Retry
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="default"

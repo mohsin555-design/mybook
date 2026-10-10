@@ -34,6 +34,7 @@ describe('EditorKeyboardShortcuts extension', () => {
     expect(shortcuts).toHaveProperty('Shift-Tab')
     expect(shortcuts).toHaveProperty('ArrowRight')
     expect(shortcuts).toHaveProperty('ArrowLeft')
+    expect(shortcuts).toHaveProperty('Space')
   })
 })
 

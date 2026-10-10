@@ -187,6 +187,21 @@ describe('Editor Keyboard Accessibility & Shortcuts', () => {
     expect(steppedOutLeft).toBe(true)
     expect(editor.state.selection.from).toBe(1)
 
+    // Double Space test: type a space inside code, then press Space again
+    editor.commands.setContent('<p><code>test</code></p>')
+    editor.commands.setTextSelection(5)
+    editor.commands.insertContent(' ')
+    expect(editor.state.selection.from).toBe(6)
+
+    const spaceHandler = shortcuts?.Space as (() => boolean) | undefined
+    expect(spaceHandler).toBeDefined()
+    const steppedOutSpace = spaceHandler?.()
+    expect(steppedOutSpace).toBe(true)
+    // Trailing space inside code is moved outside as plain space, and cursor is at pos 6
+    expect(editor.getHTML()).toBe('<p><code>test</code> </p>')
+    const spaceStoredMarks = editor.state.storedMarks ?? []
+    expect(spaceStoredMarks.some((m) => m.type.name === 'code')).toBe(false)
+
     cleanup()
   })
 })

@@ -69,7 +69,8 @@ export const EditorKeyboardShortcuts = Extension.create({
           const tr = state.tr
           // If at the end of the textblock or nodeAfter has no text, insert a space without code mark so the cursor visibly exits
           if ($pos.pos === $pos.end()) {
-            tr.insertText(' ', $pos.pos)
+            const spaceNode = state.schema.text(' ', [])
+            tr.insert($pos.pos, spaceNode)
             tr.setSelection(TextSelection.create(tr.doc, $pos.pos + 1))
             tr.setStoredMarks(storedMarks)
             view.dispatch(tr)
@@ -102,7 +103,8 @@ export const EditorKeyboardShortcuts = Extension.create({
           const storedMarks = (state.storedMarks ?? $pos.marks()).filter((m) => m.type !== codeType)
           const tr = state.tr
           if ($pos.pos === $pos.start()) {
-            tr.insertText(' ', $pos.pos)
+            const spaceNode = state.schema.text(' ', [])
+            tr.insert($pos.pos, spaceNode)
             tr.setSelection(TextSelection.create(tr.doc, $pos.pos))
             tr.setStoredMarks(storedMarks)
             view.dispatch(tr)
@@ -114,6 +116,37 @@ export const EditorKeyboardShortcuts = Extension.create({
           view.dispatch(tr)
           return true
         }
+        return false
+      },
+
+      // Double space at the trailing edge of inline code exits to plain text
+      Space: () => {
+        const { state, view } = this.editor
+        const { selection } = state
+        if (!selection.empty) return false
+
+        const $pos = selection.$from
+        const codeType = state.schema.marks.code
+        if (!codeType) return false
+
+        // Check if cursor is inside/at the end of inline code
+        const hasCodeBefore = Boolean($pos.nodeBefore?.marks.some((m) => m.type === codeType))
+        if (!hasCodeBefore) return false
+
+        // If the character immediately before the cursor inside the code block is already a space
+        const textBefore = $pos.parent.textBetween(0, $pos.parentOffset, '\n', '\0')
+        if (textBefore.endsWith(' ')) {
+          const storedMarks = (state.storedMarks ?? $pos.marks()).filter((m) => m.type !== codeType)
+          // Delete the trailing space inside the code block and insert an un-marked space outside the code mark
+          const spaceNode = state.schema.text(' ', [])
+          const tr = state.tr.delete($pos.pos - 1, $pos.pos)
+          tr.insert($pos.pos - 1, spaceNode)
+          tr.setSelection(TextSelection.create(tr.doc, $pos.pos))
+          tr.setStoredMarks(storedMarks)
+          view.dispatch(tr)
+          return true
+        }
+
         return false
       },
 

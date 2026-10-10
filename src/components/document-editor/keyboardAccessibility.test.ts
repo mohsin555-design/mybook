@@ -170,9 +170,11 @@ describe('Editor Keyboard Accessibility & Shortcuts', () => {
     const rightHandler = shortcuts?.ArrowRight as (() => boolean) | undefined
     expect(rightHandler).toBeDefined()
 
-    // Trigger ArrowRight at trailing boundary of inline code
+    // Trigger ArrowRight at trailing boundary of inline code:
+    // Moves cursor out (inserts a blank space after the code block) and positions cursor at pos 6
     const steppedOut = rightHandler?.()
     expect(steppedOut).toBe(true)
+    expect(editor.state.selection.from).toBe(6)
     // Stored marks should now not include 'code'
     const storedMarks = editor.state.storedMarks ?? []
     expect(storedMarks.some((m) => m.type.name === 'code')).toBe(false)
@@ -183,6 +185,7 @@ describe('Editor Keyboard Accessibility & Shortcuts', () => {
     expect(leftHandler).toBeDefined()
     const steppedOutLeft = leftHandler?.()
     expect(steppedOutLeft).toBe(true)
+    expect(editor.state.selection.from).toBe(1)
 
     cleanup()
   })

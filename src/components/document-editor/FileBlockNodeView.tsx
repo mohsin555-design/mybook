@@ -23,7 +23,7 @@ import {
 
 import { useDeviceMode } from '../../hooks/useDeviceMode'
 import { Button } from '../ui/button'
-import { Card, CardAction, CardContent } from '../ui/card'
+import { Card, CardAction, CardContent, CardHeader } from '../ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -227,6 +227,186 @@ export function FileBlockNodeView({
     }
   }
 
+  const actionToolbar = (
+    <>
+      {/* 1. Replace Button */}
+      <span className="mybook-desktop-only-action">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Replace file"
+          title="Replace file"
+          onClick={handleOpenReplace}
+          className="mybook-image-toolbar-button"
+        >
+          <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4" />
+        </Button>
+      </span>
+
+      {/* 2. Copy Block Button */}
+      <span className="mybook-desktop-only-action">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={copied ? 'Copied' : 'Copy block'}
+          title={copied ? 'Copied' : 'Copy block'}
+          onClick={handleCopy}
+          className="mybook-image-toolbar-button"
+        >
+          {copied ? (
+            <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-primary" />
+          ) : (
+            <HugeiconsIcon icon={CopyIcon} strokeWidth={2} className="size-4" />
+          )}
+        </Button>
+      </span>
+
+      {/* 3. Duplicate Button */}
+      <span className="mybook-desktop-only-action">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Duplicate"
+          title="Duplicate"
+          onClick={handleDuplicate}
+          className="mybook-image-toolbar-button"
+        >
+          <HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4" />
+        </Button>
+      </span>
+
+      {/* 4. More Options Dropdown */}
+      <DropdownMenu open={isMoreOpen} onOpenChange={setIsMoreOpen}>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="More file options"
+              title="More options"
+              className="mybook-image-toolbar-button"
+            />
+          }
+        >
+          <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent bottomSheet={isTouch} align="end" sideOffset={6} className="min-w-48 rounded-xl p-1.5 shadow-lg">
+          {isTouch ? (
+            <>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  setIsMoreOpen(false)
+                  handleOpenReplace(e)
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4 shrink-0" />
+                <span className="whitespace-nowrap">Replace</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                closeOnClick={false}
+                onClick={() => {
+                  void handleCopy()
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={copied ? Tick02Icon : CopyIcon} strokeWidth={2} className="size-4 shrink-0" />
+                <span className="whitespace-nowrap">{copied ? 'Copied' : 'Copy block'}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  handleDuplicate()
+                  setIsMoreOpen(false)
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4 shrink-0" />
+                <span className="whitespace-nowrap">Duplicate</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+
+          {isUrl ? (
+            <DropdownMenuItem
+              onClick={() => {
+                window.open(src, '_blank', 'noopener,noreferrer')
+                setIsMoreOpen(false)
+              }}
+              className="flex items-center gap-2"
+            >
+              <HugeiconsIcon icon={SquareArrowOutUpRightIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
+              <span className="whitespace-nowrap">Open</span>
+            </DropdownMenuItem>
+          ) : null}
+
+          {canPreviewPdf ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={togglePdfPreview} className="flex items-center gap-2">
+                <span className="whitespace-nowrap">{isPdfPreview ? 'Show as file card' : 'Embed PDF'}</span>
+              </DropdownMenuItem>
+            </>
+          ) : null}
+
+          <DropdownMenuItem
+            onClick={() => {
+              handleDownload()
+              setIsMoreOpen(false)
+            }}
+            className="flex items-center gap-2"
+          >
+            <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4 shrink-0" />
+            <span className="whitespace-nowrap">Download</span>
+          </DropdownMenuItem>
+
+          {isUrl ? (
+            <>
+              <DropdownMenuItem
+                onClick={() => {
+                  setShowEditLinkPopover(true)
+                  setIsMoreOpen(false)
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={LinkIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
+                <span className="whitespace-nowrap">Edit link</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                closeOnClick={false}
+                onClick={() => {
+                  void handleCopySrcLink()
+                }}
+                className="flex items-center gap-2"
+              >
+                <HugeiconsIcon icon={copiedLink ? Tick02Icon : CopyLinkIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
+                <span className="whitespace-nowrap">{copiedLink ? 'Copied' : 'Copy link'}</span>
+              </DropdownMenuItem>
+            </>
+          ) : null}
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => {
+              handleDelete()
+              setIsMoreOpen(false)
+            }}
+            className="flex items-center gap-2"
+          >
+            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4 shrink-0" />
+            <span className="whitespace-nowrap">Delete</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  )
+
   return (
     <NodeViewWrapper
       as="section"
@@ -239,217 +419,70 @@ export function FileBlockNodeView({
       <Card
         size="sm"
         data-menu-open={isToolbarActive}
-        className={`mybook-bookmark-block mybook-file-block rounded-[10px] py-0 gap-0 ring-0 shadow-none data-[size=sm]:[--card-spacing:0px] ${
+        className={`mybook-bookmark-block mybook-file-block ${isPdfPreview ? 'mybook-file-pdf-preview' : ''} rounded-[10px] py-0 gap-0 ring-0 shadow-none data-[size=sm]:[--card-spacing:0px] ${
           selected ? 'ProseMirror-selectednode' : ''
         }`}
       >
-        <CardContent className="mybook-bookmark-content px-0">
-          {isPdfPreview ? (
-            <div className="w-full p-3">
+        {isPdfPreview ? (
+          <>
+            <CardHeader className="mybook-file-pdf-header">
+              <button
+                type="button"
+                onClick={handleOpen}
+                aria-label={`Open ${displayName}`}
+                className="mybook-file-pdf-meta text-left"
+              >
+                <span className="mybook-file-pdf-icon" aria-hidden="true">
+                  <HugeiconsIcon icon={FileIcon} strokeWidth={1.75} className="size-4 text-primary" />
+                </span>
+                <span className="mybook-file-pdf-info">
+                  <span className="mybook-file-pdf-title" title={fileName}>{displayName}</span>
+                  <span className="mybook-file-pdf-sub" title={label}>{metaText}</span>
+                </span>
+              </button>
+              <div className="mybook-file-pdf-actions">
+                {actionToolbar}
+              </div>
+            </CardHeader>
+
+            <CardContent className="mybook-bookmark-content !p-0">
               <iframe
                 title={`PDF preview: ${fileName}`}
                 src={src}
-                className="block h-[min(70dvh,56rem)] min-h-72 w-full rounded-md bg-muted"
-              />
-              <p className="mt-2 text-xs text-muted-foreground">If the preview does not load, use Download from More actions.</p>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={handleOpen}
-              onKeyDown={handleKeyDown}
-              aria-label={`Open ${displayName}`}
-              className="mybook-bookmark-card"
-            >
-              <span className="mybook-bookmark-logo" aria-hidden="true">
-                <HugeiconsIcon icon={FileIcon} strokeWidth={1.75} className="size-5 text-primary" />
-              </span>
-              <span className="mybook-bookmark-body">
-                <span className="mybook-bookmark-title" title={fileName}>{displayName}</span>
-                <span className="mybook-bookmark-domain" title={label}>{metaText}</span>
-              </span>
-            </button>
-          )}
-        </CardContent>
-
-        {/* Right: Action Toolbar on Hover */}
-        <CardAction className="mybook-link-card-action-slot">
-          {/* 1. Replace Button */}
-          <span className="mybook-desktop-only-action">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Replace file"
-              title="Replace file"
-              onClick={handleOpenReplace}
-              className="mybook-image-toolbar-button"
-            >
-              <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4" />
-            </Button>
-          </span>
-
-          {/* 2. Copy Block Button */}
-          <span className="mybook-desktop-only-action">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={copied ? 'Copied' : 'Copy block'}
-              title={copied ? 'Copied' : 'Copy block'}
-              onClick={handleCopy}
-              className="mybook-image-toolbar-button"
-            >
-              {copied ? (
-                <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="size-4 text-primary" />
-              ) : (
-                <HugeiconsIcon icon={CopyIcon} strokeWidth={2} className="size-4" />
-              )}
-            </Button>
-          </span>
-
-          {/* 3. Duplicate Button */}
-          <span className="mybook-desktop-only-action">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Duplicate"
-              title="Duplicate"
-              onClick={handleDuplicate}
-              className="mybook-image-toolbar-button"
-            >
-              <HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4" />
-            </Button>
-          </span>
-
-          {/* 4. More Options Dropdown */}
-          <DropdownMenu open={isMoreOpen} onOpenChange={setIsMoreOpen}>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="More file options"
-                  title="More options"
-                  className="mybook-image-toolbar-button"
-                />
-              }
-            >
-              <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent bottomSheet={isTouch} align="end" sideOffset={6} className="min-w-48 rounded-xl p-1.5 shadow-lg">
-              {isTouch ? (
-                <>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      setIsMoreOpen(false)
-                      handleOpenReplace(e)
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <HugeiconsIcon icon={Refresh01Icon} strokeWidth={2} className="size-4 shrink-0" />
-                    <span className="whitespace-nowrap">Replace</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    closeOnClick={false}
-                    onClick={() => {
-                      void handleCopy()
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <HugeiconsIcon icon={copied ? Tick02Icon : CopyIcon} strokeWidth={2} className="size-4 shrink-0" />
-                    <span className="whitespace-nowrap">{copied ? 'Copied' : 'Copy block'}</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      handleDuplicate()
-                      setIsMoreOpen(false)
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <HugeiconsIcon icon={Copy02Icon} strokeWidth={2} className="size-4 shrink-0" />
-                    <span className="whitespace-nowrap">Duplicate</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              ) : null}
-
-              {isUrl ? (
-                <DropdownMenuItem
-                  onClick={() => {
-                    window.open(src, '_blank', 'noopener,noreferrer')
-                    setIsMoreOpen(false)
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <HugeiconsIcon icon={SquareArrowOutUpRightIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
-                  <span className="whitespace-nowrap">Open</span>
-                </DropdownMenuItem>
-              ) : null}
-
-              {canPreviewPdf ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={togglePdfPreview} className="flex items-center gap-2">
-                    <span className="whitespace-nowrap">{isPdfPreview ? 'Show as file card' : 'Embed PDF'}</span>
-                  </DropdownMenuItem>
-                </>
-              ) : null}
-
-              <DropdownMenuItem
-                onClick={() => {
-                  handleDownload()
-                  setIsMoreOpen(false)
-                }}
-                className="flex items-center gap-2"
+                className="block h-[min(70dvh,56rem)] min-h-72 w-full border-0 bg-muted rounded-b-[10px]"
               >
-                <HugeiconsIcon icon={Download01Icon} strokeWidth={2} className="size-4 shrink-0" />
-                <span className="whitespace-nowrap">Download</span>
-              </DropdownMenuItem>
-
-              {isUrl ? (
-                <>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setShowEditLinkPopover(true)
-                      setIsMoreOpen(false)
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <HugeiconsIcon icon={LinkIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
-                    <span className="whitespace-nowrap">Edit link</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    closeOnClick={false}
-                    onClick={() => {
-                      void handleCopySrcLink()
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <HugeiconsIcon icon={copiedLink ? Tick02Icon : CopyLinkIcon} strokeWidth={2} className="size-4 shrink-0 text-foreground" />
-                    <span className="whitespace-nowrap">{copiedLink ? 'Copied' : 'Copy link'}</span>
-                  </DropdownMenuItem>
-                </>
-              ) : null}
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => {
-                  handleDelete()
-                  setIsMoreOpen(false)
-                }}
-                className="flex items-center gap-2"
+                <p className="p-4 text-xs text-muted-foreground">
+                  Your browser does not support inline PDF preview. Please download the file to view it.
+                </p>
+              </iframe>
+            </CardContent>
+          </>
+        ) : (
+          <>
+            <CardContent className="mybook-bookmark-content px-0">
+              <button
+                type="button"
+                onClick={handleOpen}
+                onKeyDown={handleKeyDown}
+                aria-label={`Open ${displayName}`}
+                className="mybook-bookmark-card"
               >
-                <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} className="size-4 shrink-0" />
-                <span className="whitespace-nowrap">Delete</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </CardAction>
+                <span className="mybook-bookmark-logo" aria-hidden="true">
+                  <HugeiconsIcon icon={FileIcon} strokeWidth={1.75} className="size-5 text-primary" />
+                </span>
+                <span className="mybook-bookmark-body">
+                  <span className="mybook-bookmark-title" title={fileName}>{displayName}</span>
+                  <span className="mybook-bookmark-domain" title={label}>{metaText}</span>
+                </span>
+              </button>
+            </CardContent>
+
+            {/* Right: Action Toolbar on Hover */}
+            <CardAction className="mybook-link-card-action-slot">
+              {actionToolbar}
+            </CardAction>
+          </>
+        )}
       </Card>
 
       {/* Replace File Picker Popover */}

@@ -7,6 +7,8 @@ import { TaskItem } from '@tiptap/extension-task-item'
 
 import { convertSelectedBlocks } from './blockConversion'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
+import { Callout } from './extensions/Callout'
+import { ToggleBlock } from './extensions/ToggleBlock'
 
 function createTestEditor(content: string) {
   const element = document.body.appendChild(document.createElement('div'))
@@ -16,6 +18,8 @@ function createTestEditor(content: string) {
       StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      Callout,
+      ToggleBlock,
       BlockMarkdownShortcuts,
     ],
     content,
@@ -453,6 +457,74 @@ describe('blockConversion', () => {
       expect(result).toBe(true)
       expect(editor.getHTML()).toContain('<blockquote><p></p></blockquote>')
       expect(editor.state.selection.$from.parentOffset).toBe(0)
+
+      cleanup()
+    })
+
+    it('creates bullet list inside blockquote when typing "- " inside quote', () => {
+      const { editor, cleanup } = createTestEditor('<blockquote><p></p></blockquote>')
+
+      // Inside the blockquote paragraph: doc layout is doc > blockquote (pos 0) > p (pos 1) > content (pos 2)
+      editor.commands.setTextSelection(2)
+      editor.view.dispatch(editor.state.tr.insertText('-', 2))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, 3, 3, ' ')
+
+      expect(result).toBe(true)
+      const html = editor.getHTML()
+      expect(html).toContain('<blockquote><ul><li><p></p></li></ul></blockquote>')
+
+      cleanup()
+    })
+
+    it('creates numbered list inside callout when typing "1. " inside callout', () => {
+      const { editor, cleanup } = createTestEditor('<aside data-type="callout"><p></p></aside>')
+
+      // Inside callout paragraph
+      let pPos = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'paragraph') pPos = pos + 1
+      })
+
+      editor.commands.setTextSelection(pPos)
+      editor.view.dispatch(editor.state.tr.insertText('1.', pPos))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, pPos + 2, pPos + 2, ' ')
+
+      expect(result).toBe(true)
+      const html = editor.getHTML()
+      expect(html).toContain('data-type="callout"')
+      expect(html).toContain('<ol><li><p></p></li></ol>')
+
+      cleanup()
+    })
+
+    it('creates task list inside toggle when typing "[ ] " inside toggle', () => {
+      const { editor, cleanup } = createTestEditor('<details data-type="toggle"><summary>Toggle</summary><div><p></p></div></details>')
+
+      let pPos = 0
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'paragraph') pPos = pos + 1
+      })
+
+      editor.commands.setTextSelection(pPos)
+      editor.view.dispatch(editor.state.tr.insertText('[ ]', pPos))
+
+      const handleTextInput = editor.view.someProp('handleTextInput', (fn) => fn) as
+        | ((view: unknown, from: number, to: number, text: string) => boolean | void)
+        | undefined
+      const result = handleTextInput?.(editor.view, pPos + 3, pPos + 3, ' ')
+
+      expect(result).toBe(true)
+      const html = editor.getHTML()
+      expect(html).toContain('data-type="toggle"')
+      expect(html).toContain('data-type="taskList"')
 
       cleanup()
     })

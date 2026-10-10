@@ -1,4 +1,4 @@
-import { mergeAttributes, Node } from '@tiptap/core'
+import { mergeAttributes, Node, type Editor } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
 
 export const columnCounts = [2, 3, 4, 5] as const
@@ -291,4 +291,56 @@ export function columnsNode(count: ColumnCount = 2) {
     attrs: { count: normalized },
     content: Array.from({ length: normalized }, () => columnNode()),
   }
+}
+
+export function deleteColumnAt(editor: Pick<Editor, 'state' | 'view'>, pos: number): boolean {
+  const { state, view } = editor
+  const $pos = state.doc.resolve(Math.min(pos, state.doc.content.size))
+  let columnDepth = -1
+  let columnsDepth = -1
+  for (let d = $pos.depth; d > 0; d -= 1) {
+    const node = $pos.node(d)
+    if (node.type.name === 'column' && columnDepth === -1) {
+      columnDepth = d
+    } else if (node.type.name === 'columns' && columnsDepth === -1) {
+      columnsDepth = d
+    }
+  }
+  if (columnDepth === -1 || columnsDepth === -1) return false
+
+  const columnsNode = $pos.node(columnsDepth)
+  const columnNode = $pos.node(columnDepth)
+  const columnsPos = $pos.before(columnsDepth)
+  const columnPos = $pos.before(columnDepth)
+  const columnIndex = $pos.index(columnsDepth)
+
+  if (columnsNode.childCount <= 1) return false
+
+  if (columnsNode.childCount === 2) {
+    // 2 columns: deleting 1 leaves 1. Unwrap remaining column into parent document.
+    const remainingIndex = columnIndex === 0 ? 1 : 0
+    const remainingColumn = columnsNode.child(remainingIndex)
+    const tr = state.tr.replaceWith(
+      columnsPos,
+      columnsPos + columnsNode.nodeSize,
+      remainingColumn.content
+    )
+    const targetSelection = TextSelection.findFrom(tr.doc.resolve(columnsPos), 1)
+    if (targetSelection) tr.setSelection(targetSelection)
+    view.dispatch(tr.scrollIntoView())
+    return true
+  }
+
+  // 3, 4, 5 columns: remove column and decrement count
+  const newCount = normalizeColumnCount(columnsNode.childCount - 1)
+  const tr = state.tr
+  tr.delete(columnPos, columnPos + columnNode.nodeSize)
+  tr.setNodeMarkup(columnsPos, undefined, {
+    ...columnsNode.attrs,
+    count: newCount,
+  })
+  const targetSelection = TextSelection.findFrom(tr.doc.resolve(Math.min(columnPos, tr.doc.content.size)), 1)
+  if (targetSelection) tr.setSelection(targetSelection)
+  view.dispatch(tr.scrollIntoView())
+  return true
 }

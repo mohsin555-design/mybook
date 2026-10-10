@@ -697,8 +697,8 @@ export function VideoBlockNodeView({
               isInline
               title="Replace video"
               submitLabel="Replace"
-              initialTab="embed"
-              initialUrl={src.startsWith('data:') || src.startsWith('blob:') ? '' : src}
+              initialTab={src && (src.startsWith('http://') || src.startsWith('https://')) ? 'embed' : 'upload'}
+              initialUrl={src && (src.startsWith('http://') || src.startsWith('https://')) ? src : ''}
               onClose={() => setShowReplacePicker(false)}
               onInsert={handleReplaceVideo}
             />

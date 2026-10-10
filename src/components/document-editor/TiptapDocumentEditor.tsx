@@ -69,7 +69,7 @@ import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
 import { DocumentLinkProvider } from './DocumentLinkContext'
-import { documentLinkLocation, documentLinkTargets } from './documentLinkModel'
+import { documentLinkLocation, documentLinkTargets, pastedDocumentLink } from './documentLinkModel'
 import { clearTableSelection, isBlankEditorPoint, isEditorInteractiveTarget, keepEditorFocusedOnBlankClick } from './editorFocus'
 import { MobileSlashCommandMenu, SlashCommandMenu } from './SlashCommandMenu'
 import { analyzePastedUrl, type PasteUrlInfo } from './pasteUrlModel'
@@ -510,6 +510,21 @@ function parseContent(content: string) {
   try { return JSON.parse(content) as object } catch { return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: content }] }] } }
 }
 
+function computePickerPosition(
+  coords: { left: number; top: number; bottom: number; right: number },
+  popoverHeight = 340,
+  popoverWidth = 384,
+  gap = 8,
+) {
+  if (typeof window === 'undefined') return { left: coords.left, top: coords.bottom + gap }
+  const hasRoomBelow = coords.bottom + gap + popoverHeight <= window.innerHeight - 8
+  const top = hasRoomBelow
+    ? coords.bottom + gap
+    : (coords.top - gap - popoverHeight >= 8 ? coords.top - gap - popoverHeight : Math.max(8, window.innerHeight - popoverHeight - 8))
+  const left = Math.max(8, Math.min(coords.left, window.innerWidth - popoverWidth - 16))
+  return { left, top }
+}
+
 function cleanPastedHtml(html: string) {
   if (!html || typeof DOMParser === 'undefined') return html
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -574,6 +589,7 @@ function cleanPastedHtml(html: string) {
     'href', 'src', 'alt', 'title', 'target', 'rel',
     'colspan', 'rowspan', 'colwidth',
     'data-type', 'data-checked', 'data-language', 'data-level',
+    'data-target-id', 'data-label',
   ])
 
   doc.body.querySelectorAll('*').forEach((element) => {
@@ -593,7 +609,7 @@ function cleanPastedHtml(html: string) {
 
     Array.from(element.attributes).forEach((attr) => {
       const name = attr.name.toLowerCase()
-      if (!allowedAttrs.has(name) && !name.startsWith('data-type') && !name.startsWith('data-checked') && !name.startsWith('data-language')) {
+      if (!allowedAttrs.has(name) && !name.startsWith('data-type') && !name.startsWith('data-checked') && !name.startsWith('data-language') && !name.startsWith('data-target-id') && !name.startsWith('data-label')) {
         element.removeAttribute(attr.name)
       }
       if ((name === 'href' || name === 'src') && /^javascript:/i.test(attr.value.trim())) {
@@ -694,7 +710,7 @@ function DocumentLinkPicker({
       ref={pickerRef}
       role="listbox"
       aria-label="Link to Page options"
-      className="fixed z-20 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.14)] outline-none"
+      className="fixed z-50 max-h-[min(22rem,calc(100dvh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-[8px] border border-[var(--app-border)] bg-[var(--app-surface)] p-1 text-foreground shadow-[0_16px_40px_rgba(0,0,0,0.14)] outline-none"
       data-document-link-picker="true"
       data-command-menu-scroller="true"
       style={{
@@ -1381,6 +1397,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           closeInlineLinkToolbar()
           return true
         }
+        const copiedDocumentLink = pastedDocumentLink(html)
+        if (copiedDocumentLink) {
+          event.preventDefault()
+          editorRef.current?.commands.insertContent([copiedDocumentLink, { type: 'paragraph' }])
+          closePasteAsMenu()
+          closeInlineLinkToolbar()
+          return true
+        }
         const rawUrl = text.trim()
         const urlInfo = analyzePastedUrl(rawUrl)
         if (urlInfo && !view.state.selection.empty && /^https?:\/\//i.test(rawUrl)) {
@@ -1735,7 +1759,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
           }
         }
         if (!menu) return false
-        const commands = filterSlashCommands(menu.query)
+        const commands = filterSlashCommands(menu.query, editorRef.current ?? undefined)
         if (event.key === 'Escape') {
           event.preventDefault()
           slashMenuRef.current = null
@@ -1842,6 +1866,25 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     return () => window.removeEventListener('pointerdown', closeOnOutsidePointerDown)
   }, [slashMenu])
 
+  useEffect(() => {
+    if (!imagePicker && !videoPicker && !audioPicker && !filePicker) return
+    const closePickersOnScroll = (event: Event) => {
+      const scrollTarget = event.target as Node | null
+      if (
+        scrollTarget instanceof Element &&
+        scrollTarget.closest('[data-image-picker="true"], [data-video-picker="true"], [data-audio-picker="true"], [data-file-picker="true"]')
+      ) {
+        return
+      }
+      if (imagePickerRef.current) closeImagePicker()
+      if (videoPickerRef.current) closeVideoPicker()
+      if (audioPickerRef.current) closeAudioPicker()
+      if (filePickerRef.current) closeFilePicker()
+    }
+    window.addEventListener('scroll', closePickersOnScroll, true)
+    return () => window.removeEventListener('scroll', closePickersOnScroll, true)
+  }, [imagePicker, videoPicker, audioPicker, filePicker, closeImagePicker, closeVideoPicker, closeAudioPicker, closeFilePicker])
+
   const openImagePicker = useCallback(() => {
     const currentEditor = editorRef.current
     if (!currentEditor) return
@@ -1849,7 +1892,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: ImagePickerState = {
       range: { from: selection.from, to: selection.to },
-      position: { left: coords.left, top: coords.bottom + 8 },
+      position: computePickerPosition(coords, 340, 384),
     }
     imagePickerRef.current = nextPicker
     setImagePicker(nextPicker)
@@ -1869,7 +1912,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const picker = imagePickerRef.current
     closeImagePicker()
     if (picker?.range) {
-      currentEditor.chain().focus().insertContentAt(picker.range, [imageBlockNode(src, alt), { type: 'paragraph' }]).run()
+      const maxPos = currentEditor.state.doc.content.size
+      const range = {
+        from: Math.min(picker.range.from, maxPos),
+        to: Math.min(picker.range.to, maxPos),
+      }
+      currentEditor.chain().focus().insertContentAt(range, [imageBlockNode(src, alt), { type: 'paragraph' }]).run()
     } else {
       currentEditor.chain().focus().insertContent([imageBlockNode(src, alt), { type: 'paragraph' }]).run()
     }
@@ -1882,7 +1930,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: VideoPickerState = {
       range: { from: selection.from, to: selection.to },
-      position: { left: coords.left, top: coords.bottom + 8 },
+      position: computePickerPosition(coords, 340, 384),
     }
     videoPickerRef.current = nextPicker
     setVideoPicker(nextPicker)
@@ -1902,7 +1950,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const picker = videoPickerRef.current
     closeVideoPicker()
     if (picker?.range) {
-      currentEditor.chain().focus().insertContentAt(picker.range, [videoBlockNode(src, alt, '100%', 'left', '', true, '', provider ?? 'html5'), { type: 'paragraph' }]).run()
+      const maxPos = currentEditor.state.doc.content.size
+      const range = {
+        from: Math.min(picker.range.from, maxPos),
+        to: Math.min(picker.range.to, maxPos),
+      }
+      currentEditor.chain().focus().insertContentAt(range, [videoBlockNode(src, alt, '100%', 'left', '', true, '', provider ?? 'html5'), { type: 'paragraph' }]).run()
     } else {
       currentEditor.chain().focus().insertContent([videoBlockNode(src, alt, '100%', 'left', '', true, '', provider ?? 'html5'), { type: 'paragraph' }]).run()
     }
@@ -1915,7 +1968,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: AudioPickerState = {
       range: { from: selection.from, to: selection.to },
-      position: { left: coords.left, top: coords.bottom + 8 },
+      position: computePickerPosition(coords, 340, 384),
     }
     audioPickerRef.current = nextPicker
     setAudioPicker(nextPicker)
@@ -1935,9 +1988,14 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const picker = audioPickerRef.current
     closeAudioPicker()
     if (picker?.range) {
-      currentEditor.chain().focus().insertContentAt(picker.range, [audioBlockNode(src, title, '100%', 'left', '', provider ?? 'html5'), { type: 'paragraph' }]).run()
+      const maxPos = currentEditor.state.doc.content.size
+      const range = {
+        from: Math.min(picker.range.from, maxPos),
+        to: Math.min(picker.range.to, maxPos),
+      }
+      currentEditor.chain().focus().insertContentAt(range, [audioBlockNode(src, title, '100%', 'left', '', '', true, provider ?? 'html5'), { type: 'paragraph' }]).run()
     } else {
-      currentEditor.chain().focus().insertContent([audioBlockNode(src, title, '100%', 'left', '', provider ?? 'html5'), { type: 'paragraph' }]).run()
+      currentEditor.chain().focus().insertContent([audioBlockNode(src, title, '100%', 'left', '', '', true, provider ?? 'html5'), { type: 'paragraph' }]).run()
     }
   }, [closeAudioPicker])
 
@@ -1948,7 +2006,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const coords = currentEditor.view.coordsAtPos(selection.from)
     const nextPicker: FilePickerState = {
       range: { from: selection.from, to: selection.to },
-      position: { left: coords.left, top: coords.bottom + 8 },
+      position: computePickerPosition(coords, 340, 384),
     }
     filePickerRef.current = nextPicker
     setFilePicker(nextPicker)
@@ -1968,7 +2026,12 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const picker = filePickerRef.current
     closeFilePicker()
     if (picker?.range) {
-      currentEditor.chain().focus().insertContentAt(picker.range, [fileAttachmentNode(src, name, mimeType, size), { type: 'paragraph' }]).run()
+      const maxPos = currentEditor.state.doc.content.size
+      const range = {
+        from: Math.min(picker.range.from, maxPos),
+        to: Math.min(picker.range.to, maxPos),
+      }
+      currentEditor.chain().focus().insertContentAt(range, [fileAttachmentNode(src, name, mimeType, size), { type: 'paragraph' }]).run()
     } else {
       currentEditor.chain().focus().insertContent([fileAttachmentNode(src, name, mimeType, size), { type: 'paragraph' }]).run()
     }
@@ -2002,7 +2065,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
     const nextPicker = {
       query: '',
       range: { from: selection.from, to: selection.from },
-      position: { left: coords.left, top: coords.bottom + 8 },
+      position: computePickerPosition(coords, 320, 320),
     }
     documentLinkPickerRef.current = nextPicker
     setDocumentLinkPicker(nextPicker)

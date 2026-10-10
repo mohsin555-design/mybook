@@ -11,8 +11,7 @@ export const BlockMarkdownShortcuts = Extension.create({
         handler: ({ chain, range }) => {
           chain()
             .deleteRange(range)
-            .clearNodes()
-            .wrapInList('bulletList')
+            .toggleBulletList()
             .run()
         },
       }),
@@ -23,8 +22,7 @@ export const BlockMarkdownShortcuts = Extension.create({
         handler: ({ chain, range }) => {
           chain()
             .deleteRange(range)
-            .clearNodes()
-            .wrapInList('orderedList')
+            .toggleOrderedList()
             .run()
         },
       }),
@@ -35,8 +33,7 @@ export const BlockMarkdownShortcuts = Extension.create({
         handler: ({ chain, range }) => {
           chain()
             .deleteRange(range)
-            .clearNodes()
-            .wrapInList('taskList')
+            .toggleTaskList()
             .run()
         },
       }),

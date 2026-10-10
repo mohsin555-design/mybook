@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { MyBookFile, MyBookFolder } from '../../types/files'
-import { documentLinkLocation, documentLinkNode, documentLinkTargets, normalizeDocumentLinkAttrs } from './documentLinkModel'
+import { documentLinkLocation, documentLinkNode, documentLinkTargets, normalizeDocumentLinkAttrs, pastedDocumentLink } from './documentLinkModel'
 
 function file(id: string, name: string, type: MyBookFile['type'] = 'document', isDeleted = false): MyBookFile {
   return {
@@ -85,5 +85,19 @@ describe('document link model', () => {
       displayPath: '... / Folder 3 / File name',
       isTruncated: true,
     })
+  })
+
+  it('parses copied document link HTML with target id and label', () => {
+    const html = '<a data-type="document-link" data-target-id="doc_xyz" data-label="Roadmap">Roadmap</a>'
+    expect(pastedDocumentLink(html)).toEqual({
+      type: 'documentLink',
+      attrs: { targetId: 'doc_xyz', label: 'Roadmap' },
+    })
+  })
+
+  it('rejects invalid or missing target id in pasted document link HTML', () => {
+    expect(pastedDocumentLink('')).toBeNull()
+    expect(pastedDocumentLink('<p>Hello world</p>')).toBeNull()
+    expect(pastedDocumentLink('<a data-type="document-link" data-target-id="">Empty</a>')).toBeNull()
   })
 })

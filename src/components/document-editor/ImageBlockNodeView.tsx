@@ -839,8 +839,8 @@ export function ImageBlockNodeView({
               isInline
               title="Replace image"
               submitLabel="Replace"
-              initialTab={src.startsWith('data:') ? 'upload' : 'embed'}
-              initialUrl={src.startsWith('data:') ? '' : src}
+              initialTab={src && (src.startsWith('http://') || src.startsWith('https://')) ? 'embed' : 'upload'}
+              initialUrl={src && (src.startsWith('http://') || src.startsWith('https://')) ? src : ''}
               onClose={() => setShowReplacePicker(false)}
               onInsert={handleReplaceImage}
             />

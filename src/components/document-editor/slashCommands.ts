@@ -138,9 +138,12 @@ export function filterSlashCommands(query: string, editor?: Pick<Editor, 'state'
     : slashCommands
   if (!normalized) return source
 
-  const titleMatches = source.filter((command) =>
-    command.title.toLowerCase().startsWith(normalized),
-  )
+  // Title matches: title starts with query OR any word in title starts with query (e.g. Basic Table for table)
+  const titleMatches = source.filter((command) => {
+    const titleLower = command.title.toLowerCase()
+    const words = titleLower.split(/\s+/u)
+    return titleLower.startsWith(normalized) || words.some((word) => word.startsWith(normalized))
+  })
   if (titleMatches.length > 0) return titleMatches
 
   return source.filter((command) => {

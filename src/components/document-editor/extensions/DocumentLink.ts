@@ -14,8 +14,16 @@ export const DocumentLink = Node.create({
 
   addAttributes() {
     return {
-      targetId: { default: null },
-      label: { default: '' },
+      targetId: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-target-id') ?? element.getAttribute('targetId'),
+        renderHTML: (attributes) => ({ 'data-target-id': attributes.targetId }),
+      },
+      label: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-label') ?? element.getAttribute('label') ?? element.textContent ?? '',
+        renderHTML: (attributes) => ({ 'data-label': attributes.label }),
+      },
     }
   },
 

@@ -9,7 +9,7 @@ import {
   UnderlineIcon,
 } from '@heroicons/react/24/outline'
 import type { Editor } from '@tiptap/react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { TextSelection } from '@tiptap/pm/state'
 
 import { BlockCommandMenu } from './SlashCommandMenu'
@@ -31,8 +31,9 @@ const textColors = [
 ] as const
 
 function selectionPosition(editor: Editor): ToolbarPosition | null {
-  const { from, to, empty } = editor.state.selection
-  if (empty || !editor.isFocused || editor.isActive('codeBlock') || editor.isActive('table')) return null
+  const { selection } = editor.state
+  if (!(selection instanceof TextSelection) || selection.empty || !editor.isFocused || editor.isActive('codeBlock') || editor.isActive('table')) return null
+  const { from, to } = selection
   const start = editor.view.coordsAtPos(from)
   const end = editor.view.coordsAtPos(to)
   if (!Number.isFinite(start.left) || !Number.isFinite(end.right)) return null
@@ -95,16 +96,14 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: 
     }
   }, [position])
 
-  if (!position) return null
-
-  const restoreSelection = () => {
+  const restoreSelection = useCallback(() => {
     const range = savedRange.current
     if (!range) return
     const max = editor.state.doc.content.size
     const from = Math.min(range.from, max)
     const to = Math.min(range.to, max)
     editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)))
-  }
+  }, [editor])
 
   const headingLevel = [1, 2, 3, 4].find((level) => editor.isActive('heading', { level }))
   const blockStyle = headingLevel ? `Heading ${headingLevel}` : 'Text'
@@ -133,11 +132,41 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: 
     setColorMenu(null)
   }
   const moreCommands = filterSlashCommands('', editor)
-  const runMoreCommand = (command: SlashCommand) => {
+  const runMoreCommand = useCallback((command: SlashCommand) => {
     restoreSelection()
     onInsertBlock(command.id)
     setMoreMenuOpen(false)
-  }
+  }, [onInsertBlock, restoreSelection])
+
+  useEffect(() => {
+    if (!moreMenuOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMoreMenuOpen(false)
+        return
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setMoreSelectedIndex((prev) => (moreCommands.length ? (prev + 1) % moreCommands.length : 0))
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setMoreSelectedIndex((prev) => (moreCommands.length ? (prev - 1 + moreCommands.length) % moreCommands.length : 0))
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        const cmd = moreCommands[moreSelectedIndex]
+        if (cmd) runMoreCommand(cmd)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [moreMenuOpen, moreCommands, moreSelectedIndex, runMoreCommand])
+
+  if (!position) return null
 
   return (
     <div
@@ -195,7 +224,7 @@ export function SelectionFormattingToolbar({ editor, onInsertBlock }: { editor: 
       <div className="relative">
         <ToolButton label="More options" active={moreMenuOpen} onClick={() => { setMoreMenuOpen((open) => !open); setColorMenu(null); setBlockMenuOpen(false) }}><EllipsisHorizontalIcon className="size-5" /></ToolButton>
         {moreMenuOpen ? (
-          <div className="absolute right-0 top-full z-40 mt-2 max-h-[min(24rem,60dvh)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)]">
+          <div data-command-menu-scroller="true" className="absolute right-0 top-full z-40 mt-2 max-h-[min(24rem,60dvh)] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-1.5 text-foreground shadow-[0_12px_28px_rgba(0,0,0,0.16)]">
             <BlockCommandMenu
               ariaLabel="More block options"
               commands={moreCommands}

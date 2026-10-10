@@ -13,6 +13,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { CellSelection, deleteCellSelection, findTable, moveTableColumn, moveTableRow, selectedRect, TableMap } from 'prosemirror-tables'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type SVGProps } from 'react'
@@ -21,7 +22,7 @@ import { getTableInteractionState, setTableInteraction } from './extensions/Tabl
 import { tableColors } from './extensions/TableCellStyles'
 import { resetHeaderCellBackgrounds } from './tableHeaderBackground'
 import { tableElementsFromNodeDom } from './tableDom'
-import { tableMenuTop } from './tableMenuPosition'
+import { rowGripMenuTop, tableMenuTop } from './tableMenuPosition'
 import { useDeviceMode } from '../../hooks/useDeviceMode'
 import { Button } from '../ui/button'
 
@@ -277,6 +278,15 @@ function restoreEditorScroll(editor: Editor, top: number, left: number) {
   })
 }
 
+function clearTableSelectionToCell(editor: Editor, cellPos: number) {
+  const max = editor.state.doc.content.size
+  const targetPos = Math.min(Math.max(0, cellPos + 1), max)
+  const resolved = editor.state.doc.resolve(targetPos)
+  const selection = TextSelection.findFrom(resolved, 1) || TextSelection.create(editor.state.doc, targetPos)
+  editor.view.dispatch(editor.state.tr.setSelection(selection))
+  editor.view.focus()
+}
+
 function runMenuAction(editor: Editor, geometry: TableGeometry, selection: SelectionState, label: string) {
   const scroller = editor.view.dom.closest('main')
   const scrollTop = scroller instanceof HTMLElement ? scroller.scrollTop : 0
@@ -285,10 +295,34 @@ function runMenuAction(editor: Editor, geometry: TableGeometry, selection: Selec
   else selectColumn(editor, geometry, selection.index)
 
   const chain = editor.chain().focus()
-  if (label === 'Insert above') chain.addRowBefore().run()
-  else if (label === 'Insert below') chain.addRowAfter().run()
-  else if (label === 'Insert left') chain.addColumnBefore().run()
-  else if (label === 'Insert right') chain.addColumnAfter().run()
+  if (label === 'Insert above') {
+    chain.addRowBefore().run()
+    const nextGeometry = geometryFromEditor(editor)
+    if (nextGeometry) {
+      clearTableSelectionToCell(editor, cellPosFor(nextGeometry, selection.index, 0))
+    }
+  }
+  else if (label === 'Insert below') {
+    chain.addRowAfter().run()
+    const nextGeometry = geometryFromEditor(editor)
+    if (nextGeometry) {
+      clearTableSelectionToCell(editor, cellPosFor(nextGeometry, selection.index + 1, 0))
+    }
+  }
+  else if (label === 'Insert left') {
+    chain.addColumnBefore().run()
+    const nextGeometry = geometryFromEditor(editor)
+    if (nextGeometry) {
+      clearTableSelectionToCell(editor, cellPosFor(nextGeometry, 0, selection.index))
+    }
+  }
+  else if (label === 'Insert right') {
+    chain.addColumnAfter().run()
+    const nextGeometry = geometryFromEditor(editor)
+    if (nextGeometry) {
+      clearTableSelectionToCell(editor, cellPosFor(nextGeometry, 0, selection.index + 1))
+    }
+  }
   else if (label === 'Header row') {
     const enablingHeader = !isHeaderRow(geometry, selection.index)
     chain.toggleHeaderRow().run()
@@ -728,7 +762,7 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
     if (!geometry || !isManualMenuOpen || selection?.axis !== 'row' || !rowMenuRef.current) return
     const gripTop = selection.rect.top + selection.rect.height / 2 - 9
     const gripBottom = gripTop + 18
-    setRowMenuTop(tableMenuTop(gripTop, gripBottom, rowMenuRef.current.getBoundingClientRect().height))
+    setRowMenuTop(rowGripMenuTop(gripTop, gripBottom, rowMenuRef.current.getBoundingClientRect().height))
   }, [geometry, isManualMenuOpen, selection])
 
   if (!geometry || !controls) return null
@@ -746,17 +780,29 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
   const addRightColumn = () => {
     selectColumn(editor, geometry, geometry.map.width - 1)
     editor.chain().focus().addColumnAfter().run()
+    const nextGeometry = geometryFromEditor(editor)
+    if (nextGeometry) {
+      clearTableSelectionToCell(editor, cellPosFor(nextGeometry, 0, nextGeometry.map.width - 1))
+    }
   }
 
   const addBottomRow = () => {
     selectRow(editor, geometry, geometry.map.height - 1)
     editor.chain().focus().addRowAfter().run()
+    const nextGeometry = geometryFromEditor(editor)
+    if (nextGeometry) {
+      clearTableSelectionToCell(editor, cellPosFor(nextGeometry, nextGeometry.map.height - 1, 0))
+    }
   }
 
   const addBottomRowAndRightColumn = () => {
     selectColumn(editor, geometry, geometry.map.width - 1)
     editor.chain().focus().addColumnAfter().run()
     editor.chain().focus().addRowAfter().run()
+    const nextGeometry = geometryFromEditor(editor)
+    if (nextGeometry) {
+      clearTableSelectionToCell(editor, cellPosFor(nextGeometry, nextGeometry.map.height - 1, nextGeometry.map.width - 1))
+    }
   }
 
   const beginTableResize = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -976,11 +1022,11 @@ export function TableActionsMenu({ editor }: { editor: Editor }) {
         ) : (
           <div
             ref={selection.axis === 'column' ? columnMenuRef : rowMenuRef}
-            className="mybook-table-manual-menu fixed z-20 w-64 rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
+            className="mybook-table-manual-menu fixed z-50 w-64 rounded-xl border border-[var(--app-border)] bg-popover p-1 text-popover-foreground shadow-lg"
             style={selection.axis === 'row'
               ? {
-                  top: rowMenuTop ?? tableMenuTop(selection.rect.top + selection.rect.height / 2 - 9, selection.rect.top + selection.rect.height / 2 + 9, 360),
-                  left: Math.max(8, Math.min(geometry.tableRect.left + 17, window.innerWidth - 264)),
+                  top: rowMenuTop ?? rowGripMenuTop(selection.rect.top + selection.rect.height / 2 - 9, selection.rect.top + selection.rect.height / 2 + 9, 280),
+                  left: Math.max(8, Math.min(visibleTableLeft + 14, window.innerWidth - 264)),
                 }
               : {
                 top: columnMenuTop ?? tableMenuTop(geometry.tableRect.top - 9, geometry.tableRect.top + 9, 360),

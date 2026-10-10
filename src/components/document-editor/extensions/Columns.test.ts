@@ -6,7 +6,7 @@ import Paragraph from '@tiptap/extension-paragraph'
 import Heading from '@tiptap/extension-heading'
 import Text from '@tiptap/extension-text'
 
-import { Columns, Column, columnsNode, normalizeColumnCount } from './Columns'
+import { Columns, Column, columnsNode, normalizeColumnCount, deleteColumnAt } from './Columns'
 import { Callout, calloutNode } from './Callout'
 import { getColumnContext, gutterBoundsForTarget, insertBlockCommands, type BlockTarget } from '../columnControls'
 
@@ -643,6 +643,90 @@ describe('Columns and Column extensions', () => {
     expect(editor.state.doc.child(1).type.name).toBe('paragraph')
     expect(editor.state.selection.$from.depth).toBe(1)
     expect(editor.state.selection.$from.parent.type.name).toBe('paragraph')
+
+    editor.destroy()
+    element.remove()
+  })
+
+  it('deletes a column from a 3-column layout, reducing to 2 columns with count: 2', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, Columns, Column],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'columns',
+            attrs: { count: 3 },
+            content: [
+              { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 1' }] }] },
+              { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 2' }] }] },
+              { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 3' }] }] },
+            ],
+          },
+        ],
+      },
+    })
+
+    // Find position inside column 2
+    let col2Pos = 0
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'Col 2') {
+        col2Pos = pos
+      }
+    })
+
+    const deleted = deleteColumnAt(editor, col2Pos)
+    expect(deleted).toBe(true)
+
+    // Columns node should now have count 2 and 2 children (Col 1 and Col 3)
+    const columnsNode = editor.state.doc.child(0)
+    expect(columnsNode.type.name).toBe('columns')
+    expect(columnsNode.attrs.count).toBe(2)
+    expect(columnsNode.childCount).toBe(2)
+    expect(editor.state.doc.textContent).toContain('Col 1')
+    expect(editor.state.doc.textContent).toContain('Col 3')
+    expect(editor.state.doc.textContent).not.toContain('Col 2')
+
+    editor.destroy()
+    element.remove()
+  })
+
+  it('deletes a column from a 2-column layout, unwrapping remaining column into full-width document', () => {
+    const element = document.body.appendChild(document.createElement('div'))
+    const editor = new Editor({
+      element,
+      extensions: [Document, Paragraph, Text, Columns, Column],
+      content: {
+        type: 'doc',
+        content: [
+          {
+            type: 'columns',
+            attrs: { count: 2 },
+            content: [
+              { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 1' }] }] },
+              { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 2' }] }] },
+            ],
+          },
+        ],
+      },
+    })
+
+    // Find position inside column 1
+    let col1Pos = 0
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'Col 1') {
+        col1Pos = pos
+      }
+    })
+
+    const deleted = deleteColumnAt(editor, col1Pos)
+    expect(deleted).toBe(true)
+
+    // Columns container should be gone completely; doc should contain direct paragraph 'Col 2'
+    expect(editor.state.doc.child(0).type.name).toBe('paragraph')
+    expect(editor.state.doc.textContent).toBe('Col 2')
 
     editor.destroy()
     element.remove()

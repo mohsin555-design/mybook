@@ -67,6 +67,7 @@ import { StyledTableCell, StyledTableHeader } from './extensions/TableCellStyles
 import { InlineHighlight, InlineTextColor } from './extensions/InlineTextColor'
 import { EditorKeyboardShortcuts } from './extensions/EditorKeyboardShortcuts'
 import { BlockMarkdownShortcuts } from './extensions/BlockMarkdownShortcuts'
+import { SearchHighlight } from './extensions/SearchHighlight'
 import { convertSelectedBlocks, isFormatCommand } from './blockConversion'
 import { DocumentLinkProvider } from './DocumentLinkContext'
 import { documentLinkLocation, documentLinkTargets, pastedDocumentLink } from './documentLinkModel'
@@ -1350,6 +1351,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
       BlankBlockSelection,
       EditorKeyboardShortcuts,
       BlockMarkdownShortcuts,
+      SearchHighlight,
     ],
     content: emptyDocument,
     editorProps: {
@@ -2785,11 +2787,11 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
         moreMenuClassName="min-w-64"
         moreContent={
           <>
-            <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="justify-between">
-              <span>Lock page</span><Switch aria-label="Lock page" checked={Boolean(file.isLocked)} onCheckedChange={(checked) => void setPageLocked(checked)} />
+            <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => void setPageLocked(!file.isLocked)} className="justify-between cursor-pointer">
+              <span>Lock page</span><Switch aria-label="Lock page" checked={Boolean(file.isLocked)} onClick={(e) => e.stopPropagation()} onCheckedChange={(checked) => void setPageLocked(checked)} />
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={(event) => event.preventDefault()} className="justify-between">
-              <span>Full width</span><Switch aria-label="Full width" checked={isFullWidth} onCheckedChange={setDocumentViewMode} />
+            <DropdownMenuItem closeOnClick={false} onSelect={(event) => event.preventDefault()} onClick={() => setDocumentViewMode(!isFullWidth)} className="justify-between cursor-pointer">
+              <span>Full width</span><Switch aria-label="Full width" checked={isFullWidth} onClick={(e) => e.stopPropagation()} onCheckedChange={setDocumentViewMode} />
             </DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Zoom</DropdownMenuSubTrigger>
@@ -2802,7 +2804,7 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
             <DropdownMenuItem onClick={() => void duplicateDocument()}><span>Duplicate</span><kbd className="ml-auto text-xs text-muted-foreground">{duplicateShortcut}</kbd></DropdownMenuItem>
             <DropdownMenuItem onClick={() => void copyDocumentContent()}>Copy content</DropdownMenuItem>
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger><span>Move to</span><kbd className="ml-auto pr-2 text-xs text-muted-foreground">{moveShortcut}</kbd></DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger shortcut={moveShortcut}><span>Move to</span></DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {file.folderId ? <DropdownMenuItem onClick={() => void moveDocument(null)}>Writin root</DropdownMenuItem> : null}
                 {folders.filter((folder) => folder.id !== file.folderId).map((folder) => <DropdownMenuItem key={folder.id} onClick={() => void moveDocument(folder.id)}>{folder.name}</DropdownMenuItem>)}
@@ -2822,12 +2824,13 @@ export function TiptapDocumentEditor({ fileId }: { fileId: string }) {
                 <DropdownMenuItem onClick={() => void exportDocx(true)}>Word (.docx)</DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            {file.workspaceType === 'local' || file.syncStatus === 'local' ? <div className="px-2 py-1.5 text-xs text-muted-foreground">Local</div> : <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>{file.syncStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced with cloud' : file.syncStatus === 'failed' ? 'Sync failed' : file.syncStatus === 'offline' ? 'Offline · saved locally' : 'Waiting to sync'}</span><button type="button" aria-label="Sync now" title="Sync now" disabled={file.syncStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${file.syncStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button></div>}
-            <div className="px-2 pb-1.5 text-xs text-muted-foreground">
-              <span>Created {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(file.createdAt))}</span>
-            </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>Delete</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {file.workspaceType === 'local' || file.syncStatus === 'local' ? <div className="px-2 py-1.5 text-xs text-muted-foreground">Local</div> : <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground"><span>{file.syncStatus === 'backing-up' ? 'Syncing…' : file.syncStatus === 'backed-up' ? 'Synced with cloud' : file.syncStatus === 'failed' ? 'Sync failed' : file.syncStatus === 'offline' ? 'Offline · saved locally' : 'Waiting to sync'}</span><button type="button" aria-label="Sync now" title="Sync now" disabled={file.syncStatus === 'backing-up'} onClick={() => void backupNow()} className="rounded p-1 text-foreground hover:bg-accent disabled:opacity-50"><ArrowPathIcon className={`size-4 ${file.syncStatus === 'backing-up' ? 'animate-spin' : ''}`} /></button></div>}
+            <div className="px-2 pb-1.5 text-xs text-muted-foreground">
+              <span>Created {new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(file.createdAt))}</span>
+            </div>
           </>
         }
       />

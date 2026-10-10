@@ -117,9 +117,11 @@ function DropdownMenuSubTrigger({
   className,
   inset,
   children,
+  shortcut,
   ...props
 }: MenuPrimitive.SubmenuTrigger.Props & {
   inset?: boolean
+  shortcut?: React.ReactNode
 }) {
   return (
     <MenuPrimitive.SubmenuTrigger
@@ -132,7 +134,10 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="ml-auto" />
+      <span className="ml-auto flex items-center gap-1.5">
+        {shortcut ? <kbd className="text-xs text-muted-foreground">{shortcut}</kbd> : null}
+        <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
+      </span>
     </MenuPrimitive.SubmenuTrigger>
   )
 }
